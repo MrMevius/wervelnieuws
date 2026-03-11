@@ -1,0 +1,58 @@
+from functools import lru_cache
+from pathlib import Path
+
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    app_name: str = "Wervelnieuws API"
+    env: str = "development"
+    secret_key: str = Field(default="change-me", min_length=8)
+    access_token_expire_minutes: int = 60 * 12
+
+    api_host: str = "0.0.0.0"
+    api_port: int = 8000
+
+    database_url: str = "sqlite:///./data/app.db"
+
+    storage_root: Path = Path("/data")
+    uploads_dir: str = "uploads"
+    generated_dir: str = "generated"
+    exports_dir: str = "exports"
+
+    openai_api_key: str = ""
+    openai_model_text: str = "gpt-4.1-mini"
+    openai_model_image: str = "gpt-image-1"
+
+    website_publish_url: str = ""
+    website_publish_token: str = ""
+
+    facebook_page_id: str = ""
+    facebook_access_token: str = ""
+
+    mailgun_api_key: str = ""
+    mailgun_domain: str = ""
+    mailgun_list_address: str = ""
+
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+    scheduler_poll_seconds: int = 30
+    max_retry_attempts: int = 5
+    upload_max_bytes: int = 10 * 1024 * 1024
+    rate_limit_window_seconds: int = 60
+    rate_limit_max_requests: int = 120
+
+
+@lru_cache
+def get_settings() -> Settings:
+    settings = Settings()
+    (settings.storage_root / settings.uploads_dir).mkdir(parents=True, exist_ok=True)
+    (settings.storage_root / settings.generated_dir).mkdir(parents=True, exist_ok=True)
+    (settings.storage_root / settings.exports_dir).mkdir(parents=True, exist_ok=True)
+    return settings

@@ -1,0 +1,53 @@
+from enum import Enum
+
+
+class WorkflowState(str, Enum):
+    draft = "draft"
+    planned = "planned"
+    generating = "generating"
+    review = "review"
+    approved = "approved"
+    scheduled = "scheduled"
+    publishing = "publishing"
+    published = "published"
+    rejected = "rejected"
+    error = "error"
+
+
+class ChannelName(str, Enum):
+    website = "website"
+    facebook = "facebook"
+    newsletter = "newsletter"
+
+
+class ChannelPublishState(str, Enum):
+    pending = "pending"
+    scheduled = "scheduled"
+    publishing = "publishing"
+    published = "published"
+    updated = "updated"
+    failed = "failed"
+    retrying = "retrying"
+    skipped = "skipped"
+
+
+class DocumentType(str, Enum):
+    pdf = "pdf"
+    docx = "docx"
+    xlsx = "xlsx"
+    txt = "txt"
+    markdown = "markdown"
+
+
+class DocumentStatus(str, Enum):
+    uploaded = "uploaded"
+    parsing = "parsing"
+    indexed = "indexed"
+    failed = "failed"
+
+
+class RetryStatus(str, Enum):
+    queued = "queued"
+    in_progress = "in_progress"
+    failed = "failed"
+    resolved = "resolved"
