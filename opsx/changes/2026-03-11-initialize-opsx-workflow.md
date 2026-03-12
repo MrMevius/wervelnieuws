@@ -160,6 +160,20 @@ Completed
 - Added README badge section for workflow visibility:
   - CI badge and Docker smoke badge using GitHub Actions workflow badge URLs,
   - includes explicit `OWNER/REPO` placeholder note for repository-specific setup.
+- Fixed frontend-to-backend API target configuration for Dockerized frontend builds:
+  - `docker-compose.yml` now passes `VITE_API_BASE_URL` as a frontend build arg,
+  - `frontend/Dockerfile` accepts and exports `VITE_API_BASE_URL` during `vite build`,
+  - `.env.example` now defines `VITE_API_BASE_URL=http://localhost:8001/api`.
+- Improved login UX error handling in `frontend/src/app/App.tsx`:
+  - failed login attempts now show a clear inline error message,
+  - submit button shows pending state (`Bezig...`) and is disabled while request is in flight,
+  - login fields are marked required.
+- Added frontend regression test for invalid credentials handling in `frontend/src/app/App.test.tsx`.
+- Documented frontend API base URL behavior in `README.md` environment variables section.
+- Hardened frontend API base resolution for non-local access:
+  - `frontend/src/lib/api/client.ts` now rewrites configured `localhost` API base to the current browser hostname when UI is opened via LAN/IP,
+  - fallback API base now uses `window.location` host with backend port `8001`.
+- Seeded default admin user in runtime environment via backend seed task to ensure default login path is available.
 
 ## How to verify
 - Copy env: `cp .env.example .env`
@@ -174,6 +188,16 @@ Completed
 - Verify CI workflow file: `.github/workflows/ci.yml`
 - Verify Docker smoke workflow file: `.github/workflows/docker-smoke.yml`
 - Verify badge section at top of `README.md` and replace `OWNER/REPO` with real repo path.
+- Verify Dockerized frontend API target wiring:
+  - `docker compose build frontend`
+  - confirm `VITE_API_BASE_URL` is set in `.env` (or falls back to `http://localhost:8001/api`).
+- Verify login error UX:
+  - run frontend app,
+  - submit invalid credentials,
+  - confirm inline error appears below login button.
+- Verify LAN/IP frontend access login path:
+  - open frontend via host IP or hostname,
+  - confirm API requests target `<current-host>:8001` (not `localhost`) and login succeeds with valid credentials.
 - (Optional runtime check) `docker compose up -d` and verify `/health` and frontend route.
 - Seed admin user: `docker compose run --rm backend python app/tasks/seed_admin.py`
 
@@ -219,3 +243,24 @@ Completed
   - `docker compose config && docker compose build backend frontend worker`
   - Result: compose config valid; core service builds succeeded.
 - README badge section added and validated by direct file inspection.
+- Frontend tests rerun after login UX + API base configuration updates:
+  - `cd frontend && npm test`
+  - Result: frontend tests `3 passed`.
+- Frontend production build rerun after updates:
+  - `cd frontend && npm run build`
+  - Result: production build succeeded.
+- Docker frontend image rebuilt to validate compose build-arg wiring:
+  - `docker compose build frontend`
+  - Result: frontend image build succeeded.
+- Backend auth sanity checks executed after user login issue report:
+  - `curl -sS http://localhost:8001/health`
+  - Result: `{"status":"ok"}`.
+  - `curl -sS -X POST http://localhost:8001/api/auth/login ...`
+  - Result before seeding: `401 Invalid credentials`.
+- Admin seed command executed and auth retested:
+  - `docker compose run --rm backend python app/tasks/seed_admin.py`
+  - `curl -sS -X POST http://localhost:8001/api/auth/login ...`
+  - Result after seeding: bearer token returned.
+- Frontend rebuilt/restarted after API host resolution hardening:
+  - `docker compose build frontend && docker compose up -d frontend`
+  - Result: frontend container recreated and running.

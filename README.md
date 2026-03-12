@@ -113,6 +113,7 @@ See `.env.example` for all required values:
 - Website/Facebook/Mailgun/Telegram adapter credentials
 - storage and scheduler settings
 - upload size and API rate-limit settings
+- frontend API target via `VITE_API_BASE_URL` (Compose default: `http://localhost:8001/api`)
 
 ## Operational safeguards
 
