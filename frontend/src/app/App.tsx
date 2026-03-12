@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, Fragment, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
   AdminUser,
@@ -414,6 +414,7 @@ function DummyPage({ title, text }: { title: string; text: string }) {
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [passwordEditorUserId, setPasswordEditorUserId] = useState<string | null>(null);
   const [passwordDrafts, setPasswordDrafts] = useState<
     Record<string, { password: string; confirm: string }>
   >({});
@@ -456,6 +457,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         ...current,
         [variables.userId]: { password: "", confirm: "" }
       }));
+      setPasswordEditorUserId(null);
       setFeedback("Wachtwoord bijgewerkt.");
     },
     onError: (error) => {
@@ -521,68 +523,109 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
               <th>E-mail</th>
               <th>Rol</th>
               <th>Rolbeheer</th>
-              <th>Nieuw wachtwoord</th>
-              <th>Reset</th>
+              <th>Wachtwoord</th>
             </tr>
           </thead>
           <tbody>
             {(usersQuery.data ?? []).map((user) => {
               const nextIsAdmin = !user.is_admin;
               const draft = passwordDrafts[user.id] ?? { password: "", confirm: "" };
+              const isPasswordEditorOpen = passwordEditorUserId === user.id;
               return (
-                <tr key={user.id}>
-                  <td>{user.username}</td>
-                  <td>{user.full_name ?? "-"}</td>
-                  <td>{user.email ?? "-"}</td>
-                  <td>{user.is_admin ? "admin" : "user"}</td>
-                  <td>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeedback(null);
-                        updateMutation.mutate({ userId: user.id, isAdmin: nextIsAdmin });
-                      }}
-                      disabled={updateMutation.isPending}
-                    >
-                      {user.is_admin ? "Verwijder admin" : "Maak admin"}
-                    </button>
-                  </td>
-                  <td>
-                    <input
-                      type="password"
-                      value={draft.password}
-                      onChange={(e) => updatePasswordDraft(user.id, "password", e.target.value)}
-                      minLength={4}
-                      placeholder="Nieuw wachtwoord"
-                      aria-label={`Nieuw wachtwoord voor ${user.username}`}
-                    />
-                    <input
-                      type="password"
-                      value={draft.confirm}
-                      onChange={(e) => updatePasswordDraft(user.id, "confirm", e.target.value)}
-                      minLength={4}
-                      placeholder="Bevestig"
-                      aria-label={`Bevestig wachtwoord voor ${user.username}`}
-                    />
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      aria-label={`Wijzig wachtwoord voor ${user.username}`}
-                      onClick={() => {
-                        setFeedback(null);
-                        if (draft.password !== draft.confirm) {
-                          setFeedback("Wachtwoorden komen niet overeen.");
-                          return;
-                        }
-                        passwordMutation.mutate({ userId: user.id, password: draft.password });
-                      }}
-                      disabled={passwordMutation.isPending || draft.password.length < 4 || draft.confirm.length < 4}
-                    >
-                      Wijzig wachtwoord
-                    </button>
-                  </td>
-                </tr>
+                <Fragment key={user.id}>
+                  <tr>
+                    <td>{user.username}</td>
+                    <td>{user.full_name ?? "-"}</td>
+                    <td>{user.email ?? "-"}</td>
+                    <td>{user.is_admin ? "admin" : "user"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedback(null);
+                          updateMutation.mutate({ userId: user.id, isAdmin: nextIsAdmin });
+                        }}
+                        disabled={updateMutation.isPending}
+                      >
+                        {user.is_admin ? "Verwijder admin" : "Maak admin"}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        aria-expanded={isPasswordEditorOpen}
+                        aria-label={`Reset wachtwoord voor ${user.username}`}
+                        onClick={() => {
+                          setFeedback(null);
+                          setPasswordEditorUserId((current) =>
+                            current === user.id ? null : user.id
+                          );
+                        }}
+                      >
+                        {isPasswordEditorOpen ? "Verberg" : "Reset wachtwoord"}
+                      </button>
+                    </td>
+                  </tr>
+                  {isPasswordEditorOpen && (
+                    <tr className="admin-password-row">
+                      <td colSpan={6}>
+                        <div className="admin-password-editor">
+                          <input
+                            type="password"
+                            value={draft.password}
+                            onChange={(e) =>
+                              updatePasswordDraft(user.id, "password", e.target.value)
+                            }
+                            minLength={4}
+                            placeholder="Nieuw wachtwoord"
+                            aria-label={`Nieuw wachtwoord voor ${user.username}`}
+                          />
+                          <input
+                            type="password"
+                            value={draft.confirm}
+                            onChange={(e) =>
+                              updatePasswordDraft(user.id, "confirm", e.target.value)
+                            }
+                            minLength={4}
+                            placeholder="Bevestig"
+                            aria-label={`Bevestig wachtwoord voor ${user.username}`}
+                          />
+                          <div className="admin-password-actions">
+                            <button
+                              type="button"
+                              aria-label={`Wijzig wachtwoord voor ${user.username}`}
+                              onClick={() => {
+                                setFeedback(null);
+                                if (draft.password !== draft.confirm) {
+                                  setFeedback("Wachtwoorden komen niet overeen.");
+                                  return;
+                                }
+                                passwordMutation.mutate({
+                                  userId: user.id,
+                                  password: draft.password
+                                });
+                              }}
+                              disabled={
+                                passwordMutation.isPending ||
+                                draft.password.length < 4 ||
+                                draft.confirm.length < 4
+                              }
+                            >
+                              Wijzig wachtwoord
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPasswordEditorUserId(null)}
+                              disabled={passwordMutation.isPending}
+                            >
+                              Annuleer
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
           </tbody>

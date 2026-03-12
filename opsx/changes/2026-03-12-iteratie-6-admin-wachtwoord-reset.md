@@ -23,6 +23,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 5. Voeg op de adminpagina een compact formulier toe per gebruiker voor nieuw wachtwoord + bevestiging en submit.
 6. Toon duidelijke succes- en foutmeldingen.
 7. Voeg backend/frontend tests toe.
+8. Maak de admin-gebruikersbeheerweergave compacter door wachtwoordvelden alleen te tonen in een uitklapregel na klik op `Reset wachtwoord`.
 
 ## Implementation steps (ordered)
 1. Schema-update backend voor admin wachtwoordwijziging.
@@ -32,6 +33,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 5. Adminpagina uitbreiden met wachtwoord reset UI.
 6. Frontend tests uitbreiden voor deze flow.
 7. Relevante checks draaien en resultaten vastleggen.
+8. UI compact maken: standaard tabelrijen opschonen en een uitklapregel voor wachtwoordreset toevoegen.
 
 ## Acceptance criteria
 - Admin kan vanuit de adminpagina het wachtwoord van een gebruiker wijzigen.
@@ -40,6 +42,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 - Endpoint valideert minimaal wachtwoordlengte conform bestaande authregels.
 - Frontend toont duidelijke succes/fout feedback na submit.
 - Backend en frontend tests dekken deze nieuwe flow.
+- Gebruikersbeheer op de adminpagina is compacter: wachtwoordvelden zijn standaard verborgen en verschijnen pas na expliciete reset-actie.
 
 ## Testing plan
 - Backend: `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -77,8 +80,15 @@ Completed
     - per gebruiker invoervelden voor nieuw wachtwoord + bevestiging toegevoegd;
     - knop `Wijzig wachtwoord` met submitflow toegevoegd;
     - succes/fout feedback voor admin wachtwoordwijziging toegevoegd.
+  - UI compact gemaakt (optie 1):
+    - wachtwoordvelden staan niet meer permanent in de hoofdregel;
+    - per user is er nu een actie `Reset wachtwoord` die een uitklapregel met wachtwoordformulier toont;
+    - hoofdweergave van gebruikersbeheer is daarmee compacter en rustiger.
 - Frontend tests:
   - `frontend/src/app/App.test.tsx`: test `allows admin to change another user password` toegevoegd.
+  - `frontend/src/app/App.test.tsx` aangepast zodat eerst de reset-uitklapregel wordt geopend voor wachtwoordinvoer.
+- Styling:
+  - `frontend/src/styles.css`: compacte reset-uitklaplayout toegevoegd (`admin-password-row`, `admin-password-editor`, `admin-password-actions`) met mobiele fallback.
 
 ## How to verify
 - Run backend tests:
@@ -87,6 +97,10 @@ Completed
   - `cd frontend && npm test`
 - Run frontend production build:
   - `cd frontend && npm run build`
+- Controleer handmatig in Admin > Gebruikersbeheer:
+  - wachtwoordvelden zijn standaard verborgen;
+  - klik op `Reset wachtwoord` opent de compacte uitklapregel;
+  - klik op `Verberg` of `Annuleer` sluit de uitklapregel weer.
 
 ## Verification evidence
 - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -95,3 +109,6 @@ Completed
   - Resultaat: `11 passed`.
 - `cd frontend && npm run build`
   - Resultaat: build geslaagd (Vite productiebuild).
+- Na compact UI-aanpassing:
+  - `cd frontend && npm test` -> `11 passed`.
+  - `cd frontend && npm run build` -> build geslaagd.

@@ -230,6 +230,8 @@ describe("App", () => {
       expect(screen.getByText("editor")).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Reset wachtwoord voor editor" }));
+
     fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), {
       target: { value: "nieuw5678" }
     });
