@@ -18,6 +18,15 @@ def _login(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _login_as(client, username: str, password: str):
+    response = client.post(
+        "/api/auth/login", json={"username": username, "password": password}
+    )
+    assert response.status_code == 200
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def test_auth_me_returns_current_user(client):
     headers = _login(client)
 
@@ -28,8 +37,19 @@ def test_auth_me_returns_current_user(client):
     assert payload["id"]
     assert payload["full_name"] is None
     assert payload["email"] is None
+    assert payload["is_admin"] is True
     assert payload["theme_preference"] == "system"
     assert payload["has_avatar"] is False
+
+
+def test_auth_me_for_non_admin_returns_is_admin_false(client):
+    headers = _login_as(client, "editor", "editor12345")
+
+    response = client.get("/api/auth/me", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["username"] == "editor"
+    assert payload["is_admin"] is False
 
 
 def test_auth_me_can_be_updated(client):

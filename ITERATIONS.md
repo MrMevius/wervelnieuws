@@ -1,3 +1,8 @@
+Iteratie #05
+- Graag een admin menu toevoegen (klikken op je username en dan naast settings ook een admin page)
+- Voor nu dit admin menu alleen koppelen aan de user admin
+- In het admin menu kunnen de admins rechten geven aan bepaalde users (iedereen is user, sommige zijn ook admin)
+
 Itratie #04
 - Laat gebruikers hun eigen profielfoto kunnen uploaden
 - Na het uploaden moeten ze deze foto kunnen bijsnijden tot een mooie cirkel zodat deze gebruikt kan worden

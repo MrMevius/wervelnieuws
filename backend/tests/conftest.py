@@ -35,7 +35,10 @@ def client(tmp_path: Path) -> Generator[TestClient, None, None]:
     db = TestingSessionLocal()
     db.add(
         User(
-            username="admin", password_hash=hash_password("admin12345"), is_active=True
+            username="admin",
+            password_hash=hash_password("admin12345"),
+            is_active=True,
+            is_admin=True,
         )
     )
     db.add(

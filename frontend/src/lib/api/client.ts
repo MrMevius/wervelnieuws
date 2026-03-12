@@ -93,8 +93,18 @@ export type CurrentUser = {
   username: string;
   full_name: string | null;
   email: string | null;
+  is_admin: boolean;
   theme_preference: "light" | "dark" | "system";
   has_avatar: boolean;
+};
+
+export type AdminUser = {
+  id: string;
+  username: string;
+  full_name: string | null;
+  email: string | null;
+  is_admin: boolean;
+  is_active: boolean;
 };
 
 export type UpdateCurrentUserPayload = {
@@ -199,6 +209,17 @@ export function getCurrentUserAvatarBlob() {
 
 export function getAboutContent() {
   return request<AboutContent>("/meta/about");
+}
+
+export function listAdminUsers() {
+  return request<AdminUser[]>("/admin/users");
+}
+
+export function updateAdminUser(userId: string, is_admin: boolean) {
+  return request<AdminUser>(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_admin })
+  });
 }
 
 export function listTopics() {

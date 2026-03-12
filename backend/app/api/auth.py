@@ -40,6 +40,7 @@ def me(current: User = Depends(get_current_user)) -> CurrentUserResponse:
         username=current.username,
         full_name=current.full_name,
         email=current.email,
+        is_admin=current.is_admin,
         theme_preference=current.theme_preference,
         has_avatar=bool(current.avatar_path),
     )
@@ -71,6 +72,7 @@ def update_me(
         username=updated.username,
         full_name=updated.full_name,
         email=updated.email,
+        is_admin=updated.is_admin,
         theme_preference=updated.theme_preference,
         has_avatar=bool(updated.avatar_path),
     )
@@ -109,6 +111,7 @@ async def upload_my_avatar(
         username=current.username,
         full_name=current.full_name,
         email=current.email,
+        is_admin=current.is_admin,
         theme_preference=current.theme_preference,
         has_avatar=True,
     )

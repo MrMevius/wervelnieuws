@@ -20,6 +20,7 @@ class CurrentUserResponse(BaseModel):
     username: str
     full_name: str | None
     email: str | None
+    is_admin: bool
     theme_preference: ThemePreference
     has_avatar: bool
 

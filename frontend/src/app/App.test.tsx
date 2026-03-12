@@ -12,6 +12,7 @@ const mockApi = vi.hoisted(() => ({
     username: "admin",
     full_name: null,
     email: null,
+    is_admin: true,
     theme_preference: "system",
     has_avatar: false
   }),
@@ -20,8 +21,35 @@ const mockApi = vi.hoisted(() => ({
     username: "admin",
     full_name: "Admin Naam",
     email: "admin@example.com",
+    is_admin: true,
     theme_preference: "dark",
     has_avatar: false
+  }),
+  listAdminUsers: vi.fn().mockResolvedValue([
+    {
+      id: "u1",
+      username: "admin",
+      full_name: "Admin",
+      email: "admin@example.com",
+      is_admin: true,
+      is_active: true
+    },
+    {
+      id: "u2",
+      username: "editor",
+      full_name: "Editor",
+      email: "editor@example.com",
+      is_admin: false,
+      is_active: true
+    }
+  ]),
+  updateAdminUser: vi.fn().mockResolvedValue({
+    id: "u2",
+    username: "editor",
+    full_name: "Editor",
+    email: "editor@example.com",
+    is_admin: true,
+    is_active: true
   }),
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
@@ -104,6 +132,71 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
       expect(screen.getByLabelText("Volledige naam")).toBeInTheDocument();
+    });
+  });
+
+  it("shows admin option in user menu for admins", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+
+    expect(screen.getByRole("menuitem", { name: "Admin" })).toBeInTheDocument();
+  });
+
+  it("hides admin option in user menu for non-admins", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u3",
+      username: "editor",
+      full_name: null,
+      email: "editor@example.com",
+      is_admin: false,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "editor" }));
+
+    expect(screen.queryByRole("menuitem", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("opens admin page and toggles admin rights", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByText("editor")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Maak admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Maak admin" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateAdminUser).toHaveBeenCalledWith("u2", true);
+      expect(screen.getByText("Adminrechten bijgewerkt.")).toBeInTheDocument();
     });
   });
 

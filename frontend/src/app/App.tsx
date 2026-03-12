@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
+  AdminUser,
   AboutContent,
   CurrentUser,
   Topic,
@@ -9,9 +10,11 @@ import {
   getCurrentUserAvatarBlob,
   getAboutContent,
   getCurrentUser,
+  listAdminUsers,
   listTopics,
   login,
   setToken,
+  updateAdminUser,
   uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../lib/api/client";
@@ -186,6 +189,11 @@ export function App() {
               <NavLink to="/settings" role="menuitem" onClick={() => setMenuOpen(false)}>
                 Settings
               </NavLink>
+              {currentUserQuery.data?.is_admin && (
+                <NavLink to="/admin" role="menuitem" onClick={() => setMenuOpen(false)}>
+                  Admin
+                </NavLink>
+              )}
               <button type="button" role="menuitem" onClick={logout}>
                 Uitloggen
               </button>
@@ -214,6 +222,10 @@ export function App() {
                 onAvatarUpdated={() => setAvatarVersion((value) => value + 1)}
               />
             }
+          />
+          <Route
+            path="/admin"
+            element={<AdminPage currentUser={currentUserQuery.data} />}
           />
           <Route path="/about" element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
           <Route path="*" element={<Navigate to="/main" replace />} />
@@ -394,6 +406,121 @@ function DummyPage({ title, text }: { title: string; text: string }) {
     <section className="panel">
       <h1>{title}</h1>
       <p>{text}</p>
+    </section>
+  );
+}
+
+function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
+  const queryClient = useQueryClient();
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const usersQuery = useQuery({
+    queryKey: ["admin-users"],
+    queryFn: listAdminUsers,
+    enabled: currentUser?.is_admin === true
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) =>
+      updateAdminUser(userId, isAdmin),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<AdminUser[] | undefined>(["admin-users"], (existing) => {
+        if (!existing) {
+          return existing;
+        }
+        return existing.map((user) =>
+          user.id === updated.id ? { ...user, is_admin: updated.is_admin } : user
+        );
+      });
+      setFeedback("Adminrechten bijgewerkt.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("last admin")) {
+        setFeedback("Dit is de laatste admin en kan niet worden gedegradeerd.");
+        return;
+      }
+      setFeedback("Bijwerken van adminrechten is mislukt.");
+    }
+  });
+
+  if (!currentUser?.is_admin) {
+    return (
+      <section className="panel">
+        <h1>Admin</h1>
+        <p>Je hebt geen toegang tot deze pagina.</p>
+      </section>
+    );
+  }
+
+  if (usersQuery.isLoading) {
+    return (
+      <section className="panel">
+        <h1>Admin</h1>
+        <p>Laden...</p>
+      </section>
+    );
+  }
+
+  if (usersQuery.isError) {
+    return (
+      <section className="panel">
+        <h1>Admin</h1>
+        <p>Gebruikers konden niet worden geladen.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel">
+      <h1>Admin</h1>
+      <p className="muted">Geef gebruikers adminrechten of haal ze weer weg.</p>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Gebruiker</th>
+              <th>Naam</th>
+              <th>E-mail</th>
+              <th>Rol</th>
+              <th>Actie</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(usersQuery.data ?? []).map((user) => {
+              const nextIsAdmin = !user.is_admin;
+              return (
+                <tr key={user.id}>
+                  <td>{user.username}</td>
+                  <td>{user.full_name ?? "-"}</td>
+                  <td>{user.email ?? "-"}</td>
+                  <td>{user.is_admin ? "admin" : "user"}</td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeedback(null);
+                        updateMutation.mutate({ userId: user.id, isAdmin: nextIsAdmin });
+                      }}
+                      disabled={updateMutation.isPending}
+                    >
+                      {user.is_admin ? "Verwijder admin" : "Maak admin"}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {feedback && (
+        <p
+          role="status"
+          className={feedback.includes("mislukt") || feedback.includes("laatste") ? "error" : "success"}
+        >
+          {feedback}
+        </p>
+      )}
     </section>
   );
 }

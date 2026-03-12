@@ -50,6 +50,7 @@ class User(Base, TimestampMixin):
     full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     avatar_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     theme_preference: Mapped[ThemePreference] = mapped_column(
         Enum(ThemePreference), default=ThemePreference.system, nullable=False
     )
