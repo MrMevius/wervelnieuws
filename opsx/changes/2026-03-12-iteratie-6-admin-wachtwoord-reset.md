@@ -9,6 +9,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 - Voeg een admin UI-flow toe op de adminpagina om per gebruiker een nieuw wachtwoord in te stellen.
 - Voeg validatie en foutafhandeling toe (minimale lengte, gebruiker bestaat, toegang).
 - Breid tests uit voor backend en frontend op deze nieuwe flow.
+- Voeg adminmogelijkheden toe om gebruikers te disablen/enablen en te verwijderen.
 
 ### Non-goals
 - Geen e-mailflow voor wachtwoordreset.
@@ -24,6 +25,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 6. Toon duidelijke succes- en foutmeldingen.
 7. Voeg backend/frontend tests toe.
 8. Maak de admin-gebruikersbeheerweergave compacter door wachtwoordvelden alleen te tonen in een uitklapregel na klik op `Reset wachtwoord`.
+9. Voeg admin endpoints toe voor `is_active` aanpassen en user verwijderen, met lockout-beveiliging voor de laatste admin.
 
 ## Implementation steps (ordered)
 1. Schema-update backend voor admin wachtwoordwijziging.
@@ -34,6 +36,9 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 6. Frontend tests uitbreiden voor deze flow.
 7. Relevante checks draaien en resultaten vastleggen.
 8. UI compact maken: standaard tabelrijen opschonen en een uitklapregel voor wachtwoordreset toevoegen.
+9. Backend uitbreiden met disable/enable en delete endpoints voor users.
+10. Frontend uitbreiden met disable/enable en delete acties in admin-gebruikersbeheer.
+11. Testdekking uitbreiden voor disable/enable en verwijderen (backend + frontend).
 
 ## Acceptance criteria
 - Admin kan vanuit de adminpagina het wachtwoord van een gebruiker wijzigen.
@@ -43,6 +48,9 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 - Frontend toont duidelijke succes/fout feedback na submit.
 - Backend en frontend tests dekken deze nieuwe flow.
 - Gebruikersbeheer op de adminpagina is compacter: wachtwoordvelden zijn standaard verborgen en verschijnen pas na expliciete reset-actie.
+- Admin kan gebruikers disablen/enablen via de adminpagina.
+- Admin kan gebruikers verwijderen via de adminpagina.
+- Laatste admin kan niet disabled of verwijderd worden.
 
 ## Testing plan
 - Backend: `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -89,6 +97,36 @@ Completed
   - `frontend/src/app/App.test.tsx` aangepast zodat eerst de reset-uitklapregel wordt geopend voor wachtwoordinvoer.
 - Styling:
   - `frontend/src/styles.css`: compacte reset-uitklaplayout toegevoegd (`admin-password-row`, `admin-password-editor`, `admin-password-actions`) met mobiele fallback.
+- Backend user lifecycle beheer toegevoegd:
+  - `backend/app/schemas/admin.py`: `UpdateAdminUserActiveRequest` toegevoegd.
+  - `backend/app/repositories/user_repository.py`: `update_active_status` en `delete_user` toegevoegd.
+  - `backend/app/api/admin.py` uitgebreid met:
+    - `PATCH /api/admin/users/{user_id}/active` (disable/enable)
+    - `DELETE /api/admin/users/{user_id}` (verwijderen)
+  - Lockoutregels toegevoegd:
+    - laatste admin kan niet disabled worden;
+    - laatste admin kan niet verwijderd worden.
+- Backend tests uitgebreid voor disable/delete flows:
+  - `backend/tests/test_admin_api.py` met tests voor:
+    - disable/enable van user
+    - blokkade op disable laatste admin
+    - user verwijderen
+    - blokkade op verwijderen laatste admin en self-delete
+    - admin-only toegang (`403`) op disable/delete endpoints.
+- Frontend admin gebruikersbeheer uitgebreid:
+  - `frontend/src/lib/api/client.ts`:
+    - `updateAdminUserActive()` toegevoegd
+    - `deleteAdminUser()` toegevoegd
+  - `frontend/src/app/App.tsx` (`AdminPage`):
+    - statuskolom toegevoegd (`actief` / `disabled`)
+    - accountacties toegevoegd: `Disable`/`Enable` en `Verwijder`
+    - feedback toegevoegd voor disable/delete success/fout
+    - toegankelijke labels toegevoegd op accountactieknoppen per gebruiker.
+- Frontend tests uitgebreid:
+  - `frontend/src/app/App.test.tsx`:
+    - `allows admin to disable a user`
+    - `allows admin to delete a user`
+    - bestaande admin-tests bijgewerkt voor stabiele async gedrag.
 
 ## How to verify
 - Run backend tests:
@@ -101,6 +139,9 @@ Completed
   - wachtwoordvelden zijn standaard verborgen;
   - klik op `Reset wachtwoord` opent de compacte uitklapregel;
   - klik op `Verberg` of `Annuleer` sluit de uitklapregel weer.
+  - klik op `Disable`/`Enable` wijzigt accountstatus;
+  - klik op `Verwijder` verwijdert een gebruiker uit de lijst.
+  - verifieer dat de laatste admin niet kan worden disabled of verwijderd.
 
 ## Verification evidence
 - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -112,3 +153,10 @@ Completed
 - Na compact UI-aanpassing:
   - `cd frontend && npm test` -> `11 passed`.
   - `cd frontend && npm run build` -> build geslaagd.
+- Disable/delete uitbreiding:
+  - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
+    - Resultaat: `31 passed`.
+  - `cd frontend && npm test`
+    - Resultaat: `13 passed`.
+  - `cd frontend && npm run build`
+    - Resultaat: build geslaagd.

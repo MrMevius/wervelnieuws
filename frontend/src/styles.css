@@ -316,6 +316,12 @@ table {
   gap: 8px;
 }
 
+.admin-account-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 th,
 td {
   text-align: left;
@@ -474,5 +480,9 @@ thead th {
   .admin-password-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .admin-account-actions {
+    width: 100%;
   }
 }

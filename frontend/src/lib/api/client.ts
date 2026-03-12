@@ -229,6 +229,19 @@ export function changeAdminUserPassword(userId: string, new_password: string) {
   });
 }
 
+export function updateAdminUserActive(userId: string, is_active: boolean) {
+  return request<AdminUser>(`/admin/users/${userId}/active`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_active })
+  });
+}
+
+export function deleteAdminUser(userId: string) {
+  return request<{ status: string }>(`/admin/users/${userId}`, {
+    method: "DELETE"
+  });
+}
+
 export function listTopics() {
   return request<Topic[]>("/topics");
 }

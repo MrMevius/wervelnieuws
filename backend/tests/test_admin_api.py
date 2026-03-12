@@ -124,3 +124,118 @@ def test_admin_password_change_rejects_short_password(client):
     )
 
     assert change.status_code == 422
+
+
+def test_admin_can_disable_and_enable_user(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    editor = next(user for user in users if user["username"] == "editor")
+    assert editor["is_active"] is True
+
+    disable = client.patch(
+        f"/api/admin/users/{editor['id']}/active",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert disable.status_code == 200
+    assert disable.json()["is_active"] is False
+
+    blocked_login = client.post(
+        "/api/auth/login", json={"username": "editor", "password": "editor12345"}
+    )
+    assert blocked_login.status_code == 401
+
+    enable = client.patch(
+        f"/api/admin/users/{editor['id']}/active",
+        headers=admin_headers,
+        json={"is_active": True},
+    )
+    assert enable.status_code == 200
+    assert enable.json()["is_active"] is True
+
+
+def test_admin_cannot_disable_last_admin(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    admin_user = next(user for user in users if user["username"] == "admin")
+
+    disable = client.patch(
+        f"/api/admin/users/{admin_user['id']}/active",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert disable.status_code == 400
+    assert disable.json()["detail"] == "Cannot disable the last admin user"
+
+
+def test_admin_can_delete_user(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    editor = next(user for user in users if user["username"] == "editor")
+
+    remove = client.delete(f"/api/admin/users/{editor['id']}", headers=admin_headers)
+    assert remove.status_code == 200
+    assert remove.json()["status"] == "ok"
+
+    users_after = client.get("/api/admin/users", headers=admin_headers)
+    assert users_after.status_code == 200
+    assert all(user["id"] != editor["id"] for user in users_after.json())
+
+
+def test_admin_cannot_delete_last_admin_or_self(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    admin_user = next(user for user in users if user["username"] == "admin")
+
+    remove_last_admin = client.delete(
+        f"/api/admin/users/{admin_user['id']}", headers=admin_headers
+    )
+    assert remove_last_admin.status_code == 400
+    assert remove_last_admin.json()["detail"] == "Cannot delete the last admin user"
+
+    editor_user = next(user for user in users if user["username"] == "editor")
+    promote = client.patch(
+        f"/api/admin/users/{editor_user['id']}",
+        headers=admin_headers,
+        json={"is_admin": True},
+    )
+    assert promote.status_code == 200
+
+    remove_self = client.delete(
+        f"/api/admin/users/{admin_user['id']}", headers=admin_headers
+    )
+    assert remove_self.status_code == 400
+    assert remove_self.json()["detail"] == "Admin users cannot delete themselves"
+
+
+def test_admin_active_and_delete_require_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+    admin_headers = _login_as(client, "admin", "admin12345")
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    target = next(user for user in users if user["username"] == "editor")
+
+    disable = client.patch(
+        f"/api/admin/users/{target['id']}/active",
+        headers=editor_headers,
+        json={"is_active": False},
+    )
+    assert disable.status_code == 403
+    assert disable.json()["detail"] == "Admin access required"
+
+    remove = client.delete(f"/api/admin/users/{target['id']}", headers=editor_headers)
+    assert remove.status_code == 403
+    assert remove.json()["detail"] == "Admin access required"

@@ -8,6 +8,7 @@ import {
   Topic,
   changeAdminUserPassword,
   changeCurrentUserPassword,
+  deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
   getCurrentUser,
@@ -15,6 +16,7 @@ import {
   listTopics,
   login,
   setToken,
+  updateAdminUserActive,
   updateAdminUser,
   uploadCurrentUserAvatar,
   updateCurrentUser
@@ -449,6 +451,53 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const activeMutation = useMutation({
+    mutationFn: ({ userId, isActive }: { userId: string; isActive: boolean }) =>
+      updateAdminUserActive(userId, isActive),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<AdminUser[] | undefined>(["admin-users"], (existing) => {
+        if (!existing) {
+          return existing;
+        }
+        return existing.map((user) =>
+          user.id === updated.id ? { ...user, is_active: updated.is_active } : user
+        );
+      });
+      setFeedback("Gebruikersstatus bijgewerkt.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("last admin")) {
+        setFeedback("De laatste admin kan niet worden gedeactiveerd.");
+        return;
+      }
+      setFeedback("Gebruiker status wijzigen is mislukt.");
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (userId: string) => deleteAdminUser(userId),
+    onSuccess: (_, deletedUserId) => {
+      queryClient.setQueryData<AdminUser[] | undefined>(["admin-users"], (existing) =>
+        existing ? existing.filter((user) => user.id !== deletedUserId) : existing
+      );
+      setPasswordEditorUserId((current) => (current === deletedUserId ? null : current));
+      setFeedback("Gebruiker verwijderd.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("last admin")) {
+        setFeedback("De laatste admin kan niet worden verwijderd.");
+        return;
+      }
+      if (message.includes("cannot delete themselves")) {
+        setFeedback("Je kunt jezelf niet verwijderen.");
+        return;
+      }
+      setFeedback("Gebruiker verwijderen is mislukt.");
+    }
+  });
+
   const passwordMutation = useMutation({
     mutationFn: ({ userId, password }: { userId: string; password: string }) =>
       changeAdminUserPassword(userId, password),
@@ -521,14 +570,17 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
               <th>Gebruiker</th>
               <th>Naam</th>
               <th>E-mail</th>
+              <th>Status</th>
               <th>Rol</th>
               <th>Rolbeheer</th>
+              <th>Account</th>
               <th>Wachtwoord</th>
             </tr>
           </thead>
           <tbody>
             {(usersQuery.data ?? []).map((user) => {
               const nextIsAdmin = !user.is_admin;
+              const nextIsActive = !user.is_active;
               const draft = passwordDrafts[user.id] ?? { password: "", confirm: "" };
               const isPasswordEditorOpen = passwordEditorUserId === user.id;
               return (
@@ -537,6 +589,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                     <td>{user.username}</td>
                     <td>{user.full_name ?? "-"}</td>
                     <td>{user.email ?? "-"}</td>
+                    <td>{user.is_active ? "actief" : "disabled"}</td>
                     <td>{user.is_admin ? "admin" : "user"}</td>
                     <td>
                       <button
@@ -549,6 +602,35 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                       >
                         {user.is_admin ? "Verwijder admin" : "Maak admin"}
                       </button>
+                    </td>
+                    <td>
+                      <div className="admin-account-actions">
+                        <button
+                          type="button"
+                          aria-label={`${user.is_active ? "Disable" : "Enable"} gebruiker ${user.username}`}
+                          onClick={() => {
+                            setFeedback(null);
+                            activeMutation.mutate({
+                              userId: user.id,
+                              isActive: nextIsActive
+                            });
+                          }}
+                          disabled={activeMutation.isPending || deleteMutation.isPending}
+                        >
+                          {user.is_active ? "Disable" : "Enable"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Verwijder gebruiker ${user.username}`}
+                          onClick={() => {
+                            setFeedback(null);
+                            deleteMutation.mutate(user.id);
+                          }}
+                          disabled={deleteMutation.isPending || activeMutation.isPending}
+                        >
+                          Verwijder
+                        </button>
+                      </div>
                     </td>
                     <td>
                       <button
@@ -568,7 +650,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                   </tr>
                   {isPasswordEditorOpen && (
                     <tr className="admin-password-row">
-                      <td colSpan={6}>
+                      <td colSpan={8}>
                         <div className="admin-password-editor">
                           <input
                             type="password"
@@ -634,7 +716,13 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       {feedback && (
         <p
           role="status"
-          className={feedback.includes("mislukt") || feedback.includes("laatste") ? "error" : "success"}
+          className={
+            feedback.includes("mislukt") ||
+            feedback.includes("laatste") ||
+            feedback.includes("niet")
+              ? "error"
+              : "success"
+          }
         >
           {feedback}
         </p>

@@ -16,3 +16,7 @@ class UpdateAdminUserRequest(BaseModel):
 
 class UpdateAdminUserPasswordRequest(BaseModel):
     new_password: str = Field(min_length=4, max_length=128)
+
+
+class UpdateAdminUserActiveRequest(BaseModel):
+    is_active: bool

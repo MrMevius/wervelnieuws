@@ -8,6 +8,7 @@ from app.models.entities import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.admin import (
     AdminUserResponse,
+    UpdateAdminUserActiveRequest,
     UpdateAdminUserPasswordRequest,
     UpdateAdminUserRequest,
 )
@@ -67,6 +68,38 @@ def update_user_admin_status(
     )
 
 
+@router.patch("/users/{user_id}/active", response_model=AdminUserResponse)
+def update_user_active_status(
+    user_id: str,
+    payload: UpdateAdminUserActiveRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminUserResponse:
+    user_repo = UserRepository(db)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if user.is_admin and not payload.is_active and user_repo.count_admins() <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot disable the last admin user",
+        )
+
+    updated = user_repo.update_active_status(user, is_active=payload.is_active)
+    return AdminUserResponse(
+        id=updated.id,
+        username=updated.username,
+        full_name=updated.full_name,
+        email=updated.email,
+        is_admin=updated.is_admin,
+        is_active=updated.is_active,
+    )
+
+
 @router.patch("/users/{user_id}/password")
 def update_user_password(
     user_id: str,
@@ -83,4 +116,33 @@ def update_user_password(
         )
 
     UserRepository(db).update_password(user, hash_password(payload.new_password))
+    return {"status": "ok"}
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: str,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    user_repo = UserRepository(db)
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    if user.is_admin and user_repo.count_admins() <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete the last admin user",
+        )
+    if current.id == user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin users cannot delete themselves",
+        )
+
+    user_repo.delete_user(user)
     return {"status": "ok"}

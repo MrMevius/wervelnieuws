@@ -51,6 +51,15 @@ const mockApi = vi.hoisted(() => ({
     is_admin: true,
     is_active: true
   }),
+  updateAdminUserActive: vi.fn().mockResolvedValue({
+    id: "u2",
+    username: "editor",
+    full_name: "Editor",
+    email: "editor@example.com",
+    is_admin: false,
+    is_active: false
+  }),
+  deleteAdminUser: vi.fn().mockResolvedValue({ status: "ok" }),
   changeAdminUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
@@ -244,6 +253,69 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.changeAdminUserPassword).toHaveBeenCalledWith("u2", "nieuw5678");
       expect(screen.getByText("Wachtwoord bijgewerkt.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to disable a user", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Disable gebruiker editor" })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Disable gebruiker editor" })
+    );
+
+    await waitFor(() => {
+      expect(mockApi.updateAdminUserActive).toHaveBeenCalledWith("u2", false);
+      expect(screen.getByText("Gebruikersstatus bijgewerkt.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to delete a user", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Verwijder gebruiker editor" })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Verwijder gebruiker editor" })
+    );
+
+    await waitFor(() => {
+      expect(mockApi.deleteAdminUser).toHaveBeenCalledWith("u2");
+      expect(screen.getByText("Gebruiker verwijderd.")).toBeInTheDocument();
     });
   });
 

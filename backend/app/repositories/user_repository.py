@@ -58,3 +58,14 @@ class UserRepository:
         user.password_hash = password_hash
         self.db.add(user)
         self.db.commit()
+
+    def update_active_status(self, user: User, *, is_active: bool) -> User:
+        user.is_active = is_active
+        self.db.add(user)
+        self.db.commit()
+        self.db.refresh(user)
+        return user
+
+    def delete_user(self, user: User) -> None:
+        self.db.delete(user)
+        self.db.commit()
