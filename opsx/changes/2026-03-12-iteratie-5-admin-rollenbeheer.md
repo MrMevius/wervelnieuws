@@ -114,6 +114,9 @@ Completed
   - `frontend/src/app/App.test.tsx`:
     - admin menu zichtbaar voor admin en verborgen voor non-admin.
     - adminpagina render + rolwijzigingsactie.
+- Post-deploy fix voor bestaande databases:
+  - `backend/alembic/versions/20260312_0006_backfill_admin_user_role.py` toegevoegd.
+  - Deze migratie zet bestaande user met `username='admin'` op `is_admin=1` zodat het adminmenu direct zichtbaar is voor oudere installaties die al op `20260312_0005` stonden.
 
 ## How to verify
 - Backend tests (container, aanbevolen):
@@ -124,6 +127,8 @@ Completed
   - `cd frontend && npm run build`
 - Migratie controleren:
   - `docker compose build migrate && docker compose run --rm migrate`
+- Controleer admin backfill in database:
+  - `docker compose run --rm backend python -c "from sqlalchemy import create_engine,text; e=create_engine('sqlite:////data/app.db'); c=e.connect(); print(c.execute(text('select username, is_admin from users order by username')).fetchall())"`
 
 ## Verification evidence
 - Lokale backend test-run (`cd backend && pytest`) faalde door ontbrekende lokale dependency `fastapi` in host environment.
@@ -136,3 +141,8 @@ Completed
   - Resultaat: productiebuild geslaagd (Vite build voltooid).
 - `docker compose build migrate && docker compose run --rm migrate`
   - Resultaat: migratie succesvol uitgevoerd naar `20260312_0005`.
+- Post-deploy probleem bevestigd: bestaande database had `('admin', 0)` waardoor adminmenu ontbrak.
+- `docker compose build migrate && docker compose run --rm migrate` na toevoegen `20260312_0006`
+  - Resultaat: migratie succesvol uitgevoerd naar `20260312_0006`.
+- Databasecontrole na migratie:
+  - Resultaat: `[('admin', 1), ('mevius', 0)]`.
