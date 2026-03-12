@@ -43,6 +43,14 @@ const mockApi = vi.hoisted(() => ({
       is_active: true
     }
   ]),
+  createAdminUser: vi.fn().mockResolvedValue({
+    id: "u3",
+    username: "redacteur",
+    full_name: null,
+    email: null,
+    is_admin: false,
+    is_active: true
+  }),
   updateAdminUser: vi.fn().mockResolvedValue({
     id: "u2",
     username: "editor",
@@ -214,6 +222,46 @@ describe("App", () => {
     });
   });
 
+  it("allows admin to create a new user", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Nieuwe gebruikersnaam")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Nieuwe gebruikersnaam"), {
+      target: { value: "redacteur" }
+    });
+    fireEvent.change(screen.getByLabelText("Tijdelijk wachtwoord"), {
+      target: { value: "redacteur123" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Gebruiker toevoegen" }));
+
+    await waitFor(() => {
+      expect(mockApi.createAdminUser).toHaveBeenCalledWith("redacteur", "redacteur123");
+      expect(screen.getByText("Nieuwe gebruiker toegevoegd.")).toBeInTheDocument();
+      expect(screen.getByText("redacteur")).toBeInTheDocument();
+    });
+  });
+
   it("allows admin to change another user password", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
@@ -284,6 +332,7 @@ describe("App", () => {
   });
 
   it("allows admin to delete a user", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -314,9 +363,46 @@ describe("App", () => {
     );
 
     await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith(
+        "Wilt u deze gebruiker echt verwijderen?"
+      );
       expect(mockApi.deleteAdminUser).toHaveBeenCalledWith("u2");
       expect(screen.getByText("Gebruiker verwijderd.")).toBeInTheDocument();
     });
+
+    confirmSpy.mockRestore();
+  });
+
+  it("cancels delete user when confirmation is rejected", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockApi.deleteAdminUser.mockClear();
+
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Verwijder gebruiker editor" })
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Verwijder gebruiker editor" })
+    );
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      "Wilt u deze gebruiker echt verwijderen?"
+    );
+    expect(mockApi.deleteAdminUser).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
   });
 
   it("saves settings and applies selected theme", async () => {

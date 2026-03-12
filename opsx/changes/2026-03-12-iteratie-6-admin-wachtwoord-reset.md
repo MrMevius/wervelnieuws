@@ -10,6 +10,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 - Voeg validatie en foutafhandeling toe (minimale lengte, gebruiker bestaat, toegang).
 - Breid tests uit voor backend en frontend op deze nieuwe flow.
 - Voeg adminmogelijkheden toe om gebruikers te disablen/enablen en te verwijderen.
+- Geef admins de mogelijkheid om nieuwe gebruikers toe te voegen.
 
 ### Non-goals
 - Geen e-mailflow voor wachtwoordreset.
@@ -26,6 +27,7 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 7. Voeg backend/frontend tests toe.
 8. Maak de admin-gebruikersbeheerweergave compacter door wachtwoordvelden alleen te tonen in een uitklapregel na klik op `Reset wachtwoord`.
 9. Voeg admin endpoints toe voor `is_active` aanpassen en user verwijderen, met lockout-beveiliging voor de laatste admin.
+10. Voeg admin endpoint toe voor user-creatie met username/wachtwoord validatie en duplicate-checks.
 
 ## Implementation steps (ordered)
 1. Schema-update backend voor admin wachtwoordwijziging.
@@ -39,6 +41,9 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 9. Backend uitbreiden met disable/enable en delete endpoints voor users.
 10. Frontend uitbreiden met disable/enable en delete acties in admin-gebruikersbeheer.
 11. Testdekking uitbreiden voor disable/enable en verwijderen (backend + frontend).
+12. Backend uitbreiden met create-user endpoint voor admins.
+13. Frontend uitbreiden met compact formulier om nieuwe gebruiker toe te voegen.
+14. Tests uitbreiden voor create-user flow (backend + frontend).
 
 ## Acceptance criteria
 - Admin kan vanuit de adminpagina het wachtwoord van een gebruiker wijzigen.
@@ -51,6 +56,9 @@ Na iteratie 5 kunnen admins rollen beheren, maar een admin kan nog geen wachtwoo
 - Admin kan gebruikers disablen/enablen via de adminpagina.
 - Admin kan gebruikers verwijderen via de adminpagina.
 - Laatste admin kan niet disabled of verwijderd worden.
+- Admin kan een nieuwe gebruiker toevoegen vanuit Admin > Gebruikersbeheer.
+- Alleen admins kunnen users aanmaken via admin endpoint (`403` voor niet-admin).
+- Username-conflict wordt netjes afgehandeld met duidelijke feedback.
 
 ## Testing plan
 - Backend: `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -122,11 +130,31 @@ Completed
     - accountacties toegevoegd: `Disable`/`Enable` en `Verwijder`
     - feedback toegevoegd voor disable/delete success/fout
     - toegankelijke labels toegevoegd op accountactieknoppen per gebruiker.
+    - verwijderactie toont nu expliciete bevestigingsvraag: `Wilt u deze gebruiker echt verwijderen?`.
 - Frontend tests uitgebreid:
   - `frontend/src/app/App.test.tsx`:
     - `allows admin to disable a user`
     - `allows admin to delete a user`
+    - `cancels delete user when confirmation is rejected`
     - bestaande admin-tests bijgewerkt voor stabiele async gedrag.
+- Admin kan nu nieuwe gebruikers toevoegen:
+  - `backend/app/schemas/admin.py`:
+    - `CreateAdminUserRequest` toegevoegd met validatie voor `username` (3-80) en `password` (4-128).
+  - `backend/app/api/admin.py`:
+    - `POST /api/admin/users` toegevoegd (admin-only) met duplicate-check op username en password hashing.
+  - `backend/tests/test_admin_api.py`:
+    - `test_admin_can_create_user`
+    - `test_admin_create_user_rejects_duplicate_username`
+    - `test_admin_create_user_requires_admin_role`
+  - `frontend/src/lib/api/client.ts`:
+    - `createAdminUser(username, password)` toegevoegd.
+  - `frontend/src/app/App.tsx`:
+    - compact formulier toegevoegd bovenaan Admin > Gebruikersbeheer om user aan te maken.
+    - nieuwe gebruiker wordt direct in de tabel gezet en succes/foutfeedback wordt getoond.
+  - `frontend/src/styles.css`:
+    - `admin-create-user` layout toegevoegd voor desktop + mobile.
+  - `frontend/src/app/App.test.tsx`:
+    - `allows admin to create a new user` toegevoegd.
 
 ## How to verify
 - Run backend tests:
@@ -136,11 +164,14 @@ Completed
 - Run frontend production build:
   - `cd frontend && npm run build`
 - Controleer handmatig in Admin > Gebruikersbeheer:
+  - vul `Nieuwe gebruikersnaam` + `Tijdelijk wachtwoord` in en klik `Gebruiker toevoegen`;
+  - controleer dat de nieuwe gebruiker direct in de lijst verschijnt.
   - wachtwoordvelden zijn standaard verborgen;
   - klik op `Reset wachtwoord` opent de compacte uitklapregel;
   - klik op `Verberg` of `Annuleer` sluit de uitklapregel weer.
   - klik op `Disable`/`Enable` wijzigt accountstatus;
   - klik op `Verwijder` verwijdert een gebruiker uit de lijst.
+  - bij `Verwijder` verschijnt eerst een bevestigingsvraag; annuleren houdt de gebruiker in de lijst.
   - verifieer dat de laatste admin niet kan worden disabled of verwijderd.
 
 ## Verification evidence
@@ -158,5 +189,17 @@ Completed
     - Resultaat: `31 passed`.
   - `cd frontend && npm test`
     - Resultaat: `13 passed`.
+  - `cd frontend && npm run build`
+    - Resultaat: build geslaagd.
+- Delete-confirmation verfijning:
+  - `cd frontend && npm test`
+    - Resultaat: `14 passed`.
+  - `cd frontend && npm run build`
+    - Resultaat: build geslaagd.
+- User-creatie uitbreiding:
+  - `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_admin_api.py -q"`
+    - Resultaat: `11 passed`.
+  - `cd frontend && npm test`
+    - Resultaat: `15 passed`.
   - `cd frontend && npm run build`
     - Resultaat: build geslaagd.

@@ -8,6 +8,7 @@ import {
   Topic,
   changeAdminUserPassword,
   changeCurrentUserPassword,
+  createAdminUser,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
@@ -417,6 +418,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [passwordEditorUserId, setPasswordEditorUserId] = useState<string | null>(null);
+  const [newUsername, setNewUsername] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [passwordDrafts, setPasswordDrafts] = useState<
     Record<string, { password: string; confirm: string }>
   >({});
@@ -498,6 +501,34 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const createMutation = useMutation({
+    mutationFn: ({ username, password }: { username: string; password: string }) =>
+      createAdminUser(username, password),
+    onSuccess: (created) => {
+      queryClient.setQueryData<AdminUser[] | undefined>(["admin-users"], (existing) => {
+        if (!existing) {
+          return [created];
+        }
+        return [...existing, created].sort((a, b) => a.username.localeCompare(b.username));
+      });
+      setNewUsername("");
+      setNewPassword("");
+      setFeedback("Nieuwe gebruiker toegevoegd.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("already exists")) {
+        setFeedback("Gebruikersnaam bestaat al.");
+        return;
+      }
+      if (message.includes("422")) {
+        setFeedback("Gebruikersnaam of wachtwoord is ongeldig.");
+        return;
+      }
+      setFeedback("Nieuwe gebruiker toevoegen is mislukt.");
+    }
+  });
+
   const passwordMutation = useMutation({
     mutationFn: ({ userId, password }: { userId: string; password: string }) =>
       changeAdminUserPassword(userId, password),
@@ -563,6 +594,44 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     <section className="panel">
       <h1>Admin</h1>
       <p className="muted">Geef gebruikers adminrechten of haal ze weer weg.</p>
+      <form
+        className="admin-create-user"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFeedback(null);
+          createMutation.mutate({
+            username: newUsername.trim(),
+            password: newPassword
+          });
+        }}
+      >
+        <input
+          type="text"
+          value={newUsername}
+          onChange={(event) => setNewUsername(event.target.value)}
+          placeholder="Nieuwe gebruikersnaam"
+          aria-label="Nieuwe gebruikersnaam"
+          minLength={3}
+          maxLength={80}
+          required
+        />
+        <input
+          type="password"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          placeholder="Tijdelijk wachtwoord"
+          aria-label="Tijdelijk wachtwoord"
+          minLength={4}
+          maxLength={128}
+          required
+        />
+        <button
+          type="submit"
+          disabled={createMutation.isPending || newUsername.trim().length < 3 || newPassword.length < 4}
+        >
+          Gebruiker toevoegen
+        </button>
+      </form>
       <div className="table-wrap">
         <table>
           <thead>
@@ -624,6 +693,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                           aria-label={`Verwijder gebruiker ${user.username}`}
                           onClick={() => {
                             setFeedback(null);
+                            const confirmed = window.confirm(
+                              "Wilt u deze gebruiker echt verwijderen?"
+                            );
+                            if (!confirmed) {
+                              return;
+                            }
                             deleteMutation.mutate(user.id);
                           }}
                           disabled={deleteMutation.isPending || activeMutation.isPending}
@@ -719,7 +794,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           className={
             feedback.includes("mislukt") ||
             feedback.includes("laatste") ||
-            feedback.includes("niet")
+            feedback.includes("niet") ||
+            feedback.includes("bestaat")
               ? "error"
               : "success"
           }

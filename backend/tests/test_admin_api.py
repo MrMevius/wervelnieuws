@@ -239,3 +239,48 @@ def test_admin_active_and_delete_require_admin_role(client):
     remove = client.delete(f"/api/admin/users/{target['id']}", headers=editor_headers)
     assert remove.status_code == 403
     assert remove.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_create_user(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    response = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "redacteur", "password": "redacteur123"},
+    )
+    assert response.status_code == 200
+    created = response.json()
+    assert created["username"] == "redacteur"
+    assert created["is_admin"] is False
+    assert created["is_active"] is True
+
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "redacteur", "password": "redacteur123"},
+    )
+    assert login.status_code == 200
+
+
+def test_admin_create_user_rejects_duplicate_username(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    response = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "editor", "password": "nieuw9876"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Username already exists"
+
+
+def test_admin_create_user_requires_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    response = client.post(
+        "/api/admin/users",
+        headers=editor_headers,
+        json={"username": "nieuw", "password": "nieuw1234"},
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admin access required"

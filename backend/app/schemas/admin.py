@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class AdminUserResponse(BaseModel):
@@ -20,3 +20,13 @@ class UpdateAdminUserPasswordRequest(BaseModel):
 
 class UpdateAdminUserActiveRequest(BaseModel):
     is_active: bool
+
+
+class CreateAdminUserRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=80)
+    password: str = Field(min_length=4, max_length=128)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        return value.strip()

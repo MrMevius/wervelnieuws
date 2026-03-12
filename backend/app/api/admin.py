@@ -8,12 +8,42 @@ from app.models.entities import User
 from app.repositories.user_repository import UserRepository
 from app.schemas.admin import (
     AdminUserResponse,
+    CreateAdminUserRequest,
     UpdateAdminUserActiveRequest,
     UpdateAdminUserPasswordRequest,
     UpdateAdminUserRequest,
 )
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.post("/users", response_model=AdminUserResponse)
+def create_user(
+    payload: CreateAdminUserRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminUserResponse:
+    del current
+    user_repo = UserRepository(db)
+    existing = user_repo.get_by_username(payload.username)
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already exists",
+        )
+
+    created = user_repo.create(
+        username=payload.username,
+        password_hash=hash_password(payload.password),
+    )
+    return AdminUserResponse(
+        id=created.id,
+        username=created.username,
+        full_name=created.full_name,
+        email=created.email,
+        is_admin=created.is_admin,
+        is_active=created.is_active,
+    )
 
 
 @router.get("/users", response_model=list[AdminUserResponse])

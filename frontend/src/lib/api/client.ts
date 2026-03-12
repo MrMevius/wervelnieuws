@@ -215,6 +215,13 @@ export function listAdminUsers() {
   return request<AdminUser[]>("/admin/users");
 }
 
+export function createAdminUser(username: string, password: string) {
+  return request<AdminUser>("/admin/users", {
+    method: "POST",
+    body: JSON.stringify({ username, password })
+  });
+}
+
 export function updateAdminUser(userId: string, is_admin: boolean) {
   return request<AdminUser>(`/admin/users/${userId}`, {
     method: "PATCH",

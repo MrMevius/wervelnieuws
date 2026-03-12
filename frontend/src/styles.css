@@ -322,6 +322,14 @@ table {
   flex-wrap: wrap;
 }
 
+.admin-create-user {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
 th,
 td {
   text-align: left;
@@ -484,5 +492,9 @@ thead th {
 
   .admin-account-actions {
     width: 100%;
+  }
+
+  .admin-create-user {
+    grid-template-columns: 1fr;
   }
 }
