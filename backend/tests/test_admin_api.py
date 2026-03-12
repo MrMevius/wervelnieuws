@@ -284,3 +284,43 @@ def test_admin_create_user_requires_admin_role(client):
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_create_and_update_project(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    create = client.post(
+        "/api/admin/projects",
+        headers=admin_headers,
+        json={"name": "Project Noord"},
+    )
+    assert create.status_code == 200
+    created = create.json()
+    assert created["name"] == "Project Noord"
+    assert created["is_active"] is True
+
+    update = client.patch(
+        f"/api/admin/projects/{created['id']}",
+        headers=admin_headers,
+        json={"name": "Project Noord A", "is_active": False},
+    )
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["name"] == "Project Noord A"
+    assert updated["is_active"] is False
+
+
+def test_admin_project_endpoints_require_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    list_response = client.get("/api/admin/projects", headers=editor_headers)
+    assert list_response.status_code == 403
+    assert list_response.json()["detail"] == "Admin access required"
+
+    create_response = client.post(
+        "/api/admin/projects",
+        headers=editor_headers,
+        json={"name": "Ongeoorloofd"},
+    )
+    assert create_response.status_code == 403
+    assert create_response.json()["detail"] == "Admin access required"

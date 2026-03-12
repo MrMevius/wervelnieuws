@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, content, health, meta, topics
+from app.api import admin, auth, content, database, health, meta, topics
 from app.core.logging import configure_logging
 from app.core.settings import get_settings
 
@@ -22,4 +22,5 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(topics.router, prefix="/api")
 app.include_router(content.router, prefix="/api")
+app.include_router(database.router, prefix="/api")
 app.include_router(meta.router, prefix="/api")

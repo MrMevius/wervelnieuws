@@ -1,24 +1,35 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, Fragment, useEffect, useRef, useState } from "react";
+import { DragEvent, FormEvent, Fragment, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
   AdminUser,
   AboutContent,
+  ContentVersion,
   CurrentUser,
+  DatabaseDocument,
+  Project,
+  SourceTraceHit,
   Topic,
   changeAdminUserPassword,
   changeCurrentUserPassword,
   createAdminUser,
+  createAdminProject,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
   getCurrentUser,
   listAdminUsers,
+  listAdminProjects,
+  listDatabaseDocuments,
+  listDatabaseProjects,
+  listVersions,
   listTopics,
   login,
   setToken,
   updateAdminUserActive,
+  updateAdminProject,
   updateAdminUser,
+  uploadDatabaseDocument,
   uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../lib/api/client";
@@ -211,7 +222,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/main" replace />} />
           <Route path="/main" element={<MainPage username={displayName} />} />
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
-          <Route path="/database" element={<DummyPage title="Database" text="Database-overzicht volgt in een volgende iteratie." />} />
+          <Route path="/database" element={<DatabasePage />} />
           <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
           <Route
             path="/settings"
@@ -256,11 +267,7 @@ function MainPage({ username }: { username: string }) {
     <section className="panel-grid">
       <article className="panel highlight">
         <h1>Welkom, {username}</h1>
-        <p>Upload hier je bestanden en houd overzicht op alle communicatiekanalen.</p>
-        <div className="upload-box">
-          <input type="file" aria-label="Bestand uploaden" />
-          <button type="button">Upload bestand</button>
-        </div>
+        <p>Bekijk hier je planning en ga naar Database om bronbestanden te uploaden.</p>
       </article>
 
       <article className="panel">
@@ -303,6 +310,32 @@ function MainPage({ username }: { username: string }) {
 }
 
 function PlanningPage({ topics }: { topics: Topic[] }) {
+  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (topics.length === 0) {
+      setSelectedTopicId(null);
+      return;
+    }
+    if (selectedTopicId && topics.some((topic) => topic.id === selectedTopicId)) {
+      return;
+    }
+    setSelectedTopicId(topics[0].id);
+  }, [topics, selectedTopicId]);
+
+  const versionsQuery = useQuery({
+    queryKey: ["topic-versions", selectedTopicId],
+    queryFn: () => listVersions(String(selectedTopicId)),
+    enabled: Boolean(selectedTopicId)
+  });
+
+  const selectedTopic = topics.find((topic) => topic.id === selectedTopicId) ?? null;
+  const selectedVersion =
+    (versionsQuery.data ?? []).find((version) => version.is_current) ??
+    (versionsQuery.data ?? [])[0] ??
+    null;
+  const sourceTrace = extractSourceTrace(selectedVersion);
+
   return (
     <section className="panel">
       <h1>Planning</h1>
@@ -327,7 +360,11 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
               </tr>
             )}
             {topics.map((topic) => (
-              <tr key={topic.id}>
+              <tr
+                key={topic.id}
+                className={selectedTopicId === topic.id ? "row-selected" : ""}
+                onClick={() => setSelectedTopicId(topic.id)}
+              >
                 <td>{topic.id.slice(0, 8)}</td>
                 <td>{topic.subject}</td>
                 <td>{topic.theme}</td>
@@ -341,7 +378,253 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
           </tbody>
         </table>
       </div>
+
+      <section className="review-panel" aria-label="Bronreview">
+        <h2>Review en bronpassages</h2>
+        {!selectedTopic && <p>Kies een onderwerp in de tabel om de laatste versie te bekijken.</p>}
+        {selectedTopic && versionsQuery.isLoading && <p>Laatst gegenereerde versie wordt geladen...</p>}
+        {selectedTopic && versionsQuery.isError && (
+          <p className="error">Versiegegevens konden niet worden geladen.</p>
+        )}
+        {selectedTopic && !versionsQuery.isLoading && !versionsQuery.isError && !selectedVersion && (
+          <p>Nog geen gegenereerde versie voor dit onderwerp.</p>
+        )}
+        {selectedTopic && selectedVersion && (
+          <div className="review-content">
+            <p className="muted">
+              Onderwerp: <strong>{selectedTopic.subject}</strong>
+            </p>
+            <h3>{selectedVersion.title}</h3>
+            <p>{selectedVersion.summary || "Geen samenvatting beschikbaar."}</p>
+
+            <h4>Gebruikte bronpassages</h4>
+            {sourceTrace.length === 0 ? (
+              <p>Geen bronpassages gekoppeld.</p>
+            ) : (
+              <div className="source-trace-list">
+                {sourceTrace.map((hit) => (
+                  <article className="source-trace-item" key={`${hit.source_type}-${hit.chunk_id}`}>
+                    <p className="source-label">
+                      {hit.source_type === "database"
+                        ? `Database - ${hit.project_name || "Onbekend project"} - ${
+                            hit.document_name || "Onbekend document"
+                          }`
+                        : `Topic - ${hit.document_name || "Onbekend document"}`}
+                      {`, chunk ${hit.chunk_index || "?"}`}
+                    </p>
+                    <p>{hit.text}</p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
     </section>
+  );
+}
+
+function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
+  if (!version) {
+    return [];
+  }
+  if (Array.isArray(version.source_trace) && version.source_trace.length > 0) {
+    return version.source_trace;
+  }
+  try {
+    const parsed = JSON.parse(version.source_trace_json) as Partial<SourceTraceHit>[];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.map((item) => ({
+      source: item.source ?? item.source_type ?? "topic",
+      source_type: item.source_type ?? item.source ?? "topic",
+      chunk_id: item.chunk_id ?? "",
+      chunk_index: item.chunk_index ?? "",
+      text: item.text ?? "",
+      document_id: item.document_id ?? "",
+      document_name: item.document_name ?? "",
+      topic_id: item.topic_id ?? "",
+      project_id: item.project_id ?? "",
+      project_name: item.project_name ?? ""
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function DatabasePage() {
+  const queryClient = useQueryClient();
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
+  const [isDragActive, setIsDragActive] = useState(false);
+
+  const projectsQuery = useQuery({
+    queryKey: ["database-projects"],
+    queryFn: listDatabaseProjects
+  });
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      return;
+    }
+    const first = projectsQuery.data?.[0];
+    if (first) {
+      setSelectedProjectId(first.id);
+    }
+  }, [projectsQuery.data, selectedProjectId]);
+
+  const documentsQuery = useQuery({
+    queryKey: ["database-documents", selectedProjectId],
+    queryFn: () => listDatabaseDocuments(selectedProjectId || undefined)
+  });
+
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => {
+      if (!selectedProjectId) {
+        throw new Error("Kies eerst een project");
+      }
+      return uploadDatabaseDocument(selectedProjectId, file);
+    },
+    onSuccess: () => {
+      setUploadFeedback("Bestand geupload naar de database.");
+      queryClient.invalidateQueries({ queryKey: ["database-documents"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("File too large")) {
+        setUploadFeedback("Bestand is te groot.");
+        return;
+      }
+      if (message.includes("Unsupported")) {
+        setUploadFeedback("Bestandstype wordt niet ondersteund.");
+        return;
+      }
+      if (message.includes("Project")) {
+        setUploadFeedback("Kies een geldig project voor upload.");
+        return;
+      }
+      setUploadFeedback("Uploaden mislukt. Probeer opnieuw.");
+    }
+  });
+
+  function onFileSelected(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setUploadFeedback(null);
+    uploadMutation.mutate(file);
+  }
+
+  function onDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setIsDragActive(false);
+    const file = event.dataTransfer.files?.[0] ?? null;
+    onFileSelected(file);
+  }
+
+  return (
+    <section className="panel database-page">
+      <h1>Database</h1>
+      <p className="muted">Upload bronbestanden per project. Deze database staat los van Topics.</p>
+      <div className="database-upload-controls">
+        <label>
+          Project
+          <select
+            aria-label="Project"
+            value={selectedProjectId}
+            onChange={(event) => setSelectedProjectId(event.target.value)}
+          >
+            {(projectsQuery.data ?? []).map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label
+        className={`database-dropzone ${isDragActive ? "drag-active" : ""}`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setIsDragActive(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setIsDragActive(true);
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          setIsDragActive(false);
+        }}
+        onDrop={onDrop}
+      >
+        <input
+          type="file"
+          aria-label="Database bestand uploaden"
+          onChange={(event) => onFileSelected(event.target.files?.[0] ?? null)}
+          disabled={uploadMutation.isPending || !selectedProjectId}
+        />
+        <strong>Sleep bestand hierheen of klik om te kiezen</strong>
+        <span>Ondersteund: PDF, DOCX, XLSX, TXT, Markdown</span>
+      </label>
+
+      {uploadFeedback && (
+        <p
+          role="status"
+          className={uploadFeedback.includes("mislukt") || uploadFeedback.includes("niet") ? "error" : "success"}
+        >
+          {uploadFeedback}
+        </p>
+      )}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Bestand</th>
+              <th>Project</th>
+              <th>Geupload door</th>
+              <th>Geupload op</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {documentsQuery.isLoading && (
+              <tr>
+                <td colSpan={5}>Laden...</td>
+              </tr>
+            )}
+            {documentsQuery.isError && (
+              <tr>
+                <td colSpan={5}>Bestandslijst kon niet geladen worden.</td>
+              </tr>
+            )}
+            {!documentsQuery.isLoading && !documentsQuery.isError && (documentsQuery.data ?? []).length === 0 && (
+              <tr>
+                <td colSpan={5}>Nog geen bestanden voor dit project.</td>
+              </tr>
+            )}
+            {(documentsQuery.data ?? []).map((document) => (
+              <DatabaseDocumentRow key={document.id} document={document} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function DatabaseDocumentRow({ document }: { document: DatabaseDocument }) {
+  return (
+    <tr>
+      <td>{document.filename}</td>
+      <td>{document.project_name}</td>
+      <td>{document.uploaded_by_username}</td>
+      <td>{new Date(document.created_at).toLocaleString()}</td>
+      <td>{document.status}</td>
+    </tr>
   );
 }
 
@@ -420,6 +703,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [passwordEditorUserId, setPasswordEditorUserId] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newProjectName, setNewProjectName] = useState("");
+  const [projectDrafts, setProjectDrafts] = useState<Record<string, string>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<
     Record<string, { password: string; confirm: string }>
   >({});
@@ -427,6 +712,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
     queryFn: listAdminUsers,
+    enabled: currentUser?.is_admin === true
+  });
+
+  const projectsQuery = useQuery({
+    queryKey: ["admin-projects"],
+    queryFn: listAdminProjects,
     enabled: currentUser?.is_admin === true
   });
 
@@ -529,6 +820,52 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const createProjectMutation = useMutation({
+    mutationFn: (name: string) => createAdminProject(name),
+    onSuccess: (created) => {
+      queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
+        if (!existing) {
+          return [created];
+        }
+        return [...existing, created].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setNewProjectName("");
+      setFeedback("Project toegevoegd.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("already exists")) {
+        setFeedback("Projectnaam bestaat al.");
+        return;
+      }
+      setFeedback("Project toevoegen is mislukt.");
+    }
+  });
+
+  const updateProjectMutation = useMutation({
+    mutationFn: ({ projectId, payload }: { projectId: string; payload: { name?: string; is_active?: boolean } }) =>
+      updateAdminProject(projectId, payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
+        if (!existing) {
+          return existing;
+        }
+        return existing
+          .map((project) => (project.id === updated.id ? updated : project))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setFeedback("Project bijgewerkt.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("already exists")) {
+        setFeedback("Projectnaam bestaat al.");
+        return;
+      }
+      setFeedback("Project bijwerken is mislukt.");
+    }
+  });
+
   const passwordMutation = useMutation({
     mutationFn: ({ userId, password }: { userId: string; password: string }) =>
       changeAdminUserPassword(userId, password),
@@ -563,6 +900,13 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     });
   }
 
+  function updateProjectDraft(projectId: string, value: string) {
+    setProjectDrafts((current) => ({
+      ...current,
+      [projectId]: value
+    }));
+  }
+
   if (!currentUser?.is_admin) {
     return (
       <section className="panel">
@@ -572,7 +916,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isLoading) {
+  if (usersQuery.isLoading || projectsQuery.isLoading) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -581,7 +925,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isError) {
+  if (usersQuery.isError || projectsQuery.isError) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -803,6 +1147,94 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           {feedback}
         </p>
       )}
+
+      <h2>Projecten</h2>
+      <p className="muted">Beheer hier de projecten waaraan databasebestanden gekoppeld worden.</p>
+      <form
+        className="admin-create-user"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFeedback(null);
+          createProjectMutation.mutate(newProjectName.trim());
+        }}
+      >
+        <input
+          type="text"
+          value={newProjectName}
+          onChange={(event) => setNewProjectName(event.target.value)}
+          placeholder="Nieuw project"
+          aria-label="Nieuw project"
+          minLength={2}
+          maxLength={120}
+          required
+        />
+        <span />
+        <button
+          type="submit"
+          disabled={createProjectMutation.isPending || newProjectName.trim().length < 2}
+        >
+          Project toevoegen
+        </button>
+      </form>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Status</th>
+              <th>Bewerken</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(projectsQuery.data ?? []).map((project) => {
+              const draftName = projectDrafts[project.id] ?? project.name;
+              return (
+                <tr key={project.id}>
+                  <td>
+                    <input
+                      type="text"
+                      value={draftName}
+                      aria-label={`Projectnaam ${project.name}`}
+                      onChange={(event) => updateProjectDraft(project.id, event.target.value)}
+                    />
+                  </td>
+                  <td>{project.is_active ? "actief" : "inactief"}</td>
+                  <td>
+                    <div className="admin-account-actions">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedback(null);
+                          updateProjectMutation.mutate({
+                            projectId: project.id,
+                            payload: { name: draftName.trim() }
+                          });
+                        }}
+                        disabled={updateProjectMutation.isPending || draftName.trim().length < 2}
+                      >
+                        Naam opslaan
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setFeedback(null);
+                          updateProjectMutation.mutate({
+                            projectId: project.id,
+                            payload: { is_active: !project.is_active }
+                          });
+                        }}
+                        disabled={updateProjectMutation.isPending}
+                      >
+                        {project.is_active ? "Deactiveer" : "Activeer"}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

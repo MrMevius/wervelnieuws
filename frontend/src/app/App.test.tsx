@@ -69,6 +69,58 @@ const mockApi = vi.hoisted(() => ({
   }),
   deleteAdminUser: vi.fn().mockResolvedValue({ status: "ok" }),
   changeAdminUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
+  listAdminProjects: vi.fn().mockResolvedValue([
+    {
+      id: "p1",
+      name: "Windpark de Boldijk",
+      is_active: true
+    }
+  ]),
+  createAdminProject: vi.fn().mockResolvedValue({
+    id: "p2",
+    name: "Project Noord",
+    is_active: true
+  }),
+  updateAdminProject: vi.fn().mockResolvedValue({
+    id: "p1",
+    name: "Windpark de Boldijk Updated",
+    is_active: false
+  }),
+  listDatabaseProjects: vi.fn().mockResolvedValue([
+    {
+      id: "p1",
+      name: "Windpark de Boldijk",
+      is_active: true
+    }
+  ]),
+  listDatabaseDocuments: vi.fn().mockResolvedValue([
+    {
+      id: "d1",
+      filename: "wijkbericht.txt",
+      doc_type: "txt",
+      status: "uploaded",
+      extraction_error: "",
+      size_bytes: 128,
+      project_id: "p1",
+      project_name: "Windpark de Boldijk",
+      uploaded_by_user_id: "u1",
+      uploaded_by_username: "admin",
+      created_at: "2026-03-12T10:00:00Z"
+    }
+  ]),
+  uploadDatabaseDocument: vi.fn().mockResolvedValue({
+    id: "d2",
+    filename: "nieuw.txt",
+    doc_type: "txt",
+    status: "uploaded",
+    extraction_error: "",
+    size_bytes: 99,
+    project_id: "p1",
+    project_name: "Windpark de Boldijk",
+    uploaded_by_user_id: "u1",
+    uploaded_by_username: "admin",
+    created_at: "2026-03-12T11:00:00Z"
+  }),
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
   getCurrentUserAvatarBlob: vi.fn(),
@@ -82,6 +134,48 @@ const mockApi = vi.hoisted(() => ({
       planning_at: null,
       workflow_state: "draft",
       is_archived: false
+    }
+  ]),
+  listVersions: vi.fn().mockResolvedValue([
+    {
+      id: "v1",
+      topic_id: "abc12345-1111",
+      version_number: 1,
+      title: "Onderhoudsupdate",
+      slug: "onderhoudsupdate",
+      article_body: "Volledige tekst",
+      summary: "Korte samenvatting",
+      source_trace_json: "[]",
+      source_trace: [
+        {
+          source: "topic",
+          source_type: "topic",
+          chunk_id: "c1",
+          chunk_index: "0",
+          text: "Topic bronpassage over onderhoud.",
+          document_id: "doc-topic-1",
+          document_name: "topic-bron.txt",
+          topic_id: "abc12345-1111",
+          project_id: "",
+          project_name: ""
+        },
+        {
+          source: "database",
+          source_type: "database",
+          chunk_id: "c2",
+          chunk_index: "1",
+          text: "Database bronpassage over veiligheidsinspectie.",
+          document_id: "doc-db-1",
+          document_name: "database-bron.txt",
+          topic_id: "abc12345-1111",
+          project_id: "p1",
+          project_name: "Windpark de Boldijk"
+        }
+      ],
+      generated_image_id: null,
+      is_current: true,
+      is_published: false,
+      created_at: "2026-03-12T11:00:00Z"
     }
   ]),
   getAboutContent: vi.fn().mockResolvedValue({
@@ -490,6 +584,102 @@ describe("App", () => {
       expect(screen.getByRole("columnheader", { name: "Plaatsingdatum" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Illustratie" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Opmerkingen" })).toBeInTheDocument();
+    });
+  });
+
+  it("shows source passages in planning review", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Review en bronpassages" })).toBeInTheDocument();
+      expect(screen.getByText("Onderhoudsupdate")).toBeInTheDocument();
+      expect(screen.getByText(/Topic - topic-bron.txt, chunk 0/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Database - Windpark de Boldijk - database-bron.txt, chunk 1/)
+      ).toBeInTheDocument();
+      expect(mockApi.listVersions).toHaveBeenCalledWith("abc12345-1111");
+    });
+  });
+
+  it("removes upload controls from main page", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Welkom, admin" })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByLabelText("Bestand uploaden")).not.toBeInTheDocument();
+    expect(screen.getByText(/ga naar Database om bronbestanden te uploaden/i)).toBeInTheDocument();
+  });
+
+  it("uploads a file from database page with project selection", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
+      expect(screen.getByText("wijkbericht.txt")).toBeInTheDocument();
+    });
+
+    const file = new File(["inhoud"], "nieuw.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("Database bestand uploaden"), {
+      target: { files: [file] }
+    });
+
+    await waitFor(() => {
+      expect(mockApi.uploadDatabaseDocument).toHaveBeenCalledWith("p1", file);
+      expect(screen.getByText("Bestand geupload naar de database.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to manage projects", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Windpark de Boldijk")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Nieuw project"), {
+      target: { value: "Project Noord" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Project toevoegen" }));
+
+    await waitFor(() => {
+      expect(mockApi.createAdminProject).toHaveBeenCalledWith("Project Noord");
+      expect(screen.getByText("Project toegevoegd.")).toBeInTheDocument();
     });
   });
 

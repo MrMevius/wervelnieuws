@@ -1,3 +1,17 @@
+Iteratie #06
+- verwijder de upload file functionalitieit van de main page
+- voeg een drag en drop upload functionaliteit toe aan de database page
+- Geef inzicht in welke files er staan en wie deze geupload heeft,wanneer deze geupload zijn
+- Mogelijkheid geven om aan te geven tot welk project de bestanden horen
+- In het admin menu moet een bewerkbare lijst komen met projecten
+- Voeg nu alvast 1 project toe 'Windpark de Boldijk'
+
+Iteratie #07
+- Maak de Database-bronbestanden doorzoekbaar voor AI (indexering + retrieval/RAG)
+- Laat AI-generatie relevante passages met bronverwijzing uit deze database ophalen
+- Houd dit los van de topic-uploadflow; combineer beide bronnen gecontroleerd
+- Voeg zichtbaarheid toe van welke bronpassages gebruikt zijn in gegenereerde output
+
 Iteratie #05
 - Graag een admin menu toevoegen (klikken op je username en dan naast settings ook een admin page)
 - Voor nu dit admin menu alleen koppelen aan de user admin

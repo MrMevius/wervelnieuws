@@ -7,7 +7,12 @@ from pypdf import PdfReader
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models.entities import DocumentChunk, TopicSourceDocument
+from app.models.entities import (
+    DocumentChunk,
+    KnowledgeChunk,
+    KnowledgeDocument,
+    TopicSourceDocument,
+)
 from app.models.enums import DocumentStatus, DocumentType
 
 
@@ -58,6 +63,63 @@ class IngestionService:
                     ),
                     {"c": row.id, "t": document.topic_id, "x": chunk},
                 )
+            document.status = DocumentStatus.indexed
+            document.extraction_error = ""
+            self.db.add(document)
+            self.db.commit()
+        except Exception as exc:
+            document.status = DocumentStatus.failed
+            document.extraction_error = str(exc)
+            self.db.add(document)
+            self.db.commit()
+
+    def ingest_knowledge_document(self, document: KnowledgeDocument) -> None:
+        document.status = DocumentStatus.parsing
+        self.db.add(document)
+        self.db.commit()
+        try:
+            text_data = self._extract_text(document.file_path, document.doc_type)
+            chunks = self._chunk_text(text_data)
+            self.db.query(KnowledgeChunk).filter(
+                KnowledgeChunk.knowledge_document_id == document.id
+            ).delete()
+            self.db.execute(
+                text(
+                    "DELETE FROM knowledge_chunks_fts WHERE knowledge_document_id = :d"
+                ),
+                {"d": document.id},
+            )
+            for i, chunk in enumerate(chunks):
+                row = KnowledgeChunk(
+                    knowledge_document_id=document.id,
+                    project_id=document.project_id,
+                    chunk_index=i,
+                    text=chunk,
+                    metadata_json=json.dumps(
+                        {
+                            "filename": document.filename,
+                            "chunk_index": i,
+                            "project_id": document.project_id,
+                        }
+                    ),
+                )
+                self.db.add(row)
+                self.db.flush()
+                self.db.execute(
+                    text(
+                        """
+                        INSERT INTO knowledge_chunks_fts(chunk_id, knowledge_document_id, project_id, text)
+                        VALUES (:c, :d, :p, :x)
+                        """
+                    ),
+                    {
+                        "c": row.id,
+                        "d": document.id,
+                        "p": document.project_id,
+                        "x": chunk,
+                    },
+                )
+
             document.status = DocumentStatus.indexed
             document.extraction_error = ""
             self.db.add(document)

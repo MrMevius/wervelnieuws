@@ -52,10 +52,24 @@ export type ContentVersion = {
   article_body: string;
   summary: string;
   source_trace_json: string;
+  source_trace: SourceTraceHit[];
   generated_image_id: string | null;
   is_current: boolean;
   is_published: boolean;
   created_at: string;
+};
+
+export type SourceTraceHit = {
+  source: string;
+  source_type: string;
+  chunk_id: string;
+  chunk_index: string;
+  text: string;
+  document_id: string;
+  document_name: string;
+  topic_id: string;
+  project_id: string;
+  project_name: string;
 };
 
 export type ChannelStatus = {
@@ -105,6 +119,26 @@ export type AdminUser = {
   email: string | null;
   is_admin: boolean;
   is_active: boolean;
+};
+
+export type Project = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type DatabaseDocument = {
+  id: string;
+  filename: string;
+  doc_type: string;
+  status: string;
+  extraction_error: string;
+  size_bytes: number;
+  project_id: string;
+  project_name: string;
+  uploaded_by_user_id: string;
+  uploaded_by_username: string;
+  created_at: string;
 };
 
 export type UpdateCurrentUserPayload = {
@@ -246,6 +280,43 @@ export function updateAdminUserActive(userId: string, is_active: boolean) {
 export function deleteAdminUser(userId: string) {
   return request<{ status: string }>(`/admin/users/${userId}`, {
     method: "DELETE"
+  });
+}
+
+export function listAdminProjects() {
+  return request<Project[]>("/admin/projects");
+}
+
+export function createAdminProject(name: string) {
+  return request<Project>("/admin/projects", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export function updateAdminProject(projectId: string, payload: { name?: string; is_active?: boolean }) {
+  return request<Project>(`/admin/projects/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function listDatabaseProjects() {
+  return request<Project[]>("/database/projects");
+}
+
+export function listDatabaseDocuments(projectId?: string) {
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  return request<DatabaseDocument[]>(`/database/documents${suffix}`);
+}
+
+export function uploadDatabaseDocument(projectId: string, file: File) {
+  const fd = new FormData();
+  fd.append("project_id", projectId);
+  fd.append("file", file);
+  return request<DatabaseDocument>("/database/documents", {
+    method: "POST",
+    body: fd
   });
 }
 

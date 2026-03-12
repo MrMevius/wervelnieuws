@@ -30,6 +30,11 @@ def client(tmp_path: Path) -> Generator[TestClient, None, None]:
                 "CREATE VIRTUAL TABLE IF NOT EXISTS document_chunks_fts USING fts5(chunk_id, topic_id, text)"
             )
         )
+        conn.execute(
+            text(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(chunk_id, knowledge_document_id, project_id, text)"
+            )
+        )
         conn.commit()
 
     db = TestingSessionLocal()

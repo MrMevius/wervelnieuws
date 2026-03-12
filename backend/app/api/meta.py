@@ -35,7 +35,57 @@ def _default_about() -> AboutResponse:
                     "Je kunt nu bovenaan snel schakelen tussen Main, Planning, Database, Log en About.",
                     "In About zie je nu per iteratie wat er is verbeterd, opgehaald via de backend API.",
                 ],
-            }
+            },
+            {
+                "iteration": "03",
+                "date": "2026-03-12",
+                "title": "Persoonlijke instellingen in eigen beheer",
+                "highlights": [
+                    "Je kunt nu je volledige naam en e-mailadres zelf invullen of aanpassen.",
+                    "Je kunt een thema kiezen dat past bij je voorkeur: licht, donker of systeem volgen.",
+                    "De instellingenpagina geeft ook suggesties voor extra voorkeuren die later kunnen worden toegevoegd.",
+                ],
+            },
+            {
+                "iteration": "04",
+                "date": "2026-03-12",
+                "title": "Profielfoto uploaden en rond bijsnijden",
+                "highlights": [
+                    "Je kunt nu een eigen profielfoto uploaden vanuit je instellingen.",
+                    "Voor het opslaan kun je de foto direct rond bijsnijden en netjes centreren.",
+                    "Zo is je profiel in het menu direct herkenbaar voor jou en je team.",
+                ],
+            },
+            {
+                "iteration": "05",
+                "date": "2026-03-12",
+                "title": "Admin-menu en rollenbeheer",
+                "highlights": [
+                    "Admins zien nu een extra Admin-optie in het gebruikersmenu.",
+                    "Op de Admin-pagina kunnen admins rechten geven of weghalen bij andere gebruikers.",
+                    "Het systeem voorkomt dat de laatste admin per ongeluk adminrechten verliest.",
+                ],
+            },
+            {
+                "iteration": "06",
+                "date": "2026-03-12",
+                "title": "Centrale Database-pagina voor bronbestanden",
+                "highlights": [
+                    "Uploaden is verplaatst van Main naar Database met drag-and-drop ondersteuning.",
+                    "Je ziet nu per bestand direct het gekoppelde project, wie het heeft geupload en wanneer.",
+                    "Admins kunnen in het Admin-menu de projectenlijst beheren, inclusief het standaardproject Windpark de Boldijk.",
+                ],
+            },
+            {
+                "iteration": "07",
+                "date": "2026-03-12",
+                "title": "AI-bronindexering en transparante bronweergave",
+                "highlights": [
+                    "Database-bronbestanden worden nu geindexeerd zodat AI er relevante passages uit kan ophalen.",
+                    "Bij generatie worden nu zowel topicbronnen als databasebronnen gecombineerd met duidelijke herkomst.",
+                    "In Planning zie je bij de review direct welke bronpassages zijn gebruikt, inclusief document en project.",
+                ],
+            },
         ],
     )
 

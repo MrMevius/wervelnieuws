@@ -271,6 +271,43 @@ button:disabled {
   flex-wrap: wrap;
 }
 
+.database-page {
+  gap: 12px;
+}
+
+.database-upload-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 380px);
+  gap: 8px;
+}
+
+.database-upload-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.database-dropzone {
+  border: 2px dashed #9bb4a4;
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.database-dropzone.drag-active {
+  border-color: var(--brand);
+  background: #ebf6ef;
+}
+
+.database-dropzone input {
+  border: 0;
+  padding: 0;
+}
+
 .stats-list,
 .next-list {
   list-style: none;
@@ -298,6 +335,39 @@ table {
   width: 100%;
   border-collapse: collapse;
   min-width: 900px;
+}
+
+tbody tr.row-selected {
+  background: #eaf5ee;
+}
+
+.review-panel {
+  margin-top: 16px;
+  border-top: 1px solid #d8e3d9;
+  padding-top: 16px;
+}
+
+.review-content {
+  display: grid;
+  gap: 10px;
+}
+
+.source-trace-list {
+  display: grid;
+  gap: 10px;
+}
+
+.source-trace-item {
+  border: 1px solid #d8e3d9;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fbfdfb;
+}
+
+.source-label {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
 }
 
 .admin-password-row td {

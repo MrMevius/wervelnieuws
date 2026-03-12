@@ -1,6 +1,20 @@
+import json
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class SourceTraceHitResponse(BaseModel):
+    source: str
+    source_type: str
+    chunk_id: str
+    chunk_index: str
+    text: str
+    document_id: str
+    document_name: str
+    topic_id: str
+    project_id: str
+    project_name: str
 
 
 class ContentVersionResponse(BaseModel):
@@ -12,12 +26,27 @@ class ContentVersionResponse(BaseModel):
     article_body: str
     summary: str
     source_trace_json: str
+    source_trace: list[SourceTraceHitResponse] = Field(default_factory=list)
     generated_image_id: str | None
     is_current: bool
     is_published: bool
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def populate_source_trace(self) -> "ContentVersionResponse":
+        if self.source_trace:
+            return self
+        try:
+            parsed = json.loads(self.source_trace_json or "[]")
+            if isinstance(parsed, list):
+                self.source_trace = [
+                    SourceTraceHitResponse.model_validate(item) for item in parsed
+                ]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            self.source_trace = []
+        return self
 
 
 class ManualEditRequest(BaseModel):

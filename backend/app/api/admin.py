@@ -4,7 +4,8 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_admin
 from app.core.db import get_db
 from app.core.security import hash_password
-from app.models.entities import User
+from app.models.entities import Project, User
+from app.repositories.database_repository import DatabaseRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.admin import (
     AdminUserResponse,
@@ -13,8 +14,75 @@ from app.schemas.admin import (
     UpdateAdminUserPasswordRequest,
     UpdateAdminUserRequest,
 )
+from app.schemas.database import (
+    CreateProjectRequest,
+    ProjectResponse,
+    UpdateProjectRequest,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/projects", response_model=list[ProjectResponse])
+def list_projects(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[ProjectResponse]:
+    del current
+    repo = DatabaseRepository(db)
+    projects = repo.list_projects(include_inactive=True)
+    return [ProjectResponse.model_validate(project) for project in projects]
+
+
+@router.post("/projects", response_model=ProjectResponse)
+def create_project(
+    payload: CreateProjectRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    del current
+    repo = DatabaseRepository(db)
+    name = payload.name.strip()
+    if repo.get_project_by_name(name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project name already exists",
+        )
+    created = repo.create_project(name)
+    return ProjectResponse.model_validate(created)
+
+
+@router.patch("/projects/{project_id}", response_model=ProjectResponse)
+def update_project(
+    project_id: str,
+    payload: UpdateProjectRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ProjectResponse:
+    del current
+    repo = DatabaseRepository(db)
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found",
+        )
+
+    if payload.name is not None:
+        normalized = payload.name.strip()
+        existing = repo.get_project_by_name(normalized)
+        if existing and existing.id != project.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Project name already exists",
+            )
+        project.name = normalized
+
+    if payload.is_active is not None:
+        project.is_active = payload.is_active
+
+    updated = repo.save_project(project)
+    return ProjectResponse.model_validate(updated)
 
 
 @router.post("/users", response_model=AdminUserResponse)

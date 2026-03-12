@@ -55,6 +55,65 @@ class User(Base, TimestampMixin):
         Enum(ThemePreference), default=ThemePreference.system, nullable=False
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    knowledge_documents: Mapped[list["KnowledgeDocument"]] = relationship(
+        back_populates="uploaded_by"
+    )
+
+
+class Project(Base, TimestampMixin):
+    __tablename__ = "projects"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    documents: Mapped[list["KnowledgeDocument"]] = relationship(
+        back_populates="project", cascade="all,delete"
+    )
+
+
+class KnowledgeDocument(Base, TimestampMixin):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False
+    )
+    uploaded_by_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    content_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    doc_type: Mapped[DocumentType] = mapped_column(Enum(DocumentType), nullable=False)
+    status: Mapped[DocumentStatus] = mapped_column(
+        Enum(DocumentStatus), default=DocumentStatus.uploaded, nullable=False
+    )
+    extraction_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    project: Mapped[Project] = relationship(back_populates="documents")
+    uploaded_by: Mapped[User] = relationship(back_populates="knowledge_documents")
+    chunks: Mapped[list["KnowledgeChunk"]] = relationship(
+        back_populates="document", cascade="all,delete"
+    )
+
+
+class KnowledgeChunk(Base):
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    knowledge_document_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("knowledge_documents.id"), nullable=False
+    )
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False
+    )
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+
+    document: Mapped[KnowledgeDocument] = relationship(back_populates="chunks")
 
 
 class Topic(Base, TimestampMixin):
