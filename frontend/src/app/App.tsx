@@ -1,280 +1,132 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
+import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
-  addNote,
-  approveTopic,
-  channelStatus,
-  createTopic,
-  listAuditEvents,
-  listDocuments,
-  listNotes,
-  listRetryJobs,
+  AboutContent,
+  Topic,
+  getAboutContent,
+  getCurrentUser,
   listTopics,
-  listVersions,
   login,
-  manualEdit,
-  rejectTopic,
-  requeueRetryJob,
-  rollbackVersion,
-  scheduleTopic,
-  triggerGeneration,
-  uploadDocument
+  setToken
 } from "../lib/api/client";
 
 export function App() {
   const queryClient = useQueryClient();
   const [authenticated, setAuthenticated] = useState(false);
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
-
-  const topicsQuery = useQuery({ queryKey: ["topics"], queryFn: listTopics, enabled: authenticated });
-
-  const selectedTopic = useMemo(
-    () => topicsQuery.data?.find((t) => t.id === selectedTopicId) ?? null,
-    [topicsQuery.data, selectedTopicId]
-  );
-
-  const notesQuery = useQuery({
-    queryKey: ["notes", selectedTopicId],
-    queryFn: () => listNotes(selectedTopicId!),
-    enabled: Boolean(selectedTopicId)
-  });
-
-  const docsQuery = useQuery({
-    queryKey: ["docs", selectedTopicId],
-    queryFn: () => listDocuments(selectedTopicId!),
-    enabled: Boolean(selectedTopicId)
-  });
-
-  const versionsQuery = useQuery({
-    queryKey: ["versions", selectedTopicId],
-    queryFn: () => listVersions(selectedTopicId!),
-    enabled: Boolean(selectedTopicId)
-  });
-
-  const channelsQuery = useQuery({
-    queryKey: ["channels", selectedTopicId],
-    queryFn: () => channelStatus(selectedTopicId!),
-    enabled: Boolean(selectedTopicId)
-  });
-
-  const retryQuery = useQuery({ queryKey: ["retry-jobs"], queryFn: listRetryJobs, enabled: authenticated });
-
-  const auditQuery = useQuery({
-    queryKey: ["audit", selectedTopicId],
-    queryFn: () => listAuditEvents(selectedTopicId!),
-    enabled: Boolean(selectedTopicId)
-  });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const loginMutation = useMutation({
     mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
-    onSuccess: () => setAuthenticated(true)
-  });
-
-  const topicMutation = useMutation({
-    mutationFn: createTopic,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["topics"] })
-  });
-
-  const generateMutation = useMutation({
-    mutationFn: triggerGeneration,
+    onMutate: () => setLoginError(null),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["topics"] });
-      queryClient.invalidateQueries({ queryKey: ["versions", selectedTopicId] });
+      setAuthenticated(true);
+      setLoginError(null);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("invalid credentials") || message.includes("401")) {
+        setLoginError("Ongeldige gebruikersnaam of wachtwoord.");
+        return;
+      }
+      setLoginError("Inloggen mislukt. Controleer of de backend bereikbaar is en probeer opnieuw.");
     }
   });
 
-  const noteMutation = useMutation({
-    mutationFn: (note: string) => addNote(selectedTopicId!, note),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notes", selectedTopicId] })
+  const currentUserQuery = useQuery({
+    queryKey: ["current-user"],
+    queryFn: getCurrentUser,
+    enabled: authenticated
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadDocument(selectedTopicId!, file),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["docs", selectedTopicId] })
+  const topicsQuery = useQuery({
+    queryKey: ["topics"],
+    queryFn: listTopics,
+    enabled: authenticated
   });
 
-  const editMutation = useMutation({
-    mutationFn: (payload: { title: string; slug: string; article_body: string; summary: string }) =>
-      manualEdit(selectedTopicId!, payload),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["versions", selectedTopicId] })
+  const aboutQuery = useQuery({
+    queryKey: ["about-content"],
+    queryFn: getAboutContent,
+    enabled: authenticated
   });
 
-  const actionMutation = useMutation({
-    mutationFn: ({ type }: { type: "approve" | "reject" }) =>
-      type === "approve" ? approveTopic(selectedTopicId!) : rejectTopic(selectedTopicId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["topics"] })
-  });
-
-  const rollbackMutation = useMutation({
-    mutationFn: (versionId: string) => rollbackVersion(selectedTopicId!, versionId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["versions", selectedTopicId] })
-  });
-
-  const scheduleMutation = useMutation({
-    mutationFn: (publishAt: string) => scheduleTopic(selectedTopicId!, publishAt),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["topics"] })
-  });
-
-  const requeueMutation = useMutation({
-    mutationFn: requeueRetryJob,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["retry-jobs"] })
-  });
+  function logout() {
+    setToken("");
+    setAuthenticated(false);
+    setMenuOpen(false);
+    setLoginError(null);
+    queryClient.clear();
+  }
 
   if (!authenticated) {
     return (
-      <main className="container">
-        <h1>Wervelnieuws Dashboard</h1>
-        <form className="card" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
-          <input name="username" placeholder="Gebruikersnaam" defaultValue="admin" />
-          <input name="password" type="password" placeholder="Wachtwoord" defaultValue="admin12345" />
-          <button type="submit">Inloggen</button>
-        </form>
+      <main className="login-shell">
+        <section className="login-card">
+          <p className="eyebrow">Wervelnieuws</p>
+          <h1>Communicatie Dashboard</h1>
+          <p>Log in om de planning, publicaties en changelog te bekijken.</p>
+          <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
+            <input name="username" placeholder="Gebruikersnaam" defaultValue="admin" required />
+            <input name="password" type="password" placeholder="Wachtwoord" defaultValue="admin12345" required />
+            <button type="submit" disabled={loginMutation.isPending}>
+              {loginMutation.isPending ? "Bezig..." : "Inloggen"}
+            </button>
+            {loginError && (
+              <p className="error" role="alert">
+                {loginError}
+              </p>
+            )}
+          </form>
+        </section>
       </main>
     );
   }
 
+  const username = currentUserQuery.data?.username ?? "gebruiker";
+
   return (
-    <main className="container wide">
-      <header className="page-title">
-        <h1>Wervelnieuws Dashboard</h1>
-      </header>
-
-      <section className="two-col">
-        <div className="card">
-          <h2>Nieuw topic</h2>
-          <CreateTopicForm onSubmit={(payload) => topicMutation.mutate(payload)} />
-        </div>
-
-        <div className="card">
-          <h2>Retry jobs</h2>
-          {retryQuery.data?.map((job) => (
-            <div key={job.id} className="list-item">
-              <div>
-                <strong>{job.flow_name}</strong>
-                <p>{job.error_type}: {job.error_message}</p>
-              </div>
-              <button onClick={() => requeueMutation.mutate(job.id)}>Opnieuw plannen</button>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="layout">
-        <div className="card">
-          <h2>Topics</h2>
-          {topicsQuery.isLoading && <p>Laden...</p>}
-          {topicsQuery.data?.map((topic) => (
-            <article className={`topic ${selectedTopicId === topic.id ? "active" : ""}`} key={topic.id}>
-              <button className="topic-btn" onClick={() => setSelectedTopicId(topic.id)}>
-                <strong>{topic.title}</strong>
-                <span>{topic.subject}</span>
-                <small>Status: {topic.workflow_state}</small>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand">Wervelnieuws</div>
+        <nav className="tabs" aria-label="Hoofdnavigatie">
+          <NavLink to="/main">Main</NavLink>
+          <NavLink to="/planning">Planning</NavLink>
+          <NavLink to="/database">Database</NavLink>
+          <NavLink to="/log">Log</NavLink>
+          <NavLink to="/about">About</NavLink>
+        </nav>
+        <div className="user-menu-wrap">
+          <button className="user-trigger" onClick={() => setMenuOpen((open) => !open)}>
+            {username}
+          </button>
+          {menuOpen && (
+            <div className="user-menu" role="menu">
+              <NavLink to="/settings" role="menuitem" onClick={() => setMenuOpen(false)}>
+                Settings
+              </NavLink>
+              <button type="button" role="menuitem" onClick={logout}>
+                Uitloggen
               </button>
-              <button onClick={() => generateMutation.mutate(topic.id)}>Genereer</button>
-            </article>
-          ))}
-        </div>
-
-        <div className="card">
-          <h2>Review</h2>
-          {!selectedTopic && <p>Kies eerst een topic.</p>}
-          {selectedTopic && (
-            <>
-              <p><strong>{selectedTopic.title}</strong> - {selectedTopic.theme}</p>
-              <div className="row">
-                <button onClick={() => actionMutation.mutate({ type: "approve" })}>Approve</button>
-                <button onClick={() => actionMutation.mutate({ type: "reject" })}>Reject</button>
-              </div>
-
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const publishAt = String(fd.get("publish_at") ?? "");
-                  if (publishAt) scheduleMutation.mutate(new Date(publishAt).toISOString());
-                }}
-              >
-                <label>Publicatiemoment</label>
-                <input type="datetime-local" name="publish_at" />
-                <button type="submit">Inplannen</button>
-              </form>
-
-              <h3>Bronnen</h3>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const fileInput = e.currentTarget.elements.namedItem("file") as HTMLInputElement;
-                  const file = fileInput.files?.[0];
-                  if (file) uploadMutation.mutate(file);
-                }}
-              >
-                <input name="file" type="file" />
-                <button type="submit">Upload</button>
-              </form>
-              {docsQuery.data?.map((doc) => (
-                <p key={doc.id}>{doc.filename} - {doc.status}</p>
-              ))}
-
-              <h3>Notities</h3>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const fd = new FormData(e.currentTarget);
-                  const note = String(fd.get("note") ?? "").trim();
-                  if (note) noteMutation.mutate(note);
-                  e.currentTarget.reset();
-                }}
-              >
-                <textarea name="note" rows={2} placeholder="Voeg notitie toe" />
-                <button type="submit">Toevoegen</button>
-              </form>
-              {notesQuery.data?.map((note) => (
-                <p key={note.id}>{note.note}</p>
-              ))}
-
-              <h3>Versies</h3>
-              <VersionEditor
-                onSave={(payload) => editMutation.mutate(payload)}
-                current={versionsQuery.data?.find((v) => v.is_current)}
-              />
-              {versionsQuery.data?.map((version) => (
-                <div className="list-item" key={version.id}>
-                  <div>
-                    <strong>v{version.version_number}</strong>
-                    <p>{version.title}</p>
-                  </div>
-                  <button onClick={() => rollbackMutation.mutate(version.id)}>Rollback</button>
-                </div>
-              ))}
-
-              <h3>Kanaalstatus</h3>
-              {channelsQuery.data?.map((row) => (
-                <div key={`${row.channel}-${row.updated_at}`} className="list-item">
-                  <div>
-                    <strong>{row.channel}</strong>
-                    <p>status: {row.state}</p>
-                    {row.external_id && <p>external id: {row.external_id}</p>}
-                    {row.error_message && <p>error: {row.error_message}</p>}
-                  </div>
-                  <small>{new Date(row.updated_at).toLocaleString()}</small>
-                </div>
-              ))}
-
-              <h3>Audit trail</h3>
-              {auditQuery.data?.map((event) => (
-                <div className="list-item" key={event.id}>
-                  <div>
-                    <strong>{event.event_type}</strong>
-                    <p>{event.details_json}</p>
-                  </div>
-                  <small>{new Date(event.created_at).toLocaleString()}</small>
-                </div>
-              ))}
-            </>
+            </div>
           )}
         </div>
-      </section>
-    </main>
+      </header>
+
+      <main className="page-content">
+        <Routes>
+          <Route path="/" element={<Navigate to="/main" replace />} />
+          <Route path="/main" element={<MainPage username={username} />} />
+          <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
+          <Route path="/database" element={<DummyPage title="Database" text="Database-overzicht volgt in een volgende iteratie." />} />
+          <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
+          <Route path="/settings" element={<DummyPage title="Settings" text="Instellingen worden in een volgende iteratie uitgewerkt." />} />
+          <Route path="/about" element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
+          <Route path="*" element={<Navigate to="/main" replace />} />
+        </Routes>
+      </main>
+    </div>
   );
 }
 
@@ -290,67 +142,165 @@ function handleLogin(
   });
 }
 
-function CreateTopicForm({
-  onSubmit
-}: {
-  onSubmit: (payload: { title: string; subject: string; theme: string; editorial_notes: string; planning_at: string | null }) => void;
-}) {
-  function submit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    onSubmit({
-      title: String(fd.get("title") ?? ""),
-      subject: String(fd.get("subject") ?? ""),
-      theme: String(fd.get("theme") ?? ""),
-      editorial_notes: String(fd.get("editorial_notes") ?? ""),
-      planning_at: null
-    });
-    e.currentTarget.reset();
-  }
-
+function MainPage({ username }: { username: string }) {
   return (
-    <form onSubmit={submit}>
-      <input name="title" placeholder="Titel" required />
-      <input name="subject" placeholder="Onderwerp" required />
-      <input name="theme" placeholder="Thema" required />
-      <textarea name="editorial_notes" placeholder="Redactionele notities" rows={3} />
-      <button type="submit">Topic aanmaken</button>
-    </form>
+    <section className="panel-grid">
+      <article className="panel highlight">
+        <h1>Welkom, {username}</h1>
+        <p>Upload hier je bestanden en houd overzicht op alle communicatiekanalen.</p>
+        <div className="upload-box">
+          <input type="file" aria-label="Bestand uploaden" />
+          <button type="button">Upload bestand</button>
+        </div>
+      </article>
+
+      <article className="panel">
+        <h2>Succesvolle plaatsingen per platform</h2>
+        <ul className="stats-list">
+          <li>
+            <span>Website</span>
+            <strong>24</strong>
+          </li>
+          <li>
+            <span>Facebook</span>
+            <strong>19</strong>
+          </li>
+          <li>
+            <span>Nieuwsbrief</span>
+            <strong>17</strong>
+          </li>
+        </ul>
+      </article>
+
+      <article className="panel">
+        <h2>Volgende geplande bericht per platform</h2>
+        <ul className="next-list">
+          <li>
+            <span>Website</span>
+            <strong>13-03-2026 09:00</strong>
+          </li>
+          <li>
+            <span>Facebook</span>
+            <strong>13-03-2026 09:15</strong>
+          </li>
+          <li>
+            <span>Nieuwsbrief</span>
+            <strong>14-03-2026 07:30</strong>
+          </li>
+        </ul>
+      </article>
+    </section>
   );
 }
 
-function VersionEditor({
-  current,
-  onSave
-}: {
-  current:
-    | {
-        title: string;
-        slug: string;
-        article_body: string;
-        summary: string;
-      }
-    | undefined;
-  onSave: (payload: { title: string; slug: string; article_body: string; summary: string }) => void;
-}) {
+function PlanningPage({ topics }: { topics: Topic[] }) {
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        const fd = new FormData(e.currentTarget);
-        onSave({
-          title: String(fd.get("title") ?? ""),
-          slug: String(fd.get("slug") ?? ""),
-          article_body: String(fd.get("article_body") ?? ""),
-          summary: String(fd.get("summary") ?? "")
-        });
-      }}
-    >
-      <input name="title" defaultValue={current?.title ?? ""} placeholder="Titel" />
-      <input name="slug" defaultValue={current?.slug ?? ""} placeholder="Slug" />
-      <textarea name="article_body" defaultValue={current?.article_body ?? ""} rows={6} placeholder="Artikel" />
-      <textarea name="summary" defaultValue={current?.summary ?? ""} rows={3} placeholder="Samenvatting" />
-      <button type="submit">Nieuwe versie opslaan</button>
-    </form>
+    <section className="panel">
+      <h1>Planning</h1>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Onderwerp</th>
+              <th>Thema</th>
+              <th>Status</th>
+              <th>Geplande datum</th>
+              <th>Plaatsingdatum</th>
+              <th>Illustratie</th>
+              <th>Opmerkingen</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topics.length === 0 && (
+              <tr>
+                <td colSpan={8}>Nog geen records beschikbaar.</td>
+              </tr>
+            )}
+            {topics.map((topic) => (
+              <tr key={topic.id}>
+                <td>{topic.id.slice(0, 8)}</td>
+                <td>{topic.subject}</td>
+                <td>{topic.theme}</td>
+                <td>{topic.workflow_state}</td>
+                <td>{topic.planning_at ? new Date(topic.planning_at).toLocaleString() : "-"}</td>
+                <td>-</td>
+                <td>Standaard</td>
+                <td>{topic.editorial_notes || "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function AboutPage({
+  about,
+  isLoading,
+  hasError
+}: {
+  about: AboutContent | undefined;
+  isLoading: boolean;
+  hasError: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <section className="panel">
+        <h1>About</h1>
+        <p>Laden...</p>
+      </section>
+    );
+  }
+
+  if (hasError || !about) {
+    return (
+      <section className="panel">
+        <h1>About</h1>
+        <p>De About-informatie kon niet worden geladen. Ververs de pagina of probeer het later opnieuw.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel panel-grid about-grid">
+      <article>
+        <h1>About</h1>
+        <p>{about.description}</p>
+        <p className="muted">{about.disclaimer}</p>
+        <p>
+          <strong>Ontwikkeld door:</strong> {about.developed_by}
+        </p>
+      </article>
+
+      <article>
+        <h2>Changelog</h2>
+        <div className="changelog-list">
+          {about.changelog.map((entry) => (
+            <section className="changelog-item" key={`${entry.iteration}-${entry.date}`}>
+              <h3>
+                Iteratie {entry.iteration} - {entry.title}
+              </h3>
+              <p className="muted">{entry.date}</p>
+              <ul>
+                {entry.highlights.map((highlight) => (
+                  <li key={highlight}>{highlight}</li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </article>
+    </section>
+  );
+}
+
+function DummyPage({ title, text }: { title: string; text: string }) {
+  return (
+    <section className="panel">
+      <h1>{title}</h1>
+      <p>{text}</p>
+    </section>
   );
 }

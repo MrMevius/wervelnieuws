@@ -1,38 +1,58 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
 const mockApi = vi.hoisted(() => ({
   login: vi.fn().mockResolvedValue(undefined),
-  listTopics: vi.fn().mockResolvedValue([]),
-  createTopic: vi.fn().mockResolvedValue(undefined),
-  triggerGeneration: vi.fn().mockResolvedValue(undefined),
-  listRetryJobs: vi.fn().mockResolvedValue([]),
-  listAuditEvents: vi.fn().mockResolvedValue([]),
-  listDocuments: vi.fn().mockResolvedValue([]),
-  listNotes: vi.fn().mockResolvedValue([]),
-  listVersions: vi.fn().mockResolvedValue([]),
-  channelStatus: vi.fn().mockResolvedValue([]),
-  addNote: vi.fn().mockResolvedValue(undefined),
-  uploadDocument: vi.fn().mockResolvedValue(undefined),
-  manualEdit: vi.fn().mockResolvedValue(undefined),
-  approveTopic: vi.fn().mockResolvedValue(undefined),
-  rejectTopic: vi.fn().mockResolvedValue(undefined),
-  requeueRetryJob: vi.fn().mockResolvedValue(undefined),
-  rollbackVersion: vi.fn().mockResolvedValue(undefined),
-  scheduleTopic: vi.fn().mockResolvedValue(undefined)
+  setToken: vi.fn(),
+  getCurrentUser: vi.fn().mockResolvedValue({ id: "u1", username: "admin" }),
+  listTopics: vi.fn().mockResolvedValue([
+    {
+      id: "abc12345-1111",
+      title: "Titel",
+      subject: "Onderwerp test",
+      theme: "Thema test",
+      editorial_notes: "Notitie",
+      planning_at: null,
+      workflow_state: "draft",
+      is_archived: false
+    }
+  ]),
+  getAboutContent: vi.fn().mockResolvedValue({
+    description: "Wervelnieuws helpt het communicatieteam.",
+    disclaimer: "Controleer inhoud altijd voor publicatie.",
+    developed_by: "Energiek Daarle",
+    changelog: [
+      {
+        iteration: "02",
+        date: "2026-03-12",
+        title: "Nieuwe shell",
+        highlights: ["Tabnavigatie", "About API"]
+      }
+    ]
+  })
 }));
 
 vi.mock("../lib/api/client", () => mockApi);
 
-function renderApp() {
+function renderApp(initialEntries: string[] = ["/"]) {
   const queryClient = new QueryClient();
   return render(
     <QueryClientProvider client={queryClient}>
-      <App />
+      <MemoryRouter initialEntries={initialEntries}>
+        <App />
+      </MemoryRouter>
     </QueryClientProvider>
   );
+}
+
+async function loginIntoApp() {
+  fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Main" })).toBeInTheDocument();
+  });
 }
 
 describe("App", () => {
@@ -41,23 +61,61 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "Inloggen" })).toBeInTheDocument();
   });
 
-  it("logs in and creates topic", async () => {
+  it("shows login error when credentials are invalid", async () => {
+    mockApi.login.mockRejectedValueOnce(new Error("Invalid credentials"));
     renderApp();
 
     fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Nieuw topic" })).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Ongeldige gebruikersnaam of wachtwoord.");
     });
+  });
 
-    fireEvent.change(screen.getByPlaceholderText("Titel"), { target: { value: "Netupdate" } });
-    fireEvent.change(screen.getByPlaceholderText("Onderwerp"), { target: { value: "Werkzaamheden" } });
-    fireEvent.change(screen.getByPlaceholderText("Thema"), { target: { value: "Planning" } });
-
-    fireEvent.click(screen.getByRole("button", { name: "Topic aanmaken" }));
+  it("opens user menu and navigates to settings", async () => {
+    renderApp();
+    await loginIntoApp();
 
     await waitFor(() => {
-      expect(mockApi.createTopic).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    });
+  });
+
+  it("renders planning table with expected columns", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Onderwerp" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Thema" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Geplande datum" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Plaatsingdatum" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Illustratie" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Opmerkingen" })).toBeInTheDocument();
+    });
+  });
+
+  it("loads about content from API", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "About" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Wervelnieuws helpt het communicatieteam.")).toBeInTheDocument();
+      expect(screen.getByText(/Ontwikkeld door:/)).toBeInTheDocument();
+      expect(screen.getByText("Iteratie 02 - Nieuwe shell")).toBeInTheDocument();
     });
   });
 });

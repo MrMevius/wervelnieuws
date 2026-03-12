@@ -1,4 +1,27 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
+const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+
+function resolveApiBase(): string {
+  const fallback = `${window.location.protocol}//${window.location.hostname}:8001/api`;
+  if (!configuredApiBase) {
+    return fallback;
+  }
+
+  try {
+    const url = new URL(configuredApiBase);
+    const isConfiguredLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const currentHost = window.location.hostname;
+    const isCurrentLocal = currentHost === "localhost" || currentHost === "127.0.0.1";
+    if (isConfiguredLocal && !isCurrentLocal) {
+      url.hostname = currentHost;
+      return url.toString().replace(/\/$/, "");
+    }
+    return configuredApiBase.replace(/\/$/, "");
+  } catch {
+    return configuredApiBase.replace(/\/$/, "");
+  }
+}
+
+const API_BASE = resolveApiBase();
 
 export type Topic = {
   id: string;
@@ -65,6 +88,25 @@ export type RetryJob = {
   next_run_at: string;
 };
 
+export type CurrentUser = {
+  id: string;
+  username: string;
+};
+
+export type ChangelogEntry = {
+  iteration: string;
+  date: string;
+  title: string;
+  highlights: string[];
+};
+
+export type AboutContent = {
+  description: string;
+  disclaimer: string;
+  developed_by: string;
+  changelog: ChangelogEntry[];
+};
+
 let token = "";
 
 export function setToken(value: string) {
@@ -93,6 +135,14 @@ export async function login(username: string, password: string) {
     body: JSON.stringify({ username, password })
   });
   setToken(result.access_token);
+}
+
+export function getCurrentUser() {
+  return request<CurrentUser>("/auth/me");
+}
+
+export function getAboutContent() {
+  return request<AboutContent>("/meta/about");
 }
 
 export function listTopics() {
