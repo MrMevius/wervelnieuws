@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
   AboutContent,
   CurrentUser,
   Topic,
+  changeCurrentUserPassword,
+  getCurrentUserAvatarBlob,
   getAboutContent,
   getCurrentUser,
   listTopics,
   login,
   setToken,
+  uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../lib/api/client";
 
@@ -21,6 +24,8 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [avatarVersion, setAvatarVersion] = useState(0);
 
   const loginMutation = useMutation({
     mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
@@ -68,6 +73,37 @@ export function App() {
     return () => media.removeListener(resolveTheme);
   }, [themePreference]);
 
+  useEffect(() => {
+    if (!authenticated || !currentUserQuery.data?.has_avatar) {
+      setAvatarUrl(null);
+      return;
+    }
+
+    let objectUrl: string | null = null;
+    let active = true;
+
+    getCurrentUserAvatarBlob()
+      .then((blob) => {
+        if (!active) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setAvatarUrl(objectUrl);
+      })
+      .catch(() => {
+        if (active) {
+          setAvatarUrl(null);
+        }
+      });
+
+    return () => {
+      active = false;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [authenticated, currentUserQuery.data?.has_avatar, avatarVersion]);
+
   const topicsQuery = useQuery({
     queryKey: ["topics"],
     queryFn: listTopics,
@@ -86,6 +122,8 @@ export function App() {
     setMenuOpen(false);
     setLoginError(null);
     setThemePreference("system");
+    setAvatarUrl(null);
+    setAvatarVersion(0);
     queryClient.clear();
   }
 
@@ -113,7 +151,8 @@ export function App() {
     );
   }
 
-  const username = currentUserQuery.data?.full_name ?? currentUserQuery.data?.username ?? "gebruiker";
+  const displayName = currentUserQuery.data?.full_name ?? currentUserQuery.data?.username ?? "gebruiker";
+  const avatarFallback = initialsForName(displayName);
 
   function onUserUpdated(updatedUser: CurrentUser) {
     queryClient.setQueryData(["current-user"], updatedUser);
@@ -133,7 +172,14 @@ export function App() {
         </nav>
         <div className="user-menu-wrap">
           <button className="user-trigger" onClick={() => setMenuOpen((open) => !open)}>
-            {username}
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profielfoto" className="avatar" />
+            ) : (
+              <span aria-hidden="true" className="avatar avatar-fallback">
+                {avatarFallback}
+              </span>
+            )}
+            <span>{displayName}</span>
           </button>
           {menuOpen && (
             <div className="user-menu" role="menu">
@@ -151,7 +197,7 @@ export function App() {
       <main className="page-content">
         <Routes>
           <Route path="/" element={<Navigate to="/main" replace />} />
-          <Route path="/main" element={<MainPage username={username} />} />
+          <Route path="/main" element={<MainPage username={displayName} />} />
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
           <Route path="/database" element={<DummyPage title="Database" text="Database-overzicht volgt in een volgende iteratie." />} />
           <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
@@ -160,9 +206,12 @@ export function App() {
             element={
               <SettingsPage
                 user={currentUserQuery.data}
+                avatarUrl={avatarUrl}
+                displayName={displayName}
                 isLoading={currentUserQuery.isLoading}
                 hasError={currentUserQuery.isError}
                 onUserUpdated={onUserUpdated}
+                onAvatarUpdated={() => setAvatarVersion((value) => value + 1)}
               />
             }
           />
@@ -351,19 +400,35 @@ function DummyPage({ title, text }: { title: string; text: string }) {
 
 function SettingsPage({
   user,
+  avatarUrl,
+  displayName,
   isLoading,
   hasError,
-  onUserUpdated
+  onUserUpdated,
+  onAvatarUpdated
 }: {
   user: CurrentUser | undefined;
+  avatarUrl: string | null;
+  displayName: string;
   isLoading: boolean;
   hasError: boolean;
   onUserUpdated: (user: CurrentUser) => void;
+  onAvatarUpdated: () => void;
 }) {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [theme, setTheme] = useState<ThemePreference>("system");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordFeedback, setPasswordFeedback] = useState<string | null>(null);
+  const [cropSource, setCropSource] = useState<string | null>(null);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropOffsetX, setCropOffsetX] = useState(0);
+  const [cropOffsetY, setCropOffsetY] = useState(0);
+  const [avatarFeedback, setAvatarFeedback] = useState<string | null>(null);
+  const dragStartRef = useRef<{ x: number; y: number; offsetX: number; offsetY: number } | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -402,6 +467,105 @@ function SettingsPage({
     }
   });
 
+  const passwordMutation = useMutation({
+    mutationFn: () =>
+      changeCurrentUserPassword({
+        current_password: currentPassword,
+        new_password: newPassword
+      }),
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordFeedback("Wachtwoord succesvol gewijzigd.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Current password is incorrect")) {
+        setPasswordFeedback("Huidig wachtwoord is onjuist.");
+        return;
+      }
+      setPasswordFeedback("Wachtwoord wijzigen mislukt. Probeer het opnieuw.");
+    }
+  });
+
+  const avatarMutation = useMutation({
+    mutationFn: (file: Blob) => uploadCurrentUserAvatar(file),
+    onSuccess: (updated) => {
+      onUserUpdated(updated);
+      onAvatarUpdated();
+      setAvatarFeedback("Profielfoto opgeslagen.");
+      setCropSource(null);
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Avatar file too large")) {
+        setAvatarFeedback("Bestand is te groot. Gebruik maximaal 5 MB.");
+        return;
+      }
+      if (message.includes("Avatar must be a PNG image")) {
+        setAvatarFeedback("Uploaden mislukt. Probeer opnieuw na het bijsnijden.");
+        return;
+      }
+      setAvatarFeedback("Profielfoto opslaan mislukt. Probeer het opnieuw.");
+    }
+  });
+
+  function resetCropState() {
+    setCropZoom(1);
+    setCropOffsetX(0);
+    setCropOffsetY(0);
+    dragStartRef.current = null;
+  }
+
+  function startDrag(clientX: number, clientY: number) {
+    dragStartRef.current = {
+      x: clientX,
+      y: clientY,
+      offsetX: cropOffsetX,
+      offsetY: cropOffsetY
+    };
+  }
+
+  function moveDrag(clientX: number, clientY: number) {
+    if (!dragStartRef.current) {
+      return;
+    }
+    const deltaX = clientX - dragStartRef.current.x;
+    const deltaY = clientY - dragStartRef.current.y;
+    setCropOffsetX(clamp(dragStartRef.current.offsetX + deltaX, -120, 120));
+    setCropOffsetY(clamp(dragStartRef.current.offsetY + deltaY, -120, 120));
+  }
+
+  function endDrag() {
+    dragStartRef.current = null;
+  }
+
+  function onAvatarFileSelected(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setAvatarFeedback(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCropSource(typeof reader.result === "string" ? reader.result : null);
+      resetCropState();
+    };
+    reader.onerror = () => {
+      setAvatarFeedback("Kon het gekozen bestand niet lezen.");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  async function saveAvatarCrop() {
+    if (!cropSource) {
+      return;
+    }
+    setAvatarFeedback(null);
+    const blob = await createCircularAvatarPng(cropSource, cropZoom, cropOffsetX, cropOffsetY);
+    avatarMutation.mutate(blob);
+  }
+
   if (isLoading) {
     return (
       <section className="panel">
@@ -425,6 +589,37 @@ function SettingsPage({
       <article>
         <h1>Settings</h1>
         <p className="muted">Werk hier je profiel en thema-voorkeur bij.</p>
+
+        <section className="avatar-section">
+          <h2>Profielfoto</h2>
+          <div className="avatar-preview-row">
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Huidige profielfoto" className="avatar avatar-large" />
+            ) : (
+              <span aria-hidden="true" className="avatar avatar-large avatar-fallback">
+                {initialsForName(displayName)}
+              </span>
+            )}
+            <label className="avatar-upload-label">
+              Kies foto
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(e) => onAvatarFileSelected(e.target.files?.[0] ?? null)}
+              />
+            </label>
+          </div>
+          <p className="muted">Na kiezen kun je de foto rond bijsnijden. Het resultaat wordt als PNG opgeslagen.</p>
+          {avatarFeedback && (
+            <p
+              role="status"
+              className={avatarFeedback.includes("mislukt") || avatarFeedback.includes("te groot") ? "error" : "success"}
+            >
+              {avatarFeedback}
+            </p>
+          )}
+        </section>
+
         <form
           className="settings-form"
           onSubmit={(e) => {
@@ -463,6 +658,165 @@ function SettingsPage({
             </p>
           )}
         </form>
+
+        <h2>Wachtwoord wijzigen</h2>
+        <form
+          className="settings-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (newPassword !== confirmPassword) {
+              setPasswordFeedback("Nieuw wachtwoord en herhaling komen niet overeen.");
+              return;
+            }
+            setPasswordFeedback(null);
+            passwordMutation.mutate();
+          }}
+        >
+          <label>
+            Huidig wachtwoord
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              minLength={4}
+              required
+            />
+          </label>
+          <label>
+            Nieuw wachtwoord
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={4}
+              required
+            />
+          </label>
+          <label>
+            Herhaal nieuw wachtwoord
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={4}
+              required
+            />
+          </label>
+          <button type="submit" disabled={passwordMutation.isPending}>
+            {passwordMutation.isPending ? "Wijzigen..." : "Wachtwoord wijzigen"}
+          </button>
+          {passwordFeedback && (
+            <p
+              role="status"
+              className={
+                passwordFeedback.includes("mislukt") ||
+                passwordFeedback.includes("onjuist") ||
+                passwordFeedback.includes("niet overeen")
+                  ? "error"
+                  : "success"
+              }
+            >
+              {passwordFeedback}
+            </p>
+          )}
+        </form>
+
+        {cropSource && (
+          <div className="cropper-overlay" role="dialog" aria-modal="true" aria-label="Profielfoto bijsnijden">
+            <div className="cropper-card">
+              <h2>Profielfoto bijsnijden</h2>
+              <div className="cropper-preview-shell">
+                <div className="cropper-preview-circle">
+                  <img
+                    src={cropSource}
+                    alt="Crop preview"
+                    draggable={false}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      startDrag(e.clientX, e.clientY);
+                    }}
+                    onMouseMove={(e) => {
+                      if (!dragStartRef.current) {
+                        return;
+                      }
+                      moveDrag(e.clientX, e.clientY);
+                    }}
+                    onMouseUp={endDrag}
+                    onMouseLeave={endDrag}
+                    onTouchStart={(e) => {
+                      const touch = e.touches[0];
+                      if (!touch) {
+                        return;
+                      }
+                      startDrag(touch.clientX, touch.clientY);
+                    }}
+                    onTouchMove={(e) => {
+                      const touch = e.touches[0];
+                      if (!touch) {
+                        return;
+                      }
+                      moveDrag(touch.clientX, touch.clientY);
+                    }}
+                    onTouchEnd={endDrag}
+                    style={{
+                      transform: `translate(${cropOffsetX}px, ${cropOffsetY}px) scale(${cropZoom})`
+                    }}
+                  />
+                </div>
+              </div>
+              <label>
+                Zoom
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.01}
+                  value={cropZoom}
+                  onChange={(e) => setCropZoom(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Horizontaal
+                <input
+                  type="range"
+                  min={-120}
+                  max={120}
+                  step={1}
+                  value={cropOffsetX}
+                  onChange={(e) => setCropOffsetX(Number(e.target.value))}
+                />
+              </label>
+              <label>
+                Verticaal
+                <input
+                  type="range"
+                  min={-120}
+                  max={120}
+                  step={1}
+                  value={cropOffsetY}
+                  onChange={(e) => setCropOffsetY(Number(e.target.value))}
+                />
+              </label>
+              <div className="cropper-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCropSource(null);
+                    resetCropState();
+                  }}
+                >
+                  Annuleren
+                </button>
+                <button type="button" onClick={saveAvatarCrop} disabled={avatarMutation.isPending}>
+                  {avatarMutation.isPending ? "Opslaan..." : "Ronde foto opslaan"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </article>
 
       <article>
@@ -476,4 +830,77 @@ function SettingsPage({
       </article>
     </section>
   );
+}
+
+function initialsForName(value: string): string {
+  const parts = value
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length === 0) {
+    return "?";
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+async function createCircularAvatarPng(
+  source: string,
+  zoom: number,
+  offsetX: number,
+  offsetY: number
+): Promise<Blob> {
+  const image = await loadImage(source);
+  const outputSize = 512;
+  const previewSize = 260;
+  const offsetScale = outputSize / previewSize;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    throw new Error("Canvas context unavailable");
+  }
+
+  const baseScale = Math.max(outputSize / image.width, outputSize / image.height);
+  const finalScale = baseScale * zoom;
+  const drawWidth = image.width * finalScale;
+  const drawHeight = image.height * finalScale;
+  const drawX = (outputSize - drawWidth) / 2 + offsetX * offsetScale;
+  const drawY = (outputSize - drawHeight) / 2 + offsetY * offsetScale;
+
+  context.clearRect(0, 0, outputSize, outputSize);
+  context.save();
+  context.beginPath();
+  context.arc(outputSize / 2, outputSize / 2, outputSize / 2, 0, Math.PI * 2);
+  context.closePath();
+  context.clip();
+  context.drawImage(image, drawX, drawY, drawWidth, drawHeight);
+  context.restore();
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Avatar rendering failed"));
+        return;
+      }
+      resolve(blob);
+    }, "image/png");
+  });
+}
+
+function loadImage(source: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Image load failed"));
+    image.src = source;
+  });
 }

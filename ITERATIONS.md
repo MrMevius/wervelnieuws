@@ -1,3 +1,7 @@
+Itratie #04
+- Laat gebruikers hun eigen profielfoto kunnen uploaden
+- Na het uploaden moeten ze deze foto kunnen bijsnijden tot een mooie cirkel zodat deze gebruikt kan worden
+
 Iteratie #03
 - user settings menu aanpassen
 - Mogelijkheid tot kiezen dark mode

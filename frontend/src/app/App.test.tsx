@@ -12,15 +12,20 @@ const mockApi = vi.hoisted(() => ({
     username: "admin",
     full_name: null,
     email: null,
-    theme_preference: "system"
+    theme_preference: "system",
+    has_avatar: false
   }),
   updateCurrentUser: vi.fn().mockResolvedValue({
     id: "u1",
     username: "admin",
     full_name: "Admin Naam",
     email: "admin@example.com",
-    theme_preference: "dark"
+    theme_preference: "dark",
+    has_avatar: false
   }),
+  changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
+  uploadCurrentUserAvatar: vi.fn(),
+  getCurrentUserAvatarBlob: vi.fn(),
   listTopics: vi.fn().mockResolvedValue([
     {
       id: "abc12345-1111",
@@ -133,6 +138,42 @@ describe("App", () => {
       expect(mockApi.updateCurrentUser).toHaveBeenCalled();
       expect(screen.getByText("Instellingen opgeslagen.")).toBeInTheDocument();
       expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
+
+  it("changes password from settings", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Wachtwoord wijzigen" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Huidig wachtwoord"), {
+      target: { value: "admin12345" }
+    });
+    fireEvent.change(screen.getByLabelText("Nieuw wachtwoord"), {
+      target: { value: "nieuw1234" }
+    });
+    fireEvent.change(screen.getByLabelText("Herhaal nieuw wachtwoord"), {
+      target: { value: "nieuw1234" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Wachtwoord wijzigen" }));
+
+    await waitFor(() => {
+      expect(mockApi.changeCurrentUserPassword).toHaveBeenCalledWith({
+        current_password: "admin12345",
+        new_password: "nieuw1234"
+      });
+      expect(screen.getByText("Wachtwoord succesvol gewijzigd.")).toBeInTheDocument();
     });
   });
 

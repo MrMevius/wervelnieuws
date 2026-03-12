@@ -7,7 +7,7 @@ from app.models.enums import ThemePreference
 
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
-    password: str = Field(min_length=8, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
 
 
 class TokenResponse(BaseModel):
@@ -21,6 +21,7 @@ class CurrentUserResponse(BaseModel):
     full_name: str | None
     email: str | None
     theme_preference: ThemePreference
+    has_avatar: bool
 
 
 class UpdateCurrentUserRequest(BaseModel):
@@ -50,3 +51,8 @@ class UpdateCurrentUserRequest(BaseModel):
         if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", lowered):
             raise ValueError("Invalid email format")
         return lowered
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=4, max_length=128)
+    new_password: str = Field(min_length=4, max_length=128)

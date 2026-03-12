@@ -94,12 +94,18 @@ export type CurrentUser = {
   full_name: string | null;
   email: string | null;
   theme_preference: "light" | "dark" | "system";
+  has_avatar: boolean;
 };
 
 export type UpdateCurrentUserPayload = {
   full_name: string | null;
   email: string | null;
   theme_preference: "light" | "dark" | "system";
+};
+
+export type ChangePasswordPayload = {
+  current_password: string;
+  new_password: string;
 };
 
 export type ChangelogEntry = {
@@ -138,6 +144,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {})
+    }
+  });
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+  return res.blob();
+}
+
 export async function login(username: string, password: string) {
   const result = await request<{ access_token: string }>("/auth/login", {
     method: "POST",
@@ -155,6 +175,26 @@ export function updateCurrentUser(payload: UpdateCurrentUserPayload) {
     method: "PATCH",
     body: JSON.stringify(payload)
   });
+}
+
+export function changeCurrentUserPassword(payload: ChangePasswordPayload) {
+  return request<{ status: string }>("/auth/me/password", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function uploadCurrentUserAvatar(file: Blob) {
+  const fd = new FormData();
+  fd.append("file", file, "avatar.png");
+  return request<CurrentUser>("/auth/me/avatar", {
+    method: "POST",
+    body: fd
+  });
+}
+
+export function getCurrentUserAvatarBlob() {
+  return requestBlob("/auth/me/avatar");
 }
 
 export function getAboutContent() {

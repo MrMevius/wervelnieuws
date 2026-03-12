@@ -11,6 +11,7 @@ De huidige app heeft alleen een dummy settings-pagina en het gebruikersmodel bev
 - Voeg backend-ondersteuning toe om profielvelden van de ingelogde gebruiker op te halen en bij te werken.
 - Voeg dark mode keuze toe (`light`, `dark`, `system`) en pas deze toe in de UI.
 - Voeg velden toe voor volledige naam en e-mail met validatie en veilige update-flow.
+- Voeg wachtwoordwijziging toe voor de ingelogde gebruiker via de settings-pagina.
 - Toon op de settings-pagina een korte sectie met suggesties voor aanvullende user settings.
 
 ### Non-goals
@@ -26,7 +27,8 @@ De huidige app heeft alleen een dummy settings-pagina en het gebruikersmodel bev
 4. Breid frontend API-client en types uit met current-user update ondersteuning.
 5. Vervang settings dummy door een echte formulierpagina met save-feedback.
 6. Implementeer dark mode toepassen op root-niveau en ondersteun system-voorkeur.
-7. Werk tests bij voor backend en frontend iteratie-3 gedrag.
+7. Voeg endpoint + validatie toe voor wijziging van het wachtwoord van de huidige gebruiker.
+8. Werk tests bij voor backend en frontend iteratie-3 gedrag, inclusief wachtwoordwijziging.
 
 ## Implementation steps (ordered)
 1. Update backend model/enums/repository + Alembic migratie voor nieuwe gebruikersvelden.
@@ -36,7 +38,8 @@ De huidige app heeft alleen een dummy settings-pagina en het gebruikersmodel bev
 5. Vervang settings dummy route met echte settings-pagina en user-menu naamweergave.
 6. Voeg thema-logica en CSS-variabelen voor dark mode toe.
 7. Voeg frontend tests toe voor settings update flow en dark mode gedrag.
-8. Run relevante tests/build en documenteer verificatie.
+8. Voeg backend + frontend tests toe voor wachtwoordwijziging via settings.
+9. Run relevante tests/build en documenteer verificatie.
 
 ## Acceptance criteria
 - Settings vanuit gebruikersmenu opent een werkende settings-pagina (geen dummy).
@@ -44,9 +47,11 @@ De huidige app heeft alleen een dummy settings-pagina en het gebruikersmodel bev
 - Gebruiker kan volledige naam opslaan/wijzigen en deze wordt teruggeleverd via `GET /api/auth/me`.
 - Gebruiker kan e-mailadres opslaan/wijzigen met e-mailvalidatie.
 - Backend voorkomt dubbel gebruik van hetzelfde e-mailadres over verschillende gebruikers.
+- Gebruiker kan wachtwoord wijzigen vanuit settings met verificatie van huidig wachtwoord.
 - Settings-pagina toont suggesties voor aanvullende relevante instellingen.
 - Frontend tests dekken minimaal settings-rendering, save-flow en thema-keuze.
-- Backend tests dekken minimaal `GET /api/auth/me` uitgebreide payload en `PATCH /api/auth/me`.
+- Frontend tests dekken minimaal wachtwoordwijziging (succes + foutmelding).
+- Backend tests dekken minimaal `GET /api/auth/me` uitgebreide payload, `PATCH /api/auth/me`, en wachtwoordwijziging endpoint.
 
 ## Testing plan
 - Backend: `cd backend && pytest`
@@ -103,12 +108,41 @@ Completed
   - `frontend/src/app/App.test.tsx`:
     - API mocks aangepast aan nieuwe current-user shape.
     - nieuwe test voor settings opslaan + thema-applicatie.
+- Wachtwoordwijziging toegevoegd aan settings (extra scope):
+  - `backend/app/schemas/auth.py`:
+    - `ChangePasswordRequest` toegevoegd.
+    - login password-validatie versoepeld naar `min_length=4`.
+  - `backend/app/api/auth.py`:
+    - `PATCH /api/auth/me/password` toegevoegd.
+    - valideert huidig wachtwoord en slaat nieuw hash op.
+  - `backend/app/repositories/user_repository.py`:
+    - `update_password()` toegevoegd.
+  - `backend/tests/test_meta_and_me.py`:
+    - test voor succesvol wijzigen van wachtwoord + opnieuw inloggen.
+    - test voor afwijzen bij fout huidig wachtwoord.
+  - `frontend/src/lib/api/client.ts`:
+    - `changeCurrentUserPassword()` + payload type toegevoegd.
+  - `frontend/src/app/App.tsx`:
+    - tweede settings-formulier toegevoegd voor wachtwoordwijziging.
+    - client-side check op wachtwoordherhaling en feedback toegevoegd.
+  - `frontend/src/app/App.test.tsx`:
+    - test toegevoegd voor wachtwoordwijziging vanuit settings.
+- SQLite migratiecompatibiliteit hersteld om lokale omgeving naar head te kunnen migreren:
+  - `backend/alembic/versions/20260311_0002_publication_record_unique.py` omgezet naar `batch_alter_table` voor SQLite.
+- Gevraagde gebruiker toegevoegd in runtime database:
+  - user `mevius` aangemaakt met wachtwoord `1234` in de Docker `app_data` SQLite database.
 
 ## How to verify
 - Backend tests:
   - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
 - Frontend tests + build:
   - `cd frontend && npm test && npm run build`
+- Migraties toepassen:
+  - `docker compose build backend migrate && docker compose run --rm migrate`
+- User aanmaken/updaten:
+  - `docker compose run --rm backend python -c "... repo.create(username='mevius', password_hash=hash_password('1234')) ..."`
+- Inlogverificatie van nieuwe user:
+  - `docker compose run --rm backend python -c "... AuthService(db).login('mevius','1234') ..."`
 
 ## Verification evidence
 - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`
@@ -116,3 +150,14 @@ Completed
 - `cd frontend && npm test && npm run build`
   - Resultaat: frontend tests `6 passed`.
   - Resultaat: productiebuild geslaagd (Vite build voltooid).
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_meta_and_me.py"`
+  - Resultaat: `5 passed`.
+- `cd frontend && npm test && npm run build`
+  - Resultaat: frontend tests `7 passed`.
+  - Resultaat: productiebuild geslaagd (Vite build voltooid).
+- `docker compose build backend migrate && docker compose run --rm migrate`
+  - Resultaat: migraties succesvol uitgevoerd tot `20260312_0003`.
+- `docker compose run --rm backend python -c "..."` (user create/update)
+  - Resultaat: `created`.
+- `docker compose run --rm backend python -c "... AuthService(db).login('mevius','1234') ..."`
+  - Resultaat: `ok`.

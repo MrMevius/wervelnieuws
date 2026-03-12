@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     scheduler_poll_seconds: int = 30
     max_retry_attempts: int = 5
     upload_max_bytes: int = 10 * 1024 * 1024
+    avatar_max_bytes: int = 5 * 1024 * 1024
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 120
 

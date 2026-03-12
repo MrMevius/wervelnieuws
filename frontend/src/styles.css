@@ -179,6 +179,33 @@ button:disabled {
 .user-trigger {
   background: var(--brand);
   min-width: 120px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  flex: 0 0 auto;
+}
+
+.avatar.avatar-large {
+  width: 84px;
+  height: 84px;
+  border: 1px solid var(--line);
+}
+
+.avatar.avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-soft);
+  color: var(--text);
+  font-weight: 700;
 }
 
 .user-menu {
@@ -299,6 +326,84 @@ thead th {
   margin-top: 12px;
   display: grid;
   gap: 12px;
+}
+
+.avatar-section {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+}
+
+.avatar-preview-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.avatar-upload-label {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.cropper-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.46);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 100;
+}
+
+.cropper-card {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.cropper-preview-shell {
+  display: grid;
+  place-items: center;
+}
+
+.cropper-preview-circle {
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 3px solid var(--line);
+  background: linear-gradient(135deg, #d5e7d8, #c8d9ea);
+  display: grid;
+  place-items: center;
+}
+
+.cropper-preview-circle img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+}
+
+.cropper-preview-circle img:active {
+  cursor: grabbing;
+}
+
+.cropper-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .settings-form label {

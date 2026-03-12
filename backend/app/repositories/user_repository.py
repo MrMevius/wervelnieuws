@@ -37,3 +37,8 @@ class UserRepository:
         self.db.commit()
         self.db.refresh(user)
         return user
+
+    def update_password(self, user: User, password_hash: str) -> None:
+        user.password_hash = password_hash
+        self.db.add(user)
+        self.db.commit()

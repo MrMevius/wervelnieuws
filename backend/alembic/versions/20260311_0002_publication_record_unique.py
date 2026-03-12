@@ -15,16 +15,13 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_unique_constraint(
-        "uq_publication_records_schedule_id",
-        "publication_records",
-        ["schedule_id"],
-    )
+    with op.batch_alter_table("publication_records") as batch_op:
+        batch_op.create_unique_constraint(
+            "uq_publication_records_schedule_id",
+            ["schedule_id"],
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint(
-        "uq_publication_records_schedule_id",
-        "publication_records",
-        type_="unique",
-    )
+    with op.batch_alter_table("publication_records") as batch_op:
+        batch_op.drop_constraint("uq_publication_records_schedule_id", type_="unique")
