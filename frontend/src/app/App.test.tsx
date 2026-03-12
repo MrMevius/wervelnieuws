@@ -51,6 +51,7 @@ const mockApi = vi.hoisted(() => ({
     is_admin: true,
     is_active: true
   }),
+  changeAdminUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
   getCurrentUserAvatarBlob: vi.fn(),
@@ -183,6 +184,10 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
     fireEvent.click(screen.getByRole("button", { name: "admin" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
@@ -197,6 +202,46 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.updateAdminUser).toHaveBeenCalledWith("u2", true);
       expect(screen.getByText("Adminrechten bijgewerkt.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to change another user password", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByText("editor")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), {
+      target: { value: "nieuw5678" }
+    });
+    fireEvent.change(screen.getByLabelText("Bevestig wachtwoord voor editor"), {
+      target: { value: "nieuw5678" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Wijzig wachtwoord voor editor" }));
+
+    await waitFor(() => {
+      expect(mockApi.changeAdminUserPassword).toHaveBeenCalledWith("u2", "nieuw5678");
+      expect(screen.getByText("Wachtwoord bijgewerkt.")).toBeInTheDocument();
     });
   });
 

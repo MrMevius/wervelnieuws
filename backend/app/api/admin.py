@@ -3,9 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.core.db import get_db
+from app.core.security import hash_password
 from app.models.entities import User
 from app.repositories.user_repository import UserRepository
-from app.schemas.admin import AdminUserResponse, UpdateAdminUserRequest
+from app.schemas.admin import (
+    AdminUserResponse,
+    UpdateAdminUserPasswordRequest,
+    UpdateAdminUserRequest,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -60,3 +65,22 @@ def update_user_admin_status(
         is_admin=updated.is_admin,
         is_active=updated.is_active,
     )
+
+
+@router.patch("/users/{user_id}/password")
+def update_user_password(
+    user_id: str,
+    payload: UpdateAdminUserPasswordRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    del current
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    UserRepository(db).update_password(user, hash_password(payload.new_password))
+    return {"status": "ok"}

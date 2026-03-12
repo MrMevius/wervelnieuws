@@ -6,6 +6,7 @@ import {
   AboutContent,
   CurrentUser,
   Topic,
+  changeAdminUserPassword,
   changeCurrentUserPassword,
   getCurrentUserAvatarBlob,
   getAboutContent,
@@ -413,6 +414,9 @@ function DummyPage({ title, text }: { title: string; text: string }) {
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const queryClient = useQueryClient();
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [passwordDrafts, setPasswordDrafts] = useState<
+    Record<string, { password: string; confirm: string }>
+  >({});
 
   const usersQuery = useQuery({
     queryKey: ["admin-users"],
@@ -443,6 +447,39 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       setFeedback("Bijwerken van adminrechten is mislukt.");
     }
   });
+
+  const passwordMutation = useMutation({
+    mutationFn: ({ userId, password }: { userId: string; password: string }) =>
+      changeAdminUserPassword(userId, password),
+    onSuccess: (_, variables) => {
+      setPasswordDrafts((current) => ({
+        ...current,
+        [variables.userId]: { password: "", confirm: "" }
+      }));
+      setFeedback("Wachtwoord bijgewerkt.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("422")) {
+        setFeedback("Wachtwoord moet minimaal 4 tekens bevatten.");
+        return;
+      }
+      setFeedback("Wachtwoord wijzigen is mislukt.");
+    }
+  });
+
+  function updatePasswordDraft(userId: string, field: "password" | "confirm", value: string) {
+    setPasswordDrafts((current) => {
+      const existing = current[userId] ?? { password: "", confirm: "" };
+      return {
+        ...current,
+        [userId]: {
+          ...existing,
+          [field]: value
+        }
+      };
+    });
+  }
 
   if (!currentUser?.is_admin) {
     return (
@@ -483,12 +520,15 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
               <th>Naam</th>
               <th>E-mail</th>
               <th>Rol</th>
-              <th>Actie</th>
+              <th>Rolbeheer</th>
+              <th>Nieuw wachtwoord</th>
+              <th>Reset</th>
             </tr>
           </thead>
           <tbody>
             {(usersQuery.data ?? []).map((user) => {
               const nextIsAdmin = !user.is_admin;
+              const draft = passwordDrafts[user.id] ?? { password: "", confirm: "" };
               return (
                 <tr key={user.id}>
                   <td>{user.username}</td>
@@ -505,6 +545,41 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                       disabled={updateMutation.isPending}
                     >
                       {user.is_admin ? "Verwijder admin" : "Maak admin"}
+                    </button>
+                  </td>
+                  <td>
+                    <input
+                      type="password"
+                      value={draft.password}
+                      onChange={(e) => updatePasswordDraft(user.id, "password", e.target.value)}
+                      minLength={4}
+                      placeholder="Nieuw wachtwoord"
+                      aria-label={`Nieuw wachtwoord voor ${user.username}`}
+                    />
+                    <input
+                      type="password"
+                      value={draft.confirm}
+                      onChange={(e) => updatePasswordDraft(user.id, "confirm", e.target.value)}
+                      minLength={4}
+                      placeholder="Bevestig"
+                      aria-label={`Bevestig wachtwoord voor ${user.username}`}
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      aria-label={`Wijzig wachtwoord voor ${user.username}`}
+                      onClick={() => {
+                        setFeedback(null);
+                        if (draft.password !== draft.confirm) {
+                          setFeedback("Wachtwoorden komen niet overeen.");
+                          return;
+                        }
+                        passwordMutation.mutate({ userId: user.id, password: draft.password });
+                      }}
+                      disabled={passwordMutation.isPending || draft.password.length < 4 || draft.confirm.length < 4}
+                    >
+                      Wijzig wachtwoord
                     </button>
                   </td>
                 </tr>

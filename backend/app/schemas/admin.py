@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class AdminUserResponse(BaseModel):
@@ -12,3 +12,7 @@ class AdminUserResponse(BaseModel):
 
 class UpdateAdminUserRequest(BaseModel):
     is_admin: bool
+
+
+class UpdateAdminUserPasswordRequest(BaseModel):
+    new_password: str = Field(min_length=4, max_length=128)

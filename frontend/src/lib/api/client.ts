@@ -222,6 +222,13 @@ export function updateAdminUser(userId: string, is_admin: boolean) {
   });
 }
 
+export function changeAdminUserPassword(userId: string, new_password: string) {
+  return request<{ status: string }>(`/admin/users/${userId}/password`, {
+    method: "PATCH",
+    body: JSON.stringify({ new_password })
+  });
+}
+
 export function listTopics() {
   return request<Topic[]>("/topics");
 }
