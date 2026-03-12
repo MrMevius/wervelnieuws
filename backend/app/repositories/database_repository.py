@@ -1,4 +1,4 @@
-from sqlalchemy import desc, select
+from sqlalchemy import desc, select, text
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.entities import KnowledgeDocument, Project
@@ -90,3 +90,54 @@ class DatabaseRepository:
         if project_id:
             stmt = stmt.where(KnowledgeDocument.project_id == project_id)
         return list(self.db.scalars(stmt).all())
+
+    def get_document(self, document_id: str) -> KnowledgeDocument | None:
+        stmt = (
+            select(KnowledgeDocument)
+            .options(
+                joinedload(KnowledgeDocument.project),
+                joinedload(KnowledgeDocument.uploaded_by),
+            )
+            .where(KnowledgeDocument.id == document_id)
+        )
+        return self.db.scalar(stmt)
+
+    def list_documents_by_ids(self, document_ids: list[str]) -> list[KnowledgeDocument]:
+        if not document_ids:
+            return []
+        stmt = (
+            select(KnowledgeDocument)
+            .options(
+                joinedload(KnowledgeDocument.project),
+                joinedload(KnowledgeDocument.uploaded_by),
+            )
+            .where(KnowledgeDocument.id.in_(document_ids))
+        )
+        return list(self.db.scalars(stmt).all())
+
+    def save_document(self, document: KnowledgeDocument) -> KnowledgeDocument:
+        self.db.add(document)
+        self.db.commit()
+        self.db.refresh(document)
+        return document
+
+    def update_chunk_project_for_document(
+        self, *, knowledge_document_id: str, project_id: str
+    ) -> None:
+        self.db.execute(
+            text(
+                "UPDATE knowledge_chunks SET project_id = :p WHERE knowledge_document_id = :d"
+            ),
+            {"p": project_id, "d": knowledge_document_id},
+        )
+        self.db.execute(
+            text(
+                "UPDATE knowledge_chunks_fts SET project_id = :p WHERE knowledge_document_id = :d"
+            ),
+            {"p": project_id, "d": knowledge_document_id},
+        )
+        self.db.commit()
+
+    def delete_document(self, document: KnowledgeDocument) -> None:
+        self.db.delete(document)
+        self.db.commit()

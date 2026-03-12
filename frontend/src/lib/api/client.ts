@@ -141,6 +141,8 @@ export type DatabaseDocument = {
   created_at: string;
 };
 
+export type UploadProgressCallback = (progress: number) => void;
+
 export type UpdateCurrentUserPayload = {
   full_name: string | null;
   email: string | null;
@@ -317,6 +319,75 @@ export function uploadDatabaseDocument(projectId: string, file: File) {
   return request<DatabaseDocument>("/database/documents", {
     method: "POST",
     body: fd
+  });
+}
+
+export function uploadDatabaseDocumentWithProgress(
+  projectId: string,
+  file: File,
+  onProgress: UploadProgressCallback
+) {
+  const fd = new FormData();
+  fd.append("project_id", projectId);
+  fd.append("file", file);
+  return new Promise<DatabaseDocument>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/database/documents`);
+    if (token) {
+      xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    }
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || event.total === 0) {
+        return;
+      }
+      const pct = Math.min(100, Math.round((event.loaded / event.total) * 100));
+      onProgress(pct);
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const parsed = JSON.parse(xhr.responseText) as DatabaseDocument;
+          onProgress(100);
+          resolve(parsed);
+        } catch {
+          reject(new Error("Invalid upload response"));
+        }
+        return;
+      }
+      reject(new Error(xhr.responseText || "Upload failed"));
+    };
+
+    xhr.onerror = () => reject(new Error("Network error during upload"));
+    xhr.send(fd);
+  });
+}
+
+export function deleteDatabaseDocument(documentId: string) {
+  return request<{ status: string }>(`/database/documents/${documentId}`, {
+    method: "DELETE"
+  });
+}
+
+export function bulkDeleteDatabaseDocuments(documentIds: string[]) {
+  return request<{ status: string; affected: number }>("/database/documents/bulk/delete", {
+    method: "POST",
+    body: JSON.stringify({ document_ids: documentIds })
+  });
+}
+
+export function bulkMoveDatabaseDocuments(documentIds: string[], targetProjectId: string) {
+  return request<{ status: string; affected: number }>("/database/documents/bulk/move", {
+    method: "POST",
+    body: JSON.stringify({ document_ids: documentIds, target_project_id: targetProjectId })
+  });
+}
+
+export function bulkCopyDatabaseDocuments(documentIds: string[], targetProjectId: string) {
+  return request<{ status: string; affected: number }>("/database/documents/bulk/copy", {
+    method: "POST",
+    body: JSON.stringify({ document_ids: documentIds, target_project_id: targetProjectId })
   });
 }
 

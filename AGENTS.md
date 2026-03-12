@@ -254,5 +254,6 @@ A task is only done when:
 - critical path tests pass, or blockers are documented clearly
 - lint/type checks pass for changed areas
 - docs/config/examples are updated where relevant
+- for each completed iteration, the website changelog (About page) is updated with a functional, end-user-friendly entry
 - no secrets are exposed
 - changes remain consistent with this `AGENTS.md`

@@ -121,6 +121,27 @@ const mockApi = vi.hoisted(() => ({
     uploaded_by_username: "admin",
     created_at: "2026-03-12T11:00:00Z"
   }),
+  uploadDatabaseDocumentWithProgress: vi.fn().mockImplementation(async (_projectId, _file, onProgress) => {
+    onProgress(45);
+    onProgress(100);
+    return {
+      id: "d2",
+      filename: "nieuw.txt",
+      doc_type: "txt",
+      status: "uploaded",
+      extraction_error: "",
+      size_bytes: 99,
+      project_id: "p1",
+      project_name: "Windpark de Boldijk",
+      uploaded_by_user_id: "u1",
+      uploaded_by_username: "admin",
+      created_at: "2026-03-12T11:00:00Z"
+    };
+  }),
+  deleteDatabaseDocument: vi.fn().mockResolvedValue({ status: "ok" }),
+  bulkDeleteDatabaseDocuments: vi.fn().mockResolvedValue({ status: "ok", affected: 1 }),
+  bulkMoveDatabaseDocuments: vi.fn().mockResolvedValue({ status: "ok", affected: 1 }),
+  bulkCopyDatabaseDocuments: vi.fn().mockResolvedValue({ status: "ok", affected: 1 }),
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
   getCurrentUserAvatarBlob: vi.fn(),
@@ -634,7 +655,27 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
       expect(screen.getByText("wijkbericht.txt")).toBeInTheDocument();
+      expect(screen.getByText("2026-03-12 11:00")).toBeInTheDocument();
+      expect(screen.getByText("128 B")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Upload bronbestanden per project. Deze database staat los van Topics.")
+      ).not.toBeInTheDocument();
+      expect(screen.getByText(/max 100 MB per bestand/i)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Bulkactie")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Doelproject")).not.toBeInTheDocument();
     });
+
+    const rowCheckbox = await screen.findByLabelText("Selecteer bestand wijkbericht.txt");
+    fireEvent.click(rowCheckbox);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Bulkactie")).toBeInTheDocument();
+      expect(screen.getByLabelText("Doelproject")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Voer bulkactie uit" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Bulkactie"), { target: { value: "delete" } });
+    expect(screen.queryByLabelText("Doelproject")).not.toBeInTheDocument();
 
     const file = new File(["inhoud"], "nieuw.txt", { type: "text/plain" });
     fireEvent.change(screen.getByLabelText("Database bestand uploaden"), {
@@ -642,8 +683,72 @@ describe("App", () => {
     });
 
     await waitFor(() => {
-      expect(mockApi.uploadDatabaseDocument).toHaveBeenCalledWith("p1", file);
-      expect(screen.getByText("Bestand geupload naar de database.")).toBeInTheDocument();
+      expect(mockApi.uploadDatabaseDocumentWithProgress).toHaveBeenCalledWith(
+        "p1",
+        file,
+        expect.any(Function)
+      );
+      expect(screen.getByLabelText("Upload voortgang")).toBeInTheDocument();
+      expect(screen.getByLabelText("Bestandstype txt")).toBeInTheDocument();
+      expect(screen.getByText("1 bestand(en) geupload naar de database.")).toBeInTheDocument();
+    });
+  });
+
+
+  it("does not show per-row delete action on database page", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u3",
+      username: "editor",
+      full_name: null,
+      email: "editor@example.com",
+      is_admin: false,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Verwijder bestand/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("uploads multiple files in one action on database page", async () => {
+    mockApi.uploadDatabaseDocumentWithProgress.mockClear();
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Project")).toHaveValue("p1");
+    });
+
+    const fileA = new File(["inhoud-a"], "a.txt", { type: "text/plain" });
+    const fileB = new File(["inhoud-b"], "b.txt", { type: "text/plain" });
+    fireEvent.change(screen.getByLabelText("Database bestand uploaden"), {
+      target: { files: [fileA, fileB] }
+    });
+
+    await waitFor(() => {
+      expect(mockApi.uploadDatabaseDocumentWithProgress).toHaveBeenCalledTimes(2);
+      expect(mockApi.uploadDatabaseDocumentWithProgress).toHaveBeenNthCalledWith(
+        1,
+        "p1",
+        fileA,
+        expect.any(Function)
+      );
+      expect(mockApi.uploadDatabaseDocumentWithProgress).toHaveBeenNthCalledWith(
+        2,
+        "p1",
+        fileB,
+        expect.any(Function)
+      );
+      expect(screen.getByText("2 bestand(en) geupload naar de database.")).toBeInTheDocument();
     });
   });
 

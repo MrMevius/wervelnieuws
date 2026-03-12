@@ -46,3 +46,13 @@ class DatabaseDocumentResponse(BaseModel):
     uploaded_by_user_id: str
     uploaded_by_username: str
     created_at: datetime
+
+
+class DatabaseBulkActionRequest(BaseModel):
+    document_ids: list[str] = Field(min_length=1)
+    target_project_id: str | None = None
+
+
+class DatabaseBulkActionResponse(BaseModel):
+    status: str
+    affected: int

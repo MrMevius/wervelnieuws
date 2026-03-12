@@ -35,27 +35,45 @@ scheduled publication, multi-channel publishing, retries, notifications, and aud
 
 ## Quick start (Docker)
 
-1. Copy env template:
+1. Maak servermappen aan voor data en config:
 
 ```bash
-cp .env.example .env
+sudo mkdir -p /mnt/wervelwind/database/config
 ```
 
-2. Build and run:
+2. Plaats configbestand op de serverlocatie:
+
+```bash
+cp .env.example /mnt/wervelwind/database/config/.env
+```
+
+3. Build and run:
 
 ```bash
 docker compose up --build
 ```
 
-3. Seed admin user:
+4. Seed admin user:
 
 ```bash
 docker compose run --rm backend python app/tasks/seed_admin.py
 ```
 
-4. Open services:
+5. Open services:
 - Frontend: `http://localhost:5173`
 - Backend API docs: `http://localhost:8000/docs`
+
+### Server path permissions checklist
+
+For bind mounts to work reliably, verify ownership and permissions on the host path:
+
+```bash
+sudo mkdir -p /mnt/wervelwind/database/config
+sudo chown -R $USER:$USER /mnt/wervelwind/database
+sudo chmod -R u+rwX,g+rX /mnt/wervelwind/database
+```
+
+If your Docker engine runs as a different user/group, set ownership accordingly.
 
 ## Local development
 
@@ -107,7 +125,7 @@ npm test
 
 ## Environment variables
 
-See `.env.example` for all required values:
+See `.env.example` for all required values (deploy path: `/mnt/wervelwind/database/config/.env`):
 - auth and security keys
 - OpenAI configuration
 - Website/Facebook/Mailgun/Telegram adapter credentials
@@ -123,7 +141,7 @@ See `.env.example` for all required values:
 
 ## Release-readiness checklist
 
-- `.env` values verified (secrets, endpoints, channel credentials).
+- `/mnt/wervelwind/database/config/.env` values verified (secrets, endpoints, channel credentials).
 - Migrations applied: `alembic upgrade head`.
 - Backend tests green: `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`.
 - Frontend tests green: `cd frontend && npm test`.

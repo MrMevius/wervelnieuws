@@ -137,6 +137,85 @@ Completed
   - `backend/app/api/meta.py` uitgebreid met iteratie 06 item in eindgebruikers-taal.
 - Iteratieplanning voor latere AI-indexering vastgelegd:
   - `ITERATIONS.md` aangevuld met `Iteratie #07` voor indexering/RAG.
+- Feedbackronde Database-pagina verwerkt:
+  - `backend/app/core/settings.py`:
+    - uploadlimiet verhoogd van 10 MB naar 100 MB per bestand (`upload_max_bytes`).
+    - extra safeguard toegevoegd: ingestelde limiet wordt minimaal 100 MB, ook als oudere `.env` nog 10 MB bevat.
+  - `.env.example`:
+    - `UPLOAD_MAX_BYTES` geactualiseerd naar `104857600`.
+  - `frontend/src/app/App.tsx`:
+    - tekst "Upload bronbestanden per project. Deze database staat los van Topics." verwijderd;
+    - uploadveld ondersteunt nu meerdere bestanden tegelijk (`multiple`);
+    - drag-and-drop verwerkt nu meerdere bestanden in een batch;
+    - upload toont direct voortgangsfeedback zodat meteen zichtbaar is dat upload gestart is;
+    - feedback toont batchresultaat (aantal succesvol geuploade bestanden) en duidelijke foutmelding.
+    - UI vermeldt expliciet de limiet: "max 100 MB per bestand".
+    - uploadtijd in database-overzicht gebruikt nu vaste notatie `YYYY-MM-DD HH:MM` in tijdzone Amsterdam (24-uurs).
+  - `frontend/src/app/App.test.tsx`:
+    - test uitgebreid voor limietvermelding en verwijderde tekst;
+    - nieuwe test toegevoegd voor upload van meerdere bestanden in 1 actie;
+    - test toegevoegd/uitgebreid voor datumweergave in format `YYYY-MM-DD HH:MM`.
+- Extra feedbackronde Database-pagina verwerkt:
+  - `frontend/src/app/App.tsx`:
+    - upload toont nu een voortgangsbalk (`progress`) met percentage tijdens upload;
+    - tabel toont nu extra kolom `Grootte` met leesbare bestandsgrootte (B/KB/MB/GB);
+    - tabel toont nu `Acties` met verwijderknop alleen voor admins.
+  - `frontend/src/lib/api/client.ts`:
+    - nieuwe uploadfunctie met voortgang toegevoegd (`uploadDatabaseDocumentWithProgress` via XHR);
+    - nieuwe delete-call toegevoegd (`deleteDatabaseDocument`).
+  - `backend/app/api/database.py`:
+    - `DELETE /api/database/documents/{document_id}` toegevoegd;
+    - endpoint is admin-only (`require_admin`) en verwijdert metadata plus bestand op disk.
+  - `backend/app/repositories/database_repository.py`:
+    - `get_document()` en `delete_document()` toegevoegd.
+  - `backend/tests/test_database_api.py`:
+    - tests toegevoegd voor admin delete toegestaan en non-admin delete geblokkeerd.
+  - `frontend/src/app/App.test.tsx`:
+    - tests uitgebreid voor voortgangsbalk, groottekolom en admin-only verwijderactie.
+- Nieuwe feedbackronde Database-pagina verwerkt:
+  - Verwijderbevestiging:
+    - `frontend/src/app/App.tsx`: single delete en bulk delete vragen nu expliciet
+      "Weet u het zeker?" via bevestigingsdialoog.
+  - Sorteerbare kolommen:
+    - `frontend/src/app/App.tsx`: tabelkolommen `Bestand`, `Project`, `Geupload door`,
+      `Geupload op`, `Grootte`, `Status` zijn sorteerbaar (asc/desc toggle).
+  - Bestandstype-indicator:
+    - `frontend/src/app/App.tsx`: extra eerste indicator-kolom toegevoegd (zonder label)
+      met compacte typebadge (PDF/DOC/XLS/TXT/MD).
+  - Selecteerbare bestanden + bulkacties:
+    - `frontend/src/app/App.tsx`: checkbox per rij + "selecteer alles" toegevoegd.
+    - bulkacties toegevoegd: `Verplaats`, `Kopieer`, `Verwijder`.
+    - bulk delete vereist admin; move/copy gebruiken gekozen doelproject.
+  - Backend API voor bulkacties:
+    - `backend/app/api/database.py`:
+      - `POST /api/database/documents/bulk/delete` (admin-only)
+      - `POST /api/database/documents/bulk/move`
+      - `POST /api/database/documents/bulk/copy`
+    - `backend/app/schemas/database.py`: request/response schema's voor bulkacties toegevoegd.
+    - `backend/app/repositories/database_repository.py`: helpermethodes toegevoegd voor
+      bulk ophalen, bewaren, delete en chunk-project update bij verplaatsen.
+  - Frontend API client uitgebreid:
+    - `frontend/src/lib/api/client.ts`:
+      - bulk calls voor delete/move/copy;
+      - upload met voortgang via XHR blijft actief.
+  - Styling uitgebreid:
+    - `frontend/src/styles.css`: styles toegevoegd voor bulkcontrols, sorteerknoppen,
+      bestandstypebadge.
+  - Tests uitgebreid:
+    - `backend/tests/test_database_api.py`: bulk move/copy en bulk delete autorisatietests toegevoegd.
+  - `frontend/src/app/App.test.tsx`: geactualiseerd voor nieuwe database-UI structuur.
+- Verdere UX-feedbackronde Database-pagina verwerkt:
+  - `frontend/src/app/App.tsx`:
+    - per-bestand verwijderknop verwijderd uit de tabel;
+    - labels "Bulkactie" en "Doelproject" niet meer als zichtbare tekst getoond;
+    - bulkactieblok wordt alleen getoond zodra er minimaal 1 bestand geselecteerd is;
+    - projectkeuze wordt alleen getoond bij bulkactie `Verplaats` of `Kopieer`;
+    - bestandstype-indicator visueel aangepast naar herkenbare extensie-badges
+      (`PDF`, `DOCX`, `XLSX`, `TXT`, `MD`) met type-specifieke kleuren.
+  - `frontend/src/styles.css`:
+    - styling verfijnd voor compacte bulkcontrols en vernieuwde type-indicatoren.
+  - `frontend/src/app/App.test.tsx`:
+    - tests aangepast op de nieuwe zichtbaarheid/gedrag van bulkcontrols en verwijderde rij-actie.
 
 ## How to verify
 - Backend tests draaien:
@@ -154,6 +233,24 @@ Completed
   - Database ondersteunt drag-and-drop upload en projectselectie.
   - Database-lijst toont bestand + project + uploader + uploadtijd.
   - Admin > Projecten laat projecten toevoegen/bewerken/(de)activeren.
+- Feedbackronde verifiëren:
+  - Database toont "max 100 MB per bestand" bij uploadzone.
+  - Database toont niet meer de verwijderde informatieve tekst over losstaan van topics.
+  - Meerdere bestanden selecteren/uploaden in 1 keer werkt.
+- Extra feedbackronde verifiëren:
+  - Tijdens upload wordt een voortgangsbalk met percentage getoond.
+  - Alleen admins zien de verwijderknop in de tabel en kunnen verwijderen.
+  - Tabel toont bestandsgrootte per document.
+- Nieuwe feedbackronde verifiëren:
+  - Single en bulk verwijderen tonen een bevestigingsvraag.
+  - Kolommen zijn sorteerbaar.
+  - Eerste indicator-kolom toont bestandstypebadge.
+  - Selectievakjes en bulkacties (verplaats/kopieer/verwijder) werken.
+- Verdere UX-feedbackronde verifiëren:
+  - Geen per-bestand verwijderknop meer zichtbaar.
+  - Bulkactieblok verschijnt pas na selectie van minimaal 1 bestand.
+  - Doelproject-selector verschijnt alleen bij `Verplaats` of `Kopieer`.
+  - Type-indicatoren tonen herkenbare extensie-badges.
 
 ## Verification evidence
 - `docker compose build backend && docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_database_api.py tests/test_admin_api.py -q"`
@@ -168,3 +265,33 @@ Completed
   - Resultaat: migratie `20260312_0007` succesvol uitgevoerd.
 - `docker compose run --rm backend python -c "from sqlalchemy import create_engine,text; e=create_engine('sqlite:////data/app.db'); c=e.connect(); print(c.execute(text('select name, is_active from projects order by name')).fetchall())"`
   - Resultaat: `[("Windpark de Boldijk", 1)]`.
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_database_api.py -q"`
+  - Resultaat: `4 passed`.
+- `cd frontend && npm test -- --run`
+  - Resultaat: `20 passed`.
+- `cd frontend && npm run build`
+  - Resultaat: build geslaagd.
+- `cd frontend && npm test -- --run`
+  - Resultaat: `21 passed`.
+- `cd frontend && npm run build`
+  - Resultaat: build geslaagd.
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_database_api.py -q"`
+  - Resultaat: `6 passed`.
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest -q"`
+  - Resultaat: `45 passed`.
+- `cd frontend && npm test -- --run`
+  - Resultaat: `21 passed`.
+- `cd frontend && npm run build`
+  - Resultaat: build geslaagd.
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_database_api.py -q"`
+  - Resultaat: `4 passed`.
+- `cd frontend && npm test -- --run`
+  - Resultaat: `21 passed`.
+- `cd frontend && npm run build`
+  - Resultaat: build geslaagd.
+- `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest tests/test_database_api.py tests/test_generation.py -q"`
+  - Resultaat: `6 passed`.
+- `cd frontend && npm test -- --run`
+  - Resultaat: `20 passed`.
+- `cd frontend && npm run build`
+  - Resultaat: build geslaagd.

@@ -14,6 +14,9 @@ import {
   changeCurrentUserPassword,
   createAdminUser,
   createAdminProject,
+  bulkCopyDatabaseDocuments,
+  bulkDeleteDatabaseDocuments,
+  bulkMoveDatabaseDocuments,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
@@ -29,7 +32,7 @@ import {
   updateAdminUserActive,
   updateAdminProject,
   updateAdminUser,
-  uploadDatabaseDocument,
+  uploadDatabaseDocumentWithProgress,
   uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../lib/api/client";
@@ -222,7 +225,7 @@ export function App() {
           <Route path="/" element={<Navigate to="/main" replace />} />
           <Route path="/main" element={<MainPage username={displayName} />} />
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
-          <Route path="/database" element={<DatabasePage />} />
+          <Route path="/database" element={<DatabasePage currentUser={currentUserQuery.data} />} />
           <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
           <Route
             path="/settings"
@@ -453,11 +456,17 @@ function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
   }
 }
 
-function DatabasePage() {
+function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const queryClient = useQueryClient();
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState<"delete" | "copy" | "move">("move");
+  const [bulkTargetProjectId, setBulkTargetProjectId] = useState("");
+  const [sortKey, setSortKey] = useState<"filename" | "project" | "uploader" | "created_at" | "size_bytes" | "status">("created_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
   const projectsQuery = useQuery({
     queryKey: ["database-projects"],
@@ -474,59 +483,198 @@ function DatabasePage() {
     }
   }, [projectsQuery.data, selectedProjectId]);
 
+  useEffect(() => {
+    if (bulkTargetProjectId) {
+      return;
+    }
+    const first = projectsQuery.data?.[0];
+    if (first) {
+      setBulkTargetProjectId(first.id);
+    }
+  }, [projectsQuery.data, bulkTargetProjectId]);
+
   const documentsQuery = useQuery({
     queryKey: ["database-documents", selectedProjectId],
     queryFn: () => listDatabaseDocuments(selectedProjectId || undefined)
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => {
+    mutationFn: ({
+      file,
+      onProgress
+    }: {
+      file: File;
+      onProgress: (progress: number) => void;
+    }) => {
       if (!selectedProjectId) {
         throw new Error("Kies eerst een project");
       }
-      return uploadDatabaseDocument(selectedProjectId, file);
+      return uploadDatabaseDocumentWithProgress(selectedProjectId, file, onProgress);
+    }
+  });
+
+  const bulkActionMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedDocumentIds.length === 0) {
+        throw new Error("Selecteer eerst bestanden");
+      }
+      if (bulkAction === "delete") {
+        if (currentUser?.is_admin !== true) {
+          throw new Error("Alleen admins kunnen bulk verwijderen");
+        }
+        return bulkDeleteDatabaseDocuments(selectedDocumentIds);
+      }
+      if (!bulkTargetProjectId) {
+        throw new Error("Kies een doelproject");
+      }
+      if (bulkAction === "move") {
+        return bulkMoveDatabaseDocuments(selectedDocumentIds, bulkTargetProjectId);
+      }
+      return bulkCopyDatabaseDocuments(selectedDocumentIds, bulkTargetProjectId);
     },
-    onSuccess: () => {
-      setUploadFeedback("Bestand geupload naar de database.");
+    onSuccess: (result) => {
+      setUploadFeedback(`Bulkactie uitgevoerd op ${result.affected} bestand(en).`);
+      setSelectedDocumentIds([]);
       queryClient.invalidateQueries({ queryKey: ["database-documents"] });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "";
-      if (message.includes("File too large")) {
-        setUploadFeedback("Bestand is te groot.");
+      if (message.includes("Admin")) {
+        setUploadFeedback("Alleen admins kunnen bestanden verwijderen.");
         return;
       }
-      if (message.includes("Unsupported")) {
-        setUploadFeedback("Bestandstype wordt niet ondersteund.");
+      if (message.includes("doelproject") || message.includes("target_project_id")) {
+        setUploadFeedback("Kies een doelproject voor deze bulkactie.");
         return;
       }
-      if (message.includes("Project")) {
-        setUploadFeedback("Kies een geldig project voor upload.");
-        return;
-      }
-      setUploadFeedback("Uploaden mislukt. Probeer opnieuw.");
+      setUploadFeedback("Bulkactie mislukt.");
     }
   });
 
-  function onFileSelected(file: File | null) {
-    if (!file) {
+  const allDocuments = documentsQuery.data ?? [];
+  const sortedDocuments = [...allDocuments].sort((left, right) => {
+    let comparison = 0;
+    if (sortKey === "filename") {
+      comparison = left.filename.localeCompare(right.filename);
+    } else if (sortKey === "project") {
+      comparison = left.project_name.localeCompare(right.project_name);
+    } else if (sortKey === "uploader") {
+      comparison = left.uploaded_by_username.localeCompare(right.uploaded_by_username);
+    } else if (sortKey === "size_bytes") {
+      comparison = left.size_bytes - right.size_bytes;
+    } else if (sortKey === "status") {
+      comparison = left.status.localeCompare(right.status);
+    } else {
+      comparison = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+    }
+    return sortDirection === "asc" ? comparison : -comparison;
+  });
+
+  const allSelected =
+    sortedDocuments.length > 0 && selectedDocumentIds.length === sortedDocuments.length;
+
+  function toggleSort(nextKey: typeof sortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
       return;
     }
-    setUploadFeedback(null);
-    uploadMutation.mutate(file);
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "created_at" ? "desc" : "asc");
+  }
+
+  function toggleDocumentSelection(documentId: string, checked: boolean) {
+    setSelectedDocumentIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, documentId]));
+      }
+      return current.filter((id) => id !== documentId);
+    });
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    if (checked) {
+      setSelectedDocumentIds(sortedDocuments.map((document) => document.id));
+      return;
+    }
+    setSelectedDocumentIds([]);
+  }
+
+  function mapUploadError(error: unknown): string {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("File too large")) {
+      return "Een of meer bestanden zijn te groot (maximaal 100 MB per bestand).";
+    }
+    if (message.includes("Unsupported")) {
+      return "Een of meer bestandstypen worden niet ondersteund.";
+    }
+    if (message.includes("Project")) {
+      return "Kies een geldig project voor upload.";
+    }
+    return "Uploaden mislukt. Probeer opnieuw.";
+  }
+
+  async function onFilesSelected(files: File[]) {
+    if (files.length === 0) {
+      return;
+    }
+    setUploadFeedback(`Uploaden van ${files.length} bestand(en)...`);
+    setUploadProgress(0);
+
+    let successCount = 0;
+    let processedCount = 0;
+    let firstError: string | null = null;
+
+    for (const file of files) {
+      try {
+        await uploadMutation.mutateAsync({
+          file,
+          onProgress: (fileProgress) => {
+            const overall = Math.round(((processedCount + fileProgress / 100) / files.length) * 100);
+            setUploadProgress(overall);
+          }
+        });
+        successCount += 1;
+      } catch (error) {
+        if (!firstError) {
+          firstError = mapUploadError(error);
+        }
+      } finally {
+        processedCount += 1;
+        if (processedCount < files.length) {
+          setUploadFeedback(
+            `Uploaden van ${files.length} bestand(en)... (${processedCount}/${files.length})`
+          );
+        }
+      }
+    }
+
+    if (successCount > 0) {
+      queryClient.invalidateQueries({ queryKey: ["database-documents"] });
+      setUploadProgress(100);
+      if (firstError) {
+        setUploadFeedback(`${successCount} bestand(en) geupload. ${firstError}`);
+        setTimeout(() => setUploadProgress(null), 600);
+        return;
+      }
+      setUploadFeedback(`${successCount} bestand(en) geupload naar de database.`);
+      setTimeout(() => setUploadProgress(null), 600);
+      return;
+    }
+
+    setUploadFeedback(firstError ?? "Uploaden mislukt. Probeer opnieuw.");
+    setUploadProgress(null);
   }
 
   function onDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragActive(false);
-    const file = event.dataTransfer.files?.[0] ?? null;
-    onFileSelected(file);
+    const files = Array.from(event.dataTransfer.files ?? []);
+    void onFilesSelected(files);
   }
 
   return (
     <section className="panel database-page">
       <h1>Database</h1>
-      <p className="muted">Upload bronbestanden per project. Deze database staat los van Topics.</p>
       <div className="database-upload-controls">
         <label>
           Project
@@ -563,12 +711,20 @@ function DatabasePage() {
         <input
           type="file"
           aria-label="Database bestand uploaden"
-          onChange={(event) => onFileSelected(event.target.files?.[0] ?? null)}
+          multiple
+          onChange={(event) => void onFilesSelected(Array.from(event.target.files ?? []))}
           disabled={uploadMutation.isPending || !selectedProjectId}
         />
-        <strong>Sleep bestand hierheen of klik om te kiezen</strong>
-        <span>Ondersteund: PDF, DOCX, XLSX, TXT, Markdown</span>
+        <strong>Sleep bestanden hierheen of klik om te kiezen</strong>
+        <span>Ondersteund: PDF, DOCX, XLSX, TXT, Markdown - max 100 MB per bestand</span>
       </label>
+
+      {uploadProgress !== null && (
+        <div className="upload-progress-wrap" aria-live="polite">
+          <progress value={uploadProgress} max={100} aria-label="Upload voortgang" />
+          <span>{uploadProgress}%</span>
+        </div>
+      )}
 
       {uploadFeedback && (
         <p
@@ -579,35 +735,112 @@ function DatabasePage() {
         </p>
       )}
 
+      {selectedDocumentIds.length > 0 && (
+        <div className="database-bulk-controls">
+          <select
+            aria-label="Bulkactie"
+            value={bulkAction}
+            onChange={(event) => setBulkAction(event.target.value as "delete" | "copy" | "move")}
+          >
+            <option value="move">Verplaats</option>
+            <option value="copy">Kopieer</option>
+            <option value="delete">Verwijder</option>
+          </select>
+          {(bulkAction === "move" || bulkAction === "copy") && (
+            <select
+              aria-label="Doelproject"
+              value={bulkTargetProjectId}
+              onChange={(event) => setBulkTargetProjectId(event.target.value)}
+            >
+              {(projectsQuery.data ?? []).map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedDocumentIds.length === 0) {
+                setUploadFeedback("Selecteer eerst een of meer bestanden.");
+                return;
+              }
+              if (
+                bulkAction === "delete" &&
+                !window.confirm(
+                  `Weet u het zeker? ${selectedDocumentIds.length} geselecteerde bestand(en) worden verwijderd.`
+                )
+              ) {
+                return;
+              }
+              setUploadFeedback(null);
+              bulkActionMutation.mutate();
+            }}
+            disabled={bulkActionMutation.isPending || selectedDocumentIds.length === 0}
+          >
+            Voer bulkactie uit
+          </button>
+        </div>
+      )}
+
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Bestand</th>
-              <th>Project</th>
-              <th>Geupload door</th>
-              <th>Geupload op</th>
-              <th>Status</th>
+              <th>
+                <input
+                  type="checkbox"
+                  aria-label="Selecteer alle bestanden"
+                  checked={allSelected}
+                  onChange={(event) => toggleSelectAll(event.target.checked)}
+                />
+              </th>
+              <th aria-label="Type" />
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("filename")}>Bestand</button>
+              </th>
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("project")}>Project</button>
+              </th>
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("uploader")}>Geupload door</button>
+              </th>
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("created_at")}>Geupload op</button>
+              </th>
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("size_bytes")}>Grootte</button>
+              </th>
+              <th>
+                <button type="button" className="table-sort" onClick={() => toggleSort("status")}>Status</button>
+              </th>
+              <th>Acties</th>
             </tr>
           </thead>
           <tbody>
             {documentsQuery.isLoading && (
               <tr>
-                <td colSpan={5}>Laden...</td>
+                <td colSpan={9}>Laden...</td>
               </tr>
             )}
             {documentsQuery.isError && (
               <tr>
-                <td colSpan={5}>Bestandslijst kon niet geladen worden.</td>
+                <td colSpan={9}>Bestandslijst kon niet geladen worden.</td>
               </tr>
             )}
-            {!documentsQuery.isLoading && !documentsQuery.isError && (documentsQuery.data ?? []).length === 0 && (
+            {!documentsQuery.isLoading && !documentsQuery.isError && sortedDocuments.length === 0 && (
               <tr>
-                <td colSpan={5}>Nog geen bestanden voor dit project.</td>
+                <td colSpan={9}>Nog geen bestanden voor dit project.</td>
               </tr>
             )}
-            {(documentsQuery.data ?? []).map((document) => (
-              <DatabaseDocumentRow key={document.id} document={document} />
+            {sortedDocuments.map((document) => (
+              <DatabaseDocumentRow
+                key={document.id}
+                document={document}
+                isSelected={selectedDocumentIds.includes(document.id)}
+                onSelect={(checked) => toggleDocumentSelection(document.id, checked)}
+              />
             ))}
           </tbody>
         </table>
@@ -616,16 +849,94 @@ function DatabasePage() {
   );
 }
 
-function DatabaseDocumentRow({ document }: { document: DatabaseDocument }) {
+function DatabaseDocumentRow({
+  document,
+  isSelected,
+  onSelect
+}: {
+  document: DatabaseDocument;
+  isSelected: boolean;
+  onSelect: (checked: boolean) => void;
+}) {
   return (
     <tr>
+      <td>
+        <input
+          type="checkbox"
+          aria-label={`Selecteer bestand ${document.filename}`}
+          checked={isSelected}
+          onChange={(event) => onSelect(event.target.checked)}
+        />
+      </td>
+      <td>
+        <span
+          className={`filetype-pill filetype-${document.doc_type.toLowerCase()}`}
+          aria-label={`Bestandstype ${document.doc_type}`}
+        >
+          {fileTypeBadge(document.doc_type)}
+        </span>
+      </td>
       <td>{document.filename}</td>
       <td>{document.project_name}</td>
       <td>{document.uploaded_by_username}</td>
-      <td>{new Date(document.created_at).toLocaleString()}</td>
+      <td>{formatAmsterdamDateTime(document.created_at)}</td>
+      <td>{formatSize(document.size_bytes)}</td>
       <td>{document.status}</td>
+      <td>-</td>
     </tr>
   );
+}
+
+function fileTypeBadge(docType: string): string {
+  const normalized = docType.toLowerCase();
+  if (normalized === "pdf") {
+    return "PDF";
+  }
+  if (normalized === "docx") {
+    return "DOCX";
+  }
+  if (normalized === "xlsx") {
+    return "XLSX";
+  }
+  if (normalized === "markdown") {
+    return "MD";
+  }
+  if (normalized === "txt") {
+    return "TXT";
+  }
+  return normalized.toUpperCase();
+}
+
+function formatAmsterdamDateTime(value: string): string {
+  const date = new Date(value);
+  const formatter = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
+}
+
+function formatSize(sizeBytes: number): string {
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`;
+  }
+  const kb = sizeBytes / 1024;
+  if (kb < 1024) {
+    return `${kb.toFixed(1)} KB`;
+  }
+  const mb = kb / 1024;
+  if (mb < 1024) {
+    return `${mb.toFixed(1)} MB`;
+  }
+  const gb = mb / 1024;
+  return `${gb.toFixed(1)} GB`;
 }
 
 function AboutPage({

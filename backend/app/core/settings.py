@@ -1,8 +1,11 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+MIN_DATABASE_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 class Settings(BaseSettings):
@@ -44,10 +47,18 @@ class Settings(BaseSettings):
 
     scheduler_poll_seconds: int = 30
     max_retry_attempts: int = 5
-    upload_max_bytes: int = 10 * 1024 * 1024
+    upload_max_bytes: int = MIN_DATABASE_UPLOAD_BYTES
     avatar_max_bytes: int = 5 * 1024 * 1024
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 120
+
+    @field_validator("upload_max_bytes", mode="before")
+    @classmethod
+    def ensure_upload_limit(cls, value: int | str) -> int:
+        parsed = int(value)
+        if parsed < MIN_DATABASE_UPLOAD_BYTES:
+            return MIN_DATABASE_UPLOAD_BYTES
+        return parsed
 
 
 @lru_cache
