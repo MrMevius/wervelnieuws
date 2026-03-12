@@ -38,6 +38,14 @@ def client(tmp_path: Path) -> Generator[TestClient, None, None]:
             username="admin", password_hash=hash_password("admin12345"), is_active=True
         )
     )
+    db.add(
+        User(
+            username="editor",
+            password_hash=hash_password("editor12345"),
+            is_active=True,
+            email="editor@example.com",
+        )
+    )
     db.commit()
     db.close()
 

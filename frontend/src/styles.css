@@ -13,6 +13,19 @@
   --shadow: 0 10px 28px rgba(24, 39, 31, 0.08);
 }
 
+:root[data-theme="dark"] {
+  --bg: #111715;
+  --surface: #1a2320;
+  --surface-muted: #202c27;
+  --text: #ebf2ed;
+  --text-muted: #b2c1b7;
+  --line: #304038;
+  --brand: #7cd4ac;
+  --brand-soft: #284034;
+  --danger: #ff8f9c;
+  --shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -77,16 +90,19 @@ ul {
 
 input,
 button,
-textarea {
+textarea,
+select {
   font: inherit;
   border-radius: 10px;
 }
 
 input,
-textarea {
+textarea,
+select {
   border: 1px solid #b7c7bc;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--surface);
+  color: var(--text);
 }
 
 button {
@@ -106,6 +122,10 @@ button:disabled {
   color: var(--danger);
 }
 
+.success {
+  color: var(--brand);
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -117,7 +137,7 @@ button:disabled {
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
-  background: rgba(248, 252, 249, 0.92);
+  background: var(--surface-muted);
   backdrop-filter: blur(8px);
   padding: 14px 24px;
   display: grid;
@@ -148,8 +168,8 @@ button:disabled {
 
 .tabs a.active {
   background: var(--brand-soft);
-  border-color: #c7dccd;
-  color: #143626;
+  border-color: var(--line);
+  color: var(--text);
 }
 
 .user-menu-wrap {
@@ -157,7 +177,7 @@ button:disabled {
 }
 
 .user-trigger {
-  background: #17382a;
+  background: var(--brand);
   min-width: 120px;
 }
 
@@ -262,13 +282,30 @@ td {
 }
 
 thead th {
-  color: #2d4739;
+  color: var(--text);
   font-size: 0.9rem;
-  background: #eef5ef;
+  background: var(--surface-muted);
 }
 
 .about-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-form {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.95rem;
 }
 
 .changelog-list {
@@ -299,7 +336,8 @@ thead th {
   }
 
   .panel-grid,
-  .about-grid {
+  .about-grid,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 

@@ -1,21 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
 import {
   AboutContent,
+  CurrentUser,
   Topic,
   getAboutContent,
   getCurrentUser,
   listTopics,
   login,
-  setToken
+  setToken,
+  updateCurrentUser
 } from "../lib/api/client";
+
+type ThemePreference = "light" | "dark" | "system";
 
 export function App() {
   const queryClient = useQueryClient();
   const [authenticated, setAuthenticated] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
 
   const loginMutation = useMutation({
     mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
@@ -40,6 +45,29 @@ export function App() {
     enabled: authenticated
   });
 
+  useEffect(() => {
+    if (!currentUserQuery.data) {
+      return;
+    }
+    setThemePreference(currentUserQuery.data.theme_preference);
+  }, [currentUserQuery.data]);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const resolveTheme = () => {
+      const resolved = themePreference === "system" ? (media.matches ? "dark" : "light") : themePreference;
+      document.documentElement.setAttribute("data-theme", resolved);
+    };
+
+    resolveTheme();
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", resolveTheme);
+      return () => media.removeEventListener("change", resolveTheme);
+    }
+    media.addListener(resolveTheme);
+    return () => media.removeListener(resolveTheme);
+  }, [themePreference]);
+
   const topicsQuery = useQuery({
     queryKey: ["topics"],
     queryFn: listTopics,
@@ -57,6 +85,7 @@ export function App() {
     setAuthenticated(false);
     setMenuOpen(false);
     setLoginError(null);
+    setThemePreference("system");
     queryClient.clear();
   }
 
@@ -84,7 +113,12 @@ export function App() {
     );
   }
 
-  const username = currentUserQuery.data?.username ?? "gebruiker";
+  const username = currentUserQuery.data?.full_name ?? currentUserQuery.data?.username ?? "gebruiker";
+
+  function onUserUpdated(updatedUser: CurrentUser) {
+    queryClient.setQueryData(["current-user"], updatedUser);
+    setThemePreference(updatedUser.theme_preference);
+  }
 
   return (
     <div className="app-shell">
@@ -121,7 +155,17 @@ export function App() {
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
           <Route path="/database" element={<DummyPage title="Database" text="Database-overzicht volgt in een volgende iteratie." />} />
           <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
-          <Route path="/settings" element={<DummyPage title="Settings" text="Instellingen worden in een volgende iteratie uitgewerkt." />} />
+          <Route
+            path="/settings"
+            element={
+              <SettingsPage
+                user={currentUserQuery.data}
+                isLoading={currentUserQuery.isLoading}
+                hasError={currentUserQuery.isError}
+                onUserUpdated={onUserUpdated}
+              />
+            }
+          />
           <Route path="/about" element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
           <Route path="*" element={<Navigate to="/main" replace />} />
         </Routes>
@@ -301,6 +345,135 @@ function DummyPage({ title, text }: { title: string; text: string }) {
     <section className="panel">
       <h1>{title}</h1>
       <p>{text}</p>
+    </section>
+  );
+}
+
+function SettingsPage({
+  user,
+  isLoading,
+  hasError,
+  onUserUpdated
+}: {
+  user: CurrentUser | undefined;
+  isLoading: boolean;
+  hasError: boolean;
+  onUserUpdated: (user: CurrentUser) => void;
+}) {
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+  const [theme, setTheme] = useState<ThemePreference>("system");
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    setFullName(user.full_name ?? "");
+    setEmail(user.email ?? "");
+    setTheme(user.theme_preference);
+  }, [user]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      updateCurrentUser({
+        full_name: fullName.trim() || null,
+        email: email.trim() || null,
+        theme_preference: theme
+      }),
+    onSuccess: (updated) => {
+      onUserUpdated(updated);
+      setFullName(updated.full_name ?? "");
+      setEmail(updated.email ?? "");
+      setTheme(updated.theme_preference);
+      setFeedback("Instellingen opgeslagen.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Email already in use")) {
+        setFeedback("Dit e-mailadres is al gekoppeld aan een andere gebruiker.");
+        return;
+      }
+      if (message.toLowerCase().includes("invalid email format")) {
+        setFeedback("Het e-mailadres heeft geen geldig formaat.");
+        return;
+      }
+      setFeedback("Opslaan mislukt. Probeer het opnieuw.");
+    }
+  });
+
+  if (isLoading) {
+    return (
+      <section className="panel">
+        <h1>Settings</h1>
+        <p>Laden...</p>
+      </section>
+    );
+  }
+
+  if (hasError || !user) {
+    return (
+      <section className="panel">
+        <h1>Settings</h1>
+        <p>Kon gebruikersinstellingen niet laden.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="panel panel-grid settings-grid">
+      <article>
+        <h1>Settings</h1>
+        <p className="muted">Werk hier je profiel en thema-voorkeur bij.</p>
+        <form
+          className="settings-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setFeedback(null);
+            saveMutation.mutate();
+          }}
+        >
+          <label>
+            Volledige naam
+            <input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Bijv. Jan Jansen" />
+          </label>
+          <label>
+            E-mailadres
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="naam@organisatie.nl"
+              inputMode="email"
+            />
+          </label>
+          <label>
+            Thema
+            <select value={theme} onChange={(e) => setTheme(e.target.value as ThemePreference)}>
+              <option value="system">Systeem volgen</option>
+              <option value="light">Licht</option>
+              <option value="dark">Donker</option>
+            </select>
+          </label>
+          <button type="submit" disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? "Opslaan..." : "Opslaan"}
+          </button>
+          {feedback && (
+            <p role="status" className={feedback.includes("mislukt") || feedback.includes("geldig") || feedback.includes("al gekoppeld") ? "error" : "success"}>
+              {feedback}
+            </p>
+          )}
+        </form>
+      </article>
+
+      <article>
+        <h2>Aanbevolen extra instellingen</h2>
+        <ul>
+          <li>Notificatievoorkeuren voor Telegram en e-mailmeldingen.</li>
+          <li>Standaard publicatiekanaal bij handmatig publiceren.</li>
+          <li>Standaard planningstijd en tijdzone voor nieuwe berichten.</li>
+          <li>Voorkeur voor schrijfstijl of tone-of-voice per gebruiker.</li>
+        </ul>
+      </article>
     </section>
   );
 }

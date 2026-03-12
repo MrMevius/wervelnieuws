@@ -51,3 +51,9 @@ class RetryStatus(str, Enum):
     in_progress = "in_progress"
     failed = "failed"
     resolved = "resolved"
+
+
+class ThemePreference(str, Enum):
+    light = "light"
+    dark = "dark"
+    system = "system"

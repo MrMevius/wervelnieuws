@@ -7,7 +7,20 @@ import { App } from "./App";
 const mockApi = vi.hoisted(() => ({
   login: vi.fn().mockResolvedValue(undefined),
   setToken: vi.fn(),
-  getCurrentUser: vi.fn().mockResolvedValue({ id: "u1", username: "admin" }),
+  getCurrentUser: vi.fn().mockResolvedValue({
+    id: "u1",
+    username: "admin",
+    full_name: null,
+    email: null,
+    theme_preference: "system"
+  }),
+  updateCurrentUser: vi.fn().mockResolvedValue({
+    id: "u1",
+    username: "admin",
+    full_name: "Admin Naam",
+    email: "admin@example.com",
+    theme_preference: "dark"
+  }),
   listTopics: vi.fn().mockResolvedValue([
     {
       id: "abc12345-1111",
@@ -85,6 +98,41 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Volledige naam")).toBeInTheDocument();
+    });
+  });
+
+  it("saves settings and applies selected theme", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Settings" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Volledige naam"), {
+      target: { value: "Admin Naam" }
+    });
+    fireEvent.change(screen.getByLabelText("E-mailadres"), {
+      target: { value: "admin@example.com" }
+    });
+    fireEvent.change(screen.getByLabelText("Thema"), {
+      target: { value: "dark" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateCurrentUser).toHaveBeenCalled();
+      expect(screen.getByText("Instellingen opgeslagen.")).toBeInTheDocument();
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
     });
   });
 

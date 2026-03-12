@@ -91,6 +91,15 @@ export type RetryJob = {
 export type CurrentUser = {
   id: string;
   username: string;
+  full_name: string | null;
+  email: string | null;
+  theme_preference: "light" | "dark" | "system";
+};
+
+export type UpdateCurrentUserPayload = {
+  full_name: string | null;
+  email: string | null;
+  theme_preference: "light" | "dark" | "system";
 };
 
 export type ChangelogEntry = {
@@ -139,6 +148,13 @@ export async function login(username: string, password: string) {
 
 export function getCurrentUser() {
   return request<CurrentUser>("/auth/me");
+}
+
+export function updateCurrentUser(payload: UpdateCurrentUserPayload) {
+  return request<CurrentUser>("/auth/me", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
 }
 
 export function getAboutContent() {

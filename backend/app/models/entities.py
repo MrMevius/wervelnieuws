@@ -20,6 +20,7 @@ from app.models.enums import (
     DocumentStatus,
     DocumentType,
     RetryStatus,
+    ThemePreference,
     WorkflowState,
 )
 
@@ -46,6 +47,11 @@ class User(Base, TimestampMixin):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     username: Mapped[str] = mapped_column(String(80), unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    full_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
+    theme_preference: Mapped[ThemePreference] = mapped_column(
+        Enum(ThemePreference), default=ThemePreference.system, nullable=False
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
