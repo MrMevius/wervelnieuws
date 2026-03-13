@@ -19,6 +19,7 @@ from app.core.db import Base
 from app.models.enums import (
     ChannelName,
     ChannelPublishState,
+    ContentApprovalState,
     DocumentStatus,
     DocumentType,
     RetryStatus,
@@ -271,6 +272,49 @@ class ContentVersion(Base, TimestampMixin):
     schedules: Mapped[list["PublicationSchedule"]] = relationship(
         back_populates="content_version", cascade="all,delete"
     )
+    channel_variants: Mapped[list["ContentChannelVariant"]] = relationship(
+        back_populates="content_version", cascade="all,delete"
+    )
+
+
+class ContentChannelVariant(Base, TimestampMixin):
+    __tablename__ = "content_channel_variants"
+    __table_args__ = (
+        UniqueConstraint(
+            "content_version_id",
+            "channel",
+            name="uq_content_channel_variants_version_channel",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    content_version_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("content_versions.id"), nullable=False
+    )
+    topic_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("topics.id"), nullable=False
+    )
+    channel: Mapped[ChannelName] = mapped_column(Enum(ChannelName), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    article_body: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    generated_image_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("generated_images.id"), nullable=True
+    )
+    approval_state: Mapped[ContentApprovalState] = mapped_column(
+        Enum(ContentApprovalState), default=ContentApprovalState.pending, nullable=False
+    )
+    approved_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    content_version: Mapped[ContentVersion] = relationship(
+        back_populates="channel_variants"
+    )
+    generated_image: Mapped[GeneratedImage | None] = relationship()
 
 
 class PublicationSchedule(Base, TimestampMixin):

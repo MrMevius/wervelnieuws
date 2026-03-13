@@ -180,7 +180,7 @@ const mockApi = vi.hoisted(() => ({
       subject: "Onderwerp test",
       theme: "Thema test",
       editorial_notes: "Notitie",
-      planning_at: null,
+      planning_at: "2026-03-20T09:00:00Z",
       workflow_state: "draft",
       is_archived: false,
       target_channels: ["website", "facebook", "newsletter"]
@@ -228,6 +228,63 @@ const mockApi = vi.hoisted(() => ({
       created_at: "2026-03-12T11:00:00Z"
     }
   ]),
+  listCurrentVariants: vi.fn().mockResolvedValue([
+    {
+      id: "cv1",
+      content_version_id: "v1",
+      topic_id: "abc12345-1111",
+      channel: "website",
+      title: "Website titel",
+      article_body: "<p>Website artikel</p>",
+      summary: "<p>Website samenvatting</p>",
+      generated_image_id: null,
+      generated_image_path: null,
+      approval_state: "pending",
+      approved_by_user_id: null,
+      approved_at: null,
+      created_at: "2026-03-12T11:00:00Z",
+      updated_at: "2026-03-12T11:00:00Z"
+    },
+    {
+      id: "cv2",
+      content_version_id: "v1",
+      topic_id: "abc12345-1111",
+      channel: "facebook",
+      title: "Facebook titel",
+      article_body: "<p>Facebook artikel</p>",
+      summary: "<p>Facebook samenvatting</p>",
+      generated_image_id: null,
+      generated_image_path: null,
+      approval_state: "approved",
+      approved_by_user_id: "u1",
+      approved_at: "2026-03-12T11:05:00Z",
+      created_at: "2026-03-12T11:00:00Z",
+      updated_at: "2026-03-12T11:05:00Z"
+    },
+    {
+      id: "cv3",
+      content_version_id: "v1",
+      topic_id: "abc12345-1111",
+      channel: "newsletter",
+      title: "Nieuwsbrief titel",
+      article_body: "<p>Nieuwsbrief artikel</p>",
+      summary: "<p>Nieuwsbrief samenvatting</p>",
+      generated_image_id: null,
+      generated_image_path: null,
+      approval_state: "rejected",
+      approved_by_user_id: "u1",
+      approved_at: "2026-03-12T11:05:00Z",
+      created_at: "2026-03-12T11:00:00Z",
+      updated_at: "2026-03-12T11:05:00Z"
+    }
+  ]),
+  getCurrentSchedule: vi.fn().mockRejectedValue(new Error("No publication schedule")),
+  scheduleTopic: vi.fn().mockResolvedValue({ schedule_id: "s1" }),
+  updateVariant: vi.fn().mockResolvedValue({ status: "ok" }),
+  approveVariant: vi.fn().mockResolvedValue({ status: "ok" }),
+  rejectVariant: vi.fn().mockResolvedValue({ status: "ok" }),
+  regenerateContent: vi.fn().mockResolvedValue({ version_id: "v2" }),
+  approveTopic: vi.fn().mockResolvedValue({ status: "approved" }),
   getAboutContent: vi.fn().mockResolvedValue({
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
@@ -723,7 +780,7 @@ describe("App", () => {
     });
   });
 
-  it("opens planning rule detail dummy page from table", async () => {
+  it("opens planning rule detail page from table", async () => {
     renderApp();
     await loginIntoApp();
 
@@ -737,17 +794,18 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Planningsregel detail (dummy)" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Planningsregel detail" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Planningvoortgang" })).toBeInTheDocument();
       expect(screen.getByText(/Huidige stap:/)).toBeInTheDocument();
       expect(screen.getAllByText("moet nog gebeuren").length).toBeGreaterThan(0);
+      expect(screen.getByText("gepland")).toBeInTheDocument();
       expect(screen.getByText(/AI generatie gepland:/)).toBeInTheDocument();
       expect(screen.getByText(/Geplande publicatiedatum:/)).toBeInTheDocument();
-      expect(screen.getByText(/tijdelijke detailpagina voor beoordelen\/wijzigen/i)).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Review (dummy)" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Wijzigingen (dummy)" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Publicatiebesluit (dummy)" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Wijziging simuleren" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Opmerkingen" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Website" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Facebook" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Nieuwsbrief" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Artikelen opnieuw genereren" })).toBeInTheDocument();
     });
   });
 
@@ -768,6 +826,42 @@ describe("App", () => {
         screen.getByText(/Database - Windpark de Boldijk - database-bron.txt, chunk 1/)
       ).toBeInTheDocument();
       expect(mockApi.listVersions).toHaveBeenCalledWith("abc12345-1111");
+    });
+  });
+
+  it("retries publication planning after regeneration when first schedule call fails", async () => {
+    mockApi.scheduleTopic.mockClear();
+    mockApi.regenerateContent.mockClear();
+    mockApi.scheduleTopic
+      .mockRejectedValueOnce(new Error('{"detail":"No content version available"}'))
+      .mockResolvedValueOnce({ schedule_id: "s2" });
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Publicatiedatum opslaan" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Publicatiedatum"), {
+      target: { value: "2026-03-22T08:30" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Publicatiedatum opslaan" }));
+
+    const expectedIso = new Date("2026-03-22T08:30").toISOString();
+
+    await waitFor(() => {
+      expect(mockApi.scheduleTopic).toHaveBeenCalledTimes(2);
+      expect(mockApi.regenerateContent).toHaveBeenCalledWith("abc12345-1111");
+      expect(mockApi.scheduleTopic).toHaveBeenNthCalledWith(1, "abc12345-1111", expectedIso);
+      expect(mockApi.scheduleTopic).toHaveBeenNthCalledWith(2, "abc12345-1111", expectedIso);
+      expect(screen.getByText("Publicatiedatum opgeslagen.")).toBeInTheDocument();
     });
   });
 

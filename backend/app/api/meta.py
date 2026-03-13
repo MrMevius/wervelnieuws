@@ -96,6 +96,16 @@ def _default_about() -> AboutResponse:
                     "Per regel kun je Website, Facebook en Nieuwsbrief apart aan- of uitzetten en regels ook verwijderen.",
                 ],
             },
+            {
+                "iteration": "08",
+                "date": "2026-03-13",
+                "title": "Multichannel redactie op de planningsdetailpagina",
+                "highlights": [
+                    "Per doelmedium werk je nu met een eigen artikel, samenvatting en illustratie in de detailpagina.",
+                    "Je kunt GenAI-opmerkingen vrij invullen, opslaan en direct gebruiken voor opnieuw genereren.",
+                    "Goedkeuren of afwijzen gebeurt nu per medium, met akkoord op regelniveau pas wanneer alle media akkoord zijn.",
+                ],
+            },
         ],
     )
 

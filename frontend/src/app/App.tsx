@@ -4,6 +4,7 @@ import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-
 import {
   AdminUser,
   AboutContent,
+  ContentChannelVariant,
   ContentVersion,
   CurrentUser,
   DatabaseDocument,
@@ -17,6 +18,8 @@ import {
   bulkCopyDatabaseDocuments,
   bulkDeleteDatabaseDocuments,
   bulkMoveDatabaseDocuments,
+  approveTopic,
+  approveVariant,
   createTopic,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
@@ -24,14 +27,20 @@ import {
   getCurrentUser,
   importTopicsCsv,
   listAdminUsers,
+  getCurrentSchedule,
+  listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
   listDatabaseProjects,
   listVersions,
   listTopics,
   login,
+  regenerateContent,
+  rejectVariant,
+  scheduleTopic,
   setToken,
   updateTopic,
+  updateVariant,
   updateAdminUserActive,
   updateAdminProject,
   updateAdminUser,
@@ -718,10 +727,17 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
 
 function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const params = useParams<{ topicId: string }>();
   const topicId = params.topicId ?? "";
   const topic = topics.find((item) => item.id === topicId) ?? null;
-  const [dummyMessage, setDummyMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [notesDraft, setNotesDraft] = useState("");
+  const [generationAtDraft, setGenerationAtDraft] = useState("");
+  const [publicationAtDraft, setPublicationAtDraft] = useState("");
+  const [variantDrafts, setVariantDrafts] = useState<
+    Record<string, Pick<ContentChannelVariant, "title" | "article_body" | "summary">>
+  >({});
 
   const versionsQuery = useQuery({
     queryKey: ["topic-versions", topicId],
@@ -729,10 +745,161 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     enabled: Boolean(topicId)
   });
 
+  const variantsQuery = useQuery({
+    queryKey: ["topic-variants", topicId],
+    queryFn: () => listCurrentVariants(topicId),
+    enabled: Boolean(topicId)
+  });
+
+  const scheduleQuery = useQuery({
+    queryKey: ["topic-current-schedule", topicId],
+    queryFn: () => getCurrentSchedule(topicId),
+    enabled: Boolean(topicId),
+    retry: false
+  });
+
+  const updateNotesMutation = useMutation({
+    mutationFn: (editorialNotes: string) => updateTopic(topicId, { editorial_notes: editorialNotes }),
+    onSuccess: () => {
+      setFeedback("Opmerkingen opgeslagen.");
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => setFeedback("Opslaan van opmerkingen is mislukt.")
+  });
+
+  const updateGenerationDateMutation = useMutation({
+    mutationFn: (planningAt: string) => updateTopic(topicId, { planning_at: planningAt }),
+    onSuccess: () => {
+      setFeedback("Generatiedatum opgeslagen.");
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => setFeedback("Opslaan van generatiedatum is mislukt.")
+  });
+
+  const updatePublicationDateMutation = useMutation({
+    mutationFn: async (publishAt: string) => {
+      try {
+        return await scheduleTopic(topicId, publishAt);
+      } catch {
+        await regenerateContent(topicId);
+        return scheduleTopic(topicId, publishAt);
+      }
+    },
+    onSuccess: () => {
+      setFeedback("Publicatiedatum opgeslagen.");
+      queryClient.invalidateQueries({ queryKey: ["topic-versions", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-current-schedule", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: (error) => {
+      const message = extractApiErrorMessage(error);
+      if (message) {
+        setFeedback(`Opslaan van publicatiedatum is mislukt: ${message}`);
+        return;
+      }
+      setFeedback("Opslaan van publicatiedatum is mislukt.");
+    }
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: () => regenerateContent(topicId),
+    onSuccess: () => {
+      setFeedback("Artikelen opnieuw gegenereerd.");
+      queryClient.invalidateQueries({ queryKey: ["topic-versions", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => setFeedback("Opnieuw genereren is mislukt.")
+  });
+
+  const saveVariantMutation = useMutation({
+    mutationFn: ({
+      channel,
+      payload
+    }: {
+      channel: ContentChannelVariant["channel"];
+      payload: Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
+    }) => updateVariant(topicId, channel, payload),
+    onSuccess: () => {
+      setFeedback("Wijzigingen opgeslagen.");
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+    },
+    onError: () => setFeedback("Opslaan van variant is mislukt.")
+  });
+
+  const approveVariantMutation = useMutation({
+    mutationFn: (channel: ContentChannelVariant["channel"]) => approveVariant(topicId, channel),
+    onSuccess: () => {
+      setFeedback("Kanaal goedgekeurd.");
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+    },
+    onError: () => setFeedback("Kanaal goedkeuren is mislukt.")
+  });
+
+  const rejectVariantMutation = useMutation({
+    mutationFn: (channel: ContentChannelVariant["channel"]) => rejectVariant(topicId, channel),
+    onSuccess: () => {
+      setFeedback("Kanaal afgekeurd.");
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+    },
+    onError: () => setFeedback("Kanaal afkeuren is mislukt.")
+  });
+
+  const approveTopicMutation = useMutation({
+    mutationFn: () => approveTopic(topicId),
+    onSuccess: () => {
+      setFeedback("Planningsregel is akkoord gezet.");
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Not all channels approved")) {
+        setFeedback("Nog niet alle actieve doelmedia zijn goedgekeurd.");
+        return;
+      }
+      setFeedback("Akkoord zetten is mislukt.");
+    }
+  });
+
   const selectedVersion =
     (versionsQuery.data ?? []).find((version) => version.is_current) ??
     (versionsQuery.data ?? [])[0] ??
     null;
+  const variants = variantsQuery.data ?? [];
+
+  useEffect(() => {
+    setNotesDraft(topic?.editorial_notes ?? "");
+  }, [topic?.id, topic?.editorial_notes]);
+
+  useEffect(() => {
+    setGenerationAtDraft(toDatetimeLocalInputValue(topic?.planning_at ?? null));
+  }, [topic?.id, topic?.planning_at]);
+
+  useEffect(() => {
+    const scheduled = scheduleQuery.data?.scheduled_for ?? null;
+    setPublicationAtDraft(toDatetimeLocalInputValue(scheduled));
+  }, [scheduleQuery.data?.scheduled_for, topic?.id]);
+
+  useEffect(() => {
+    if (variants.length === 0) {
+      return;
+    }
+    setVariantDrafts((current) => {
+      const next = { ...current };
+      for (const variant of variants) {
+        if (!next[variant.channel]) {
+          next[variant.channel] = {
+            title: variant.title,
+            article_body: variant.article_body,
+            summary: variant.summary
+          };
+        }
+      }
+      return next;
+    });
+  }, [variants]);
+
   const sourceTrace = extractSourceTrace(selectedVersion);
   if (!topic) {
     return (
@@ -749,103 +916,255 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const generationPlannedAt = topic.planning_at
     ? formatAmsterdamDateTime(topic.planning_at)
     : "nog niet gepland";
-  const publicationPlannedAt =
-    selectedVersion?.is_published && selectedVersion.created_at
-      ? formatAmsterdamDateTime(selectedVersion.created_at)
-      : "nog niet gepland";
+  const publicationPlannedAt = scheduleQuery.data?.scheduled_for
+    ? formatAmsterdamDateTime(scheduleQuery.data.scheduled_for)
+    : "nog niet gepland";
 
   const planningSteps = getPlanningSteps({
     workflowState: topic.workflow_state,
     generationPlannedAt,
-    publicationPlannedAt
+    publicationPlannedAt,
+    hasGenerationPlan: Boolean(topic.planning_at),
+    hasPublicationPlan: Boolean(scheduleQuery.data?.scheduled_for)
   });
   const currentStep = planningSteps.find((step) => step.isCurrent) ?? planningSteps[0];
+  const requiredChannels = topic.target_channels;
+  const allApproved = requiredChannels.every((channel) => {
+    const item = variants.find((variant) => variant.channel === channel);
+    return item?.approval_state === "approved";
+  });
 
   return (
     <section className="panel planning-detail-page">
-      <h1>Planningsregel detail (dummy)</h1>
+      <h1>Planningsregel detail</h1>
       <p className="muted">
-        Dit is een tijdelijke detailpagina voor beoordelen/wijzigen. Uitwerking volgt in de volgende iteratie.
+        Werk per doelmedium aan artikel, samenvatting en goedkeuring. Pas daarna kun je de regel akkoord zetten.
       </p>
 
-      <section className="panel planning-progress-panel" aria-label="Planningvoortgang">
-        <h2>Planningvoortgang</h2>
-        <p className="muted">
-          Huidige stap: <strong>{currentStep.label}</strong>
-        </p>
-        <ul className="planning-step-list">
-          {planningSteps.map((step) => (
-            <li key={step.key} className={step.isDone ? "step-done" : "step-pending"}>
-              <span className="step-indicator" aria-hidden="true">
-                {step.isDone ? "x" : "-"}
-              </span>
-              <span className="step-label">{step.label}</span>
-              <span className="step-meta">{step.isDone ? "afgerond" : "moet nog gebeuren"}</span>
-              {step.detail && <span className="step-detail">{step.detail}</span>}
-            </li>
-          ))}
-        </ul>
-      </section>
+      <div className="planning-detail-top-grid">
+        <section className="panel planning-notes-panel" aria-label="Opmerkingen">
+          <h2>Opmerkingen</h2>
+          <p className="muted">Vrij invulbaar: deze input wordt meegenomen bij opnieuw genereren.</p>
+          <textarea
+            value={notesDraft}
+            onChange={(event) => setNotesDraft(event.target.value)}
+            rows={4}
+            aria-label="Opmerkingen"
+            placeholder="Bijvoorbeeld gewenste toon, lokale context of aandachtspunten"
+          />
+          <div className="detail-dates-grid">
+            <label>
+              Generatiedatum
+              <input
+                type="datetime-local"
+                value={generationAtDraft}
+                onChange={(event) => setGenerationAtDraft(event.target.value)}
+                aria-label="Generatiedatum"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (!generationAtDraft) {
+                  setFeedback("Kies eerst een generatiedatum.");
+                  return;
+                }
+                setFeedback(null);
+                updateGenerationDateMutation.mutate(new Date(generationAtDraft).toISOString());
+              }}
+              disabled={updateGenerationDateMutation.isPending}
+            >
+              Generatiedatum opslaan
+            </button>
+            <label>
+              Publicatiedatum
+              <input
+                type="datetime-local"
+                value={publicationAtDraft}
+                onChange={(event) => setPublicationAtDraft(event.target.value)}
+                aria-label="Publicatiedatum"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                if (!publicationAtDraft) {
+                  setFeedback("Kies eerst een publicatiedatum.");
+                  return;
+                }
+                setFeedback(null);
+                updatePublicationDateMutation.mutate(new Date(publicationAtDraft).toISOString());
+              }}
+              disabled={updatePublicationDateMutation.isPending}
+            >
+              Publicatiedatum opslaan
+            </button>
+          </div>
+          <div className="detail-actions">
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                updateNotesMutation.mutate(notesDraft);
+              }}
+              disabled={updateNotesMutation.isPending}
+            >
+              Opmerkingen opslaan
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                regenerateMutation.mutate();
+              }}
+              disabled={regenerateMutation.isPending}
+            >
+              Artikelen opnieuw genereren
+            </button>
+          </div>
+        </section>
+
+        <section className="panel planning-progress-panel" aria-label="Planningvoortgang">
+          <h2>Planningvoortgang</h2>
+          <p className="muted">
+            Huidige stap: <strong>{currentStep.label}</strong>
+          </p>
+          <ul className="planning-step-list">
+            {planningSteps.map((step) => (
+              <li key={step.key} className={step.isDone ? "step-done" : "step-pending"}>
+                <span className="step-indicator" aria-hidden="true">
+                  {step.isDone ? "x" : "-"}
+                </span>
+                <span className="step-label">{step.label}</span>
+                <span className="step-meta">{step.metaLabel}</span>
+                {step.detail && <span className="step-detail">{step.detail}</span>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
 
       <div className="panel-grid planning-detail-grid">
-        <article className="panel">
-          <h2>Review (dummy)</h2>
-          <p><strong>Onderwerp:</strong> {topic.subject}</p>
-          <p><strong>Thema:</strong> {topic.theme}</p>
-          <p><strong>Status:</strong> {displayStatus(topic.workflow_state)}</p>
-          <p><strong>Geplande datum:</strong> {topic.planning_at ? formatAmsterdamDateTime(topic.planning_at) : "-"}</p>
-          <p><strong>Doelmedia:</strong> {topic.target_channels.join(", ")}</p>
-          <p><strong>Opmerkingen:</strong> {topic.editorial_notes || "-"}</p>
-        </article>
-
-        <article className="panel">
-          <h2>Wijzigingen (dummy)</h2>
-          <label>
-            Artikel (dummy)
-            <textarea defaultValue={selectedVersion?.article_body ?? ""} rows={6} />
-          </label>
-          <label>
-            Samenvatting (dummy)
-            <textarea defaultValue={selectedVersion?.summary ?? ""} rows={4} />
-          </label>
-          <div className="detail-actions">
-            <button
-              type="button"
-              onClick={() => setDummyMessage("Dummy: wijziging lokaal bekeken, nog niet opgeslagen.")}
-            >
-              Wijziging simuleren
-            </button>
-            <button
-              type="button"
-              onClick={() => setDummyMessage("Dummy: beoordeling geregistreerd voor demo.")}
-            >
-              Beoordeling simuleren
-            </button>
-          </div>
-          {dummyMessage && <p role="status" className="success">{dummyMessage}</p>}
-        </article>
-
-        <article className="panel">
-          <h2>Publicatiebesluit (dummy)</h2>
-          <p className="muted">
-            Hier komt in de volgende iteratie het besluitproces voor akkoord, afwijzing en publicatieplanning.
-          </p>
-          <div className="detail-actions">
-            <button
-              type="button"
-              onClick={() => setDummyMessage("Dummy: publicatiebesluit voorlopig op akkoord gezet.")}
-            >
-              Akkoord simuleren
-            </button>
-            <button
-              type="button"
-              onClick={() => setDummyMessage("Dummy: publicatiebesluit voorlopig afgewezen.")}
-            >
-              Afwijzing simuleren
-            </button>
-          </div>
-        </article>
+        {topic.target_channels.map((channel) => {
+          const channelKey = channel as ContentChannelVariant["channel"];
+          const variant = variants.find((item) => item.channel === channel) ?? null;
+          const draft = variantDrafts[channel] ?? {
+            title: variant?.title ?? selectedVersion?.title ?? topic.subject,
+            article_body: variant?.article_body ?? selectedVersion?.article_body ?? "",
+            summary: variant?.summary ?? selectedVersion?.summary ?? ""
+          };
+          const approvalLabel =
+            variant?.approval_state === "approved"
+              ? "Akkoord"
+              : variant?.approval_state === "rejected"
+                ? "Afgekeurd"
+                : "In review";
+          return (
+            <article className="panel channel-panel" key={channel}>
+              <h2>{channelLabel(channel)}</h2>
+              <p className="muted">Status: {approvalLabel}</p>
+              {variantsQuery.isLoading && <p>Laden...</p>}
+              {variantsQuery.isError && <p className="error">Kanaalvariant kon niet worden geladen.</p>}
+              {!variantsQuery.isLoading && !variantsQuery.isError && (
+                <>
+                  <label>
+                    Titel
+                    <input
+                      value={draft.title}
+                      onChange={(event) =>
+                        setVariantDrafts((current) => ({
+                          ...current,
+                          [channel]: { ...draft, title: event.target.value }
+                        }))
+                      }
+                      aria-label={`Titel ${channelLabel(channel)}`}
+                    />
+                  </label>
+                  <RichTextEditor
+                    label={`Artikel ${channelLabel(channel)}`}
+                    value={draft.article_body}
+                    onChange={(value) =>
+                      setVariantDrafts((current) => ({
+                        ...current,
+                        [channel]: { ...draft, article_body: value }
+                      }))
+                    }
+                  />
+                  <RichTextEditor
+                    label={`Samenvatting ${channelLabel(channel)}`}
+                    value={draft.summary}
+                    onChange={(value) =>
+                      setVariantDrafts((current) => ({
+                        ...current,
+                        [channel]: { ...draft, summary: value }
+                      }))
+                    }
+                    compact
+                  />
+                  {variant?.generated_image_path && (
+                    <p className="muted">Illustratie: {variant.generated_image_path}</p>
+                  )}
+                  <div className="detail-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeedback(null);
+                        saveVariantMutation.mutate({
+                          channel: channelKey,
+                          payload: {
+                            title: draft.title,
+                            article_body: draft.article_body,
+                            summary: draft.summary
+                          }
+                        });
+                      }}
+                      disabled={saveVariantMutation.isPending || draft.title.trim().length < 3}
+                    >
+                      Opslaan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeedback(null);
+                        approveVariantMutation.mutate(channelKey);
+                      }}
+                      disabled={approveVariantMutation.isPending}
+                    >
+                      Akkoord
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFeedback(null);
+                        rejectVariantMutation.mutate(channelKey);
+                      }}
+                      disabled={rejectVariantMutation.isPending}
+                    >
+                      Afwijzen
+                    </button>
+                  </div>
+                </>
+              )}
+            </article>
+          );
+        })}
       </div>
+
+      {feedback && (
+        <p
+          role="status"
+          className={
+            feedback.includes("mislukt") ||
+            feedback.includes("niet") ||
+            feedback.includes("fout") ||
+            feedback.includes("afgekeurd")
+              ? "error"
+              : "success"
+          }
+        >
+          {feedback}
+        </p>
+      )}
 
       <section className="review-panel" aria-label="Bronreview detail">
         <h2>Bronpassages</h2>
@@ -874,9 +1193,87 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
       </section>
 
       <div className="detail-actions">
+        <button
+          type="button"
+          onClick={() => {
+            setFeedback(null);
+            approveTopicMutation.mutate();
+          }}
+          disabled={!allApproved || approveTopicMutation.isPending}
+        >
+          Zet planningsregel op akkoord
+        </button>
         <button type="button" onClick={() => navigate("/planning")}>Terug naar planning</button>
       </div>
     </section>
+  );
+}
+
+function channelLabel(channel: string): string {
+  if (channel === "website") {
+    return "Website";
+  }
+  if (channel === "facebook") {
+    return "Facebook";
+  }
+  if (channel === "newsletter") {
+    return "Nieuwsbrief";
+  }
+  return channel;
+}
+
+function RichTextEditor({
+  label,
+  value,
+  onChange,
+  compact = false
+}: {
+  label: string;
+  value: string;
+  onChange: (nextValue: string) => void;
+  compact?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) {
+      return;
+    }
+    if (ref.current.innerHTML !== value) {
+      ref.current.innerHTML = value;
+    }
+  }, [value]);
+
+  function runCommand(command: "bold" | "italic" | "insertUnorderedList") {
+    if (typeof document.execCommand !== "function") {
+      return;
+    }
+    document.execCommand(command);
+    onChange(ref.current?.innerHTML ?? "");
+  }
+
+  return (
+    <label className="wysiwyg-field">
+      {label}
+      <div className="wysiwyg-toolbar" role="toolbar" aria-label={`${label} toolbar`}>
+        <button type="button" onClick={() => runCommand("bold")}>
+          Vet
+        </button>
+        <button type="button" onClick={() => runCommand("italic")}>
+          Cursief
+        </button>
+        <button type="button" onClick={() => runCommand("insertUnorderedList")}>
+          Lijst
+        </button>
+      </div>
+      <div
+        ref={ref}
+        className={compact ? "wysiwyg-editor compact" : "wysiwyg-editor"}
+        contentEditable
+        suppressContentEditableWarning
+        onInput={(event) => onChange(event.currentTarget.innerHTML)}
+      />
+    </label>
   );
 }
 
@@ -917,11 +1314,14 @@ function getPlanningSteps(input: {
   workflowState: string;
   generationPlannedAt: string;
   publicationPlannedAt: string;
+  hasGenerationPlan: boolean;
+  hasPublicationPlan: boolean;
 }): Array<{
   key: string;
   label: string;
   isDone: boolean;
   isCurrent: boolean;
+  metaLabel: string;
   detail?: string;
 }> {
   let currentIndex = 0;
@@ -958,13 +1358,24 @@ function getPlanningSteps(input: {
     }
   ];
 
-  return ordered.map((step, index) => ({
-    key: step.key,
-    label: step.label,
-    detail: step.detail,
-    isDone: index <= currentIndex,
-    isCurrent: index === currentIndex
-  }));
+  return ordered.map((step, index) => {
+    const isDone = index <= currentIndex;
+    let metaLabel = isDone ? "afgerond" : "moet nog gebeuren";
+    if (!isDone && step.key === "gepland" && input.hasGenerationPlan) {
+      metaLabel = "gepland";
+    }
+    if (!isDone && step.key === "publicatie-gepland" && input.hasPublicationPlan) {
+      metaLabel = "gepland";
+    }
+    return {
+      key: step.key,
+      label: step.label,
+      detail: step.detail,
+      isDone,
+      isCurrent: index === currentIndex,
+      metaLabel
+    };
+  });
 }
 
 function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
@@ -1461,6 +1872,45 @@ function formatAmsterdamDateTime(value: string): string {
   const parts = formatter.formatToParts(date);
   const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
+}
+
+function toDatetimeLocalInputValue(value: string | null): string {
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Amsterdam",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
+  return formatter.format(date).replace(" ", "T");
+}
+
+function extractApiErrorMessage(error: unknown): string {
+  if (!(error instanceof Error)) {
+    return "";
+  }
+  const raw = error.message?.trim();
+  if (!raw) {
+    return "";
+  }
+  try {
+    const parsed = JSON.parse(raw) as { detail?: unknown };
+    if (typeof parsed.detail === "string" && parsed.detail.trim().length > 0) {
+      return parsed.detail.trim();
+    }
+  } catch {
+    return raw;
+  }
+  return raw;
 }
 
 function formatSize(sizeBytes: number): string {

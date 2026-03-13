@@ -49,6 +49,35 @@ class ContentVersionResponse(BaseModel):
         return self
 
 
+class ContentChannelVariantResponse(BaseModel):
+    id: str
+    content_version_id: str
+    topic_id: str
+    channel: str
+    title: str
+    article_body: str
+    summary: str
+    generated_image_id: str | None
+    generated_image_path: str | None = None
+    approval_state: str
+    approved_by_user_id: str | None
+    approved_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class VariantUpdateRequest(BaseModel):
+    title: str = Field(min_length=3, max_length=255)
+    article_body: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+
+
+class RegenerateRequest(BaseModel):
+    channels: list[str] = Field(default_factory=list)
+
+
 class ManualEditRequest(BaseModel):
     title: str
     slug: str
@@ -58,6 +87,16 @@ class ManualEditRequest(BaseModel):
 
 class ScheduleRequest(BaseModel):
     publish_at: datetime
+
+
+class CurrentScheduleResponse(BaseModel):
+    schedule_id: str
+    topic_id: str
+    content_version_id: str
+    scheduled_for: datetime
+    status: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class ChannelStatusResponse(BaseModel):

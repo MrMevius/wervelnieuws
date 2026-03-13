@@ -1,31 +1,94 @@
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models.entities import (
+    ContentChannelVariant,
     ChannelPublicationState,
     ContentVersion,
+    GeneratedImage,
     PublicationRecord,
     PublicationSchedule,
     RetryJob,
     Topic,
     User,
 )
-from app.models.enums import RetryStatus, WorkflowState
+from app.models.enums import (
+    ChannelName,
+    ContentApprovalState,
+    RetryStatus,
+    WorkflowState,
+)
 from app.repositories.topic_repository import ContentVersionRepository, TopicRepository
 from app.schemas.versioning import (
     ChannelStatusResponse,
+    ContentChannelVariantResponse,
     ContentVersionResponse,
+    CurrentScheduleResponse,
     ManualEditRequest,
+    RegenerateRequest,
     RetryJobResponse,
     ScheduleRequest,
+    VariantUpdateRequest,
 )
 from app.services.audit_service import AuditService
-from app.services.generation_service import GenerationService
+from app.services.generation_service import GenerationService, slugify
 
 router = APIRouter(prefix="/content", tags=["content"])
+
+
+def _parse_channel(channel: str) -> ChannelName:
+    try:
+        return ChannelName(channel)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Channel not found") from exc
+
+
+def _serialize_variant(variant: ContentChannelVariant) -> ContentChannelVariantResponse:
+    payload = ContentChannelVariantResponse.model_validate(variant)
+    payload.generated_image_path = (
+        variant.generated_image.image_path if variant.generated_image else None
+    )
+    return payload
+
+
+def _ensure_channel_variants(
+    db: Session, topic: Topic, version: ContentVersion
+) -> list[ContentChannelVariant]:
+    existing = (
+        db.query(ContentChannelVariant)
+        .filter(ContentChannelVariant.content_version_id == version.id)
+        .all()
+    )
+    if existing:
+        return existing
+
+    for channel in topic.target_channels:
+        db.add(
+            ContentChannelVariant(
+                content_version_id=version.id,
+                topic_id=topic.id,
+                channel=channel,
+                title=version.title,
+                article_body=version.article_body,
+                summary=version.summary,
+                generated_image_id=version.generated_image_id,
+                approval_state=ContentApprovalState.pending,
+            )
+        )
+    db.commit()
+    return (
+        db.query(ContentChannelVariant)
+        .filter(ContentChannelVariant.content_version_id == version.id)
+        .all()
+    )
 
 
 @router.post("/{topic_id}/generate")
@@ -40,6 +103,48 @@ def generate(
     version_id = GenerationService(db).generate_for_topic(topic)
     AuditService(db).log(
         "content.generated", topic_id=topic_id, actor_user_id=current.id
+    )
+    return {"version_id": version_id}
+
+
+@router.post("/{topic_id}/regenerate")
+def regenerate(
+    topic_id: str,
+    payload: RegenerateRequest | None = None,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict:
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    requested_channels: list[ChannelName] = []
+    selected_payload = payload or RegenerateRequest()
+    if selected_payload.channels:
+        for channel in selected_payload.channels:
+            parsed = _parse_channel(channel)
+            if parsed in topic.target_channels and parsed not in requested_channels:
+                requested_channels.append(parsed)
+        if not requested_channels:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid channels selected for regeneration",
+            )
+
+    version_id = GenerationService(db).generate_for_topic(
+        topic, requested_channels or None
+    )
+    AuditService(db).log(
+        "content.regenerated",
+        topic_id=topic_id,
+        actor_user_id=current.id,
+        details_json=json.dumps(
+            {
+                "channels": [channel.value for channel in requested_channels]
+                if requested_channels
+                else [channel.value for channel in topic.target_channels]
+            }
+        ),
     )
     return {"version_id": version_id}
 
@@ -116,6 +221,26 @@ def approve(
     topic = TopicRepository(db).get(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
+
+    latest = ContentVersionRepository(db).latest_for_topic(topic_id)
+    if not latest:
+        raise HTTPException(status_code=400, detail="No content version available")
+    variants = _ensure_channel_variants(db, topic, latest)
+    required_channels = set(topic.target_channels)
+    approved_channels = {
+        variant.channel
+        for variant in variants
+        if variant.approval_state == ContentApprovalState.approved
+    }
+    missing = sorted(
+        channel.value for channel in (required_channels - approved_channels)
+    )
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not all channels approved: {', '.join(missing)}",
+        )
+
     topic.workflow_state = WorkflowState.approved
     db.add(topic)
     db.commit()
@@ -170,6 +295,35 @@ def schedule(
         "content.scheduled", topic_id=topic_id, actor_user_id=current.id
     )
     return {"schedule_id": schedule.id}
+
+
+@router.get("/{topic_id}/schedule/current", response_model=CurrentScheduleResponse)
+def current_schedule(
+    topic_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CurrentScheduleResponse:
+    del current
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    schedule = (
+        db.query(PublicationSchedule)
+        .filter(PublicationSchedule.topic_id == topic_id)
+        .order_by(desc(PublicationSchedule.created_at))
+        .first()
+    )
+    if not schedule:
+        raise HTTPException(status_code=404, detail="No publication schedule")
+    return CurrentScheduleResponse(
+        schedule_id=schedule.id,
+        topic_id=schedule.topic_id,
+        content_version_id=schedule.content_version_id,
+        scheduled_for=schedule.scheduled_for,
+        status=schedule.status.value,
+        created_at=schedule.created_at,
+        updated_at=schedule.updated_at,
+    )
 
 
 @router.get("/{topic_id}/channel-status", response_model=list[ChannelStatusResponse])
@@ -250,3 +404,158 @@ def requeue_retry_job(
         "retry.requeued", topic_id=job.topic_id, actor_user_id=current.id
     )
     return {"status": "queued"}
+
+
+@router.get(
+    "/{topic_id}/variants/current", response_model=list[ContentChannelVariantResponse]
+)
+def list_current_variants(
+    topic_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ContentChannelVariantResponse]:
+    del current
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    latest = ContentVersionRepository(db).latest_for_topic(topic_id)
+    if not latest:
+        raise HTTPException(status_code=404, detail="No content version available")
+    variants = _ensure_channel_variants(db, topic, latest)
+    by_order = {channel: index for index, channel in enumerate(topic.target_channels)}
+    variants.sort(key=lambda row: by_order.get(row.channel, 999))
+    return [_serialize_variant(variant) for variant in variants]
+
+
+@router.patch(
+    "/{topic_id}/variants/{channel}", response_model=ContentChannelVariantResponse
+)
+def update_current_variant(
+    topic_id: str,
+    channel: str,
+    payload: VariantUpdateRequest,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ContentChannelVariantResponse:
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    latest = ContentVersionRepository(db).latest_for_topic(topic_id)
+    if not latest:
+        raise HTTPException(status_code=404, detail="No content version available")
+    parsed_channel = _parse_channel(channel)
+    variants = _ensure_channel_variants(db, topic, latest)
+    target = next((item for item in variants if item.channel == parsed_channel), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Channel variant not found")
+
+    target.title = payload.title
+    target.article_body = payload.article_body
+    target.summary = payload.summary
+    target.approval_state = ContentApprovalState.pending
+    target.approved_by_user_id = None
+    target.approved_at = None
+    db.add(target)
+
+    if parsed_channel == ChannelName.website:
+        latest.title = payload.title
+        latest.slug = slugify(payload.title)
+        latest.article_body = payload.article_body
+        latest.summary = payload.summary
+        db.add(latest)
+    db.commit()
+    AuditService(db).log(
+        "content.variant.updated",
+        topic_id=topic.id,
+        actor_user_id=current.id,
+        details_json=json.dumps({"channel": parsed_channel.value}),
+    )
+    return _serialize_variant(target)
+
+
+@router.post(
+    "/{topic_id}/variants/{channel}/approve",
+    response_model=ContentChannelVariantResponse,
+)
+def approve_variant(
+    topic_id: str,
+    channel: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ContentChannelVariantResponse:
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    latest = ContentVersionRepository(db).latest_for_topic(topic_id)
+    if not latest:
+        raise HTTPException(status_code=404, detail="No content version available")
+    parsed_channel = _parse_channel(channel)
+    variants = _ensure_channel_variants(db, topic, latest)
+    target = next((item for item in variants if item.channel == parsed_channel), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Channel variant not found")
+
+    target.approval_state = ContentApprovalState.approved
+    target.approved_by_user_id = current.id
+    target.approved_at = datetime.now(UTC)
+    db.add(target)
+    db.commit()
+    AuditService(db).log(
+        "content.variant.approved",
+        topic_id=topic.id,
+        actor_user_id=current.id,
+        details_json=json.dumps({"channel": parsed_channel.value}),
+    )
+    return _serialize_variant(target)
+
+
+@router.post(
+    "/{topic_id}/variants/{channel}/reject",
+    response_model=ContentChannelVariantResponse,
+)
+def reject_variant(
+    topic_id: str,
+    channel: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ContentChannelVariantResponse:
+    topic = TopicRepository(db).get(topic_id)
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    latest = ContentVersionRepository(db).latest_for_topic(topic_id)
+    if not latest:
+        raise HTTPException(status_code=404, detail="No content version available")
+    parsed_channel = _parse_channel(channel)
+    variants = _ensure_channel_variants(db, topic, latest)
+    target = next((item for item in variants if item.channel == parsed_channel), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Channel variant not found")
+
+    target.approval_state = ContentApprovalState.rejected
+    target.approved_by_user_id = current.id
+    target.approved_at = datetime.now(UTC)
+    db.add(target)
+    db.commit()
+    AuditService(db).log(
+        "content.variant.rejected",
+        topic_id=topic.id,
+        actor_user_id=current.id,
+        details_json=json.dumps({"channel": parsed_channel.value}),
+    )
+    return _serialize_variant(target)
+
+
+@router.get("/images/{image_id}")
+def read_generated_image(
+    image_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    del current
+    image = db.get(GeneratedImage, image_id)
+    if not image:
+        raise HTTPException(status_code=404, detail="Generated image not found")
+    path = Path(image.image_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Generated image file not found")
+    return FileResponse(path=path, media_type="image/png")

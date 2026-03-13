@@ -31,6 +31,12 @@ class ChannelPublishState(str, Enum):
     skipped = "skipped"
 
 
+class ContentApprovalState(str, Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class DocumentType(str, Enum):
     pdf = "pdf"
     docx = "docx"

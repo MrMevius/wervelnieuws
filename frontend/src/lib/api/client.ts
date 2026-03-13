@@ -66,6 +66,23 @@ export type ContentVersion = {
   created_at: string;
 };
 
+export type ContentChannelVariant = {
+  id: string;
+  content_version_id: string;
+  topic_id: string;
+  channel: "website" | "facebook" | "newsletter";
+  title: string;
+  article_body: string;
+  summary: string;
+  generated_image_id: string | null;
+  generated_image_path: string | null;
+  approval_state: "pending" | "approved" | "rejected";
+  approved_by_user_id: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type SourceTraceHit = {
   source: string;
   source_type: string;
@@ -84,6 +101,16 @@ export type ChannelStatus = {
   state: string;
   external_id: string;
   error_message: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CurrentSchedule = {
+  schedule_id: string;
+  topic_id: string;
+  content_version_id: string;
+  scheduled_for: string;
+  status: string;
   created_at: string;
   updated_at: string;
 };
@@ -439,6 +466,40 @@ export function triggerGeneration(topicId: string) {
   return request<{ version_id: string }>(`/content/${topicId}/generate`, { method: "POST" });
 }
 
+export function regenerateContent(topicId: string, channels: string[] = []) {
+  return request<{ version_id: string }>(`/content/${topicId}/regenerate`, {
+    method: "POST",
+    body: JSON.stringify({ channels })
+  });
+}
+
+export function listCurrentVariants(topicId: string) {
+  return request<ContentChannelVariant[]>(`/content/${topicId}/variants/current`);
+}
+
+export function updateVariant(
+  topicId: string,
+  channel: ContentChannelVariant["channel"],
+  payload: Pick<ContentChannelVariant, "title" | "article_body" | "summary">
+) {
+  return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function approveVariant(topicId: string, channel: ContentChannelVariant["channel"]) {
+  return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}/approve`, {
+    method: "POST"
+  });
+}
+
+export function rejectVariant(topicId: string, channel: ContentChannelVariant["channel"]) {
+  return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}/reject`, {
+    method: "POST"
+  });
+}
+
 export function listNotes(topicId: string) {
   return request<Note[]>(`/topics/${topicId}/notes`);
 }
@@ -491,6 +552,10 @@ export function scheduleTopic(topicId: string, publishAt: string) {
     method: "POST",
     body: JSON.stringify({ publish_at: publishAt })
   });
+}
+
+export function getCurrentSchedule(topicId: string) {
+  return request<CurrentSchedule>(`/content/${topicId}/schedule/current`);
 }
 
 export function channelStatus(topicId: string) {

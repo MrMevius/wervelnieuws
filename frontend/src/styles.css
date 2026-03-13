@@ -527,6 +527,59 @@ button:disabled {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.planning-detail-top-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+}
+
+.planning-notes-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-dates-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.detail-dates-grid label {
+  display: grid;
+  gap: 6px;
+}
+
+.channel-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.wysiwyg-field {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.wysiwyg-toolbar {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wysiwyg-editor {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 180px;
+  padding: 10px;
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.wysiwyg-editor.compact {
+  min-height: 110px;
+}
+
 .detail-actions {
   display: flex;
   gap: 10px;
@@ -787,6 +840,11 @@ thead th {
   }
 
   .planning-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .planning-detail-top-grid,
+  .detail-dates-grid {
     grid-template-columns: 1fr;
   }
 }

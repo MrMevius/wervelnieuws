@@ -1,3 +1,13 @@
+Iteratie #08
+- Pas de Planningsregel detail (dummy) pagina aan
+- Bouw 'm logischer op, ga efficiënter om met de beschikbare ruimte
+- Er worden per doelmedia een seperaat bericht en afbeelding gegenereerd, geef dus ook ruimte aan deze drie verschillende artikelen (bij voorkeur naast elkaar, overzichtelijk)
+- Geef d.m.v. een wysiwyg editor edit mogelijkheden
+- Maak het opmerkingenveld vrij invulbaar voor de GenAI waar additionele informatie in staat die gebruik moet worden bij het genereren van het artikel
+- Maak een knop dat je als gebruiker opnieuw de artikelen kunt genereren
+- Geef de gebruiker de mogelijkheid om per doelmedia de artikelen/afbeeldingen goed te keuren
+- 
+
 Iteratie #07
 - Importmogelijkheid toevoegen aan de planning
 - Accepteer CSV met vaste kolommen
