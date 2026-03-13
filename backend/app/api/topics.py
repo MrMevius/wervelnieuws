@@ -15,6 +15,7 @@ from app.core.rate_limit import rate_limit
 from app.core.settings import get_settings
 from app.models.entities import AuditEvent, Topic, TopicNote, TopicSourceDocument, User
 from app.models.enums import ChannelName
+from app.repositories.database_repository import DatabaseRepository
 from app.repositories.topic_repository import TopicRepository
 from app.schemas.topic import (
     AuditEventResponse,
@@ -33,12 +34,23 @@ router = APIRouter(prefix="/topics", tags=["topics"])
 CSV_COLUMNS = [
     "onderwerp",
     "thema",
+    "project",
     "geplande_datum",
     "opmerkingen",
     "website",
     "facebook",
     "nieuwsbrief",
 ]
+
+
+def _require_active_project(db: Session, project_id: str) -> None:
+    project_repo = DatabaseRepository(db)
+    project_repo.ensure_default_project()
+    project = project_repo.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=400, detail="Project not found")
+    if not project.is_active:
+        raise HTTPException(status_code=400, detail="Project is not active")
 
 
 def _parse_bool_cell(value: str) -> bool:
@@ -74,6 +86,7 @@ def list_topics(
     current: User = Depends(get_current_user), db: Session = Depends(get_db)
 ) -> list[Topic]:
     del current
+    DatabaseRepository(db).ensure_default_project()
     return TopicRepository(db).list()
 
 
@@ -83,6 +96,7 @@ def create_topic(
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Topic:
+    _require_active_project(db, payload.project_id)
     payload_data = payload.model_dump(exclude={"target_channels"})
     topic = TopicRepository(db).create(**payload_data)
     topic.target_channels = payload.target_channels
@@ -114,7 +128,10 @@ def update_topic(
     topic = TopicRepository(db).get(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    for key, value in payload.model_dump(exclude_none=True).items():
+    updates = payload.model_dump(exclude_none=True)
+    if "project_id" in updates:
+        _require_active_project(db, updates["project_id"])
+    for key, value in updates.items():
         setattr(topic, key, value)
     topic = TopicRepository(db).save(topic)
     AuditService(db).log("topic.updated", topic_id=topic.id, actor_user_id=current.id)
@@ -167,14 +184,23 @@ async def import_topics_csv(
         )
 
     repo = TopicRepository(db)
+    project_repo = DatabaseRepository(db)
+    project_repo.ensure_default_project()
     errors: list[dict[str, str | int]] = []
     created = 0
     for row_index, row in enumerate(reader, start=2):
         try:
             subject = (row.get("onderwerp") or "").strip()
             theme = (row.get("thema") or "").strip()
+            project_name = (row.get("project") or "").strip()
             editorial_notes = (row.get("opmerkingen") or "").strip()
             planning_at = _parse_planning_datetime(row.get("geplande_datum") or "")
+
+            project = project_repo.get_project_by_name(project_name)
+            if not project:
+                raise ValueError(f"Onbekend project '{project_name}'")
+            if not project.is_active:
+                raise ValueError(f"Project '{project_name}' is inactief")
 
             selected_channels: list[ChannelName] = []
             if _parse_bool_cell(row.get("website") or ""):
@@ -190,6 +216,7 @@ async def import_topics_csv(
                 title=subject,
                 subject=subject,
                 theme=theme,
+                project_id=project.id,
                 editorial_notes=editorial_notes,
                 planning_at=planning_at,
                 target_channels=selected_channels,

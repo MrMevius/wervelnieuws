@@ -667,6 +667,40 @@ tbody tr.row-selected {
   margin-bottom: 12px;
 }
 
+.admin-genai-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.admin-genai-form label {
+  display: grid;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.admin-genai-span-2 {
+  grid-column: span 2;
+}
+
+.admin-genai-form textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.admin-checkbox-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+}
+
+.admin-checkbox-field input[type="checkbox"] {
+  margin: 0;
+  transform: translateY(1px);
+}
+
 th,
 td {
   text-align: left;
@@ -833,6 +867,15 @@ thead th {
 
   .admin-create-user {
     grid-template-columns: 1fr;
+  }
+
+  .admin-genai-form {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .admin-genai-span-2 {
+    grid-column: span 1;
   }
 
   .planning-form {

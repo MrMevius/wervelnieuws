@@ -28,6 +28,8 @@ export type Topic = {
   title: string;
   subject: string;
   theme: string;
+  project_id: string;
+  project_name: string;
   editorial_notes: string;
   planning_at: string | null;
   workflow_state: string;
@@ -160,6 +162,35 @@ export type Project = {
   name: string;
   is_active: boolean;
 };
+
+export type GenAIConfig = {
+  system_prompt: string;
+  website_prompt: string;
+  facebook_prompt: string;
+  newsletter_prompt: string;
+  text_model: string;
+  image_model: string;
+  websearch_enabled: boolean;
+  websearch_max_results: number;
+  has_api_key: boolean;
+};
+
+export type GenAIModelOptions = {
+  text_models: string[];
+  image_models: string[];
+};
+
+export type UpdateGenAIConfigPayload = Partial<{
+  system_prompt: string;
+  website_prompt: string;
+  facebook_prompt: string;
+  newsletter_prompt: string;
+  text_model: string;
+  image_model: string;
+  websearch_enabled: boolean;
+  websearch_max_results: number;
+  openai_api_key: string;
+}>;
 
 export type DatabaseDocument = {
   id: string;
@@ -337,6 +368,21 @@ export function updateAdminProject(projectId: string, payload: { name?: string; 
   });
 }
 
+export function getAdminGenAIConfig() {
+  return request<GenAIConfig>("/admin/genai-config");
+}
+
+export function getAdminGenAIModelOptions() {
+  return request<GenAIModelOptions>("/admin/genai-model-options");
+}
+
+export function updateAdminGenAIConfig(payload: UpdateGenAIConfigPayload) {
+  return request<GenAIConfig>("/admin/genai-config", {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
 export function listDatabaseProjects() {
   return request<Project[]>("/database/projects");
 }
@@ -433,6 +479,7 @@ export type CreateTopicPayload = {
   title: string;
   subject: string;
   theme: string;
+  project_id: string;
   editorial_notes: string;
   planning_at: string | null;
   target_channels: string[];

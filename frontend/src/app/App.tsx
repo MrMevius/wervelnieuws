@@ -8,6 +8,8 @@ import {
   ContentVersion,
   CurrentUser,
   DatabaseDocument,
+  GenAIConfig,
+  GenAIModelOptions,
   Project,
   SourceTraceHit,
   Topic,
@@ -28,6 +30,8 @@ import {
   importTopicsCsv,
   listAdminUsers,
   getCurrentSchedule,
+  getAdminGenAIConfig,
+  getAdminGenAIModelOptions,
   listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
@@ -42,6 +46,7 @@ import {
   updateTopic,
   updateVariant,
   updateAdminUserActive,
+  updateAdminGenAIConfig,
   updateAdminProject,
   updateAdminUser,
   uploadDatabaseDocumentWithProgress,
@@ -332,6 +337,7 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
   type PlanningSortKey =
     | "subject"
     | "theme"
+    | "project"
     | "status"
     | "planning_at"
     | "published_at"
@@ -344,6 +350,12 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [newSubject, setNewSubject] = useState("");
   const [newTheme, setNewTheme] = useState("");
+  const projectsQuery = useQuery({
+    queryKey: ["database-projects"],
+    queryFn: listDatabaseProjects
+  });
+  const [newProjectId, setNewProjectId] = useState("");
+  const [projectFilterId, setProjectFilterId] = useState("all");
   const [newPlanningAt, setNewPlanningAt] = useState("");
   const [newChannels, setNewChannels] = useState<string[]>([
     "website",
@@ -369,12 +381,23 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
   const [sortKey, setSortKey] = useState<PlanningSortKey>("planning_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
+  useEffect(() => {
+    if (newProjectId) {
+      return;
+    }
+    const firstProject = projectsQuery.data?.[0];
+    if (firstProject) {
+      setNewProjectId(firstProject.id);
+    }
+  }, [projectsQuery.data, newProjectId]);
+
   const createTopicMutation = useMutation({
     mutationFn: createTopic,
     onSuccess: () => {
       setFeedback("Planningsregel toegevoegd.");
       setNewSubject("");
       setNewTheme("");
+      setNewProjectId(projectsQuery.data?.[0]?.id ?? "");
       setNewPlanningAt("");
       setNewChannels(["website", "facebook", "newsletter"]);
       queryClient.invalidateQueries({ queryKey: ["topics"] });
@@ -418,7 +441,7 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       const message = error instanceof Error ? error.message : "";
       if (message.includes("CSV columns must be exactly")) {
         setFeedback(
-          "CSV-kolommen zijn ongeldig. Gebruik: onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief"
+          "CSV-kolommen zijn ongeldig. Gebruik: onderwerp,thema,project,geplande_datum,opmerkingen,website,facebook,nieuwsbrief"
         );
         return;
       }
@@ -426,9 +449,15 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
     }
   });
 
-  const sortedTopics = [...topics].sort((left, right) => {
+  const filteredTopics = topics.filter((topic) =>
+    projectFilterId === "all" ? true : topic.project_id === projectFilterId
+  );
+
+  const sortedTopics = [...filteredTopics].sort((left, right) => {
     const leftStatus = displayStatus(left.workflow_state);
     const rightStatus = displayStatus(right.workflow_state);
+    const leftProject = left.project_name;
+    const rightProject = right.project_name;
     const leftPlan = left.planning_at ? new Date(left.planning_at).getTime() : 0;
     const rightPlan = right.planning_at ? new Date(right.planning_at).getTime() : 0;
     const leftWeb = left.target_channels.includes("website") ? 1 : 0;
@@ -442,6 +471,8 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       compare = left.subject.localeCompare(right.subject);
     } else if (sortKey === "theme") {
       compare = left.theme.localeCompare(right.theme);
+    } else if (sortKey === "project") {
+      compare = leftProject.localeCompare(rightProject);
     } else if (sortKey === "status") {
       compare = leftStatus.localeCompare(rightStatus);
     } else if (sortKey === "planning_at") {
@@ -482,10 +513,15 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       setFeedback("Kies een thema.");
       return;
     }
+    if (!newProjectId) {
+      setFeedback("Kies een project.");
+      return;
+    }
     createTopicMutation.mutate({
       title: newSubject.trim(),
       subject: newSubject.trim(),
       theme: newTheme.trim(),
+      project_id: newProjectId,
       editorial_notes: "",
       planning_at: new Date(newPlanningAt).toISOString(),
       target_channels: newChannels
@@ -558,8 +594,24 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
             disabled={importCsvMutation.isPending}
           />
           <span className="muted small-text">
-            Vaste kolommen: onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief
+            Vaste kolommen: onderwerp,thema,project,geplande_datum,opmerkingen,website,facebook,nieuwsbrief
           </span>
+        </label>
+
+        <label>
+          Projectfilter
+          <select
+            aria-label="Projectfilter"
+            value={projectFilterId}
+            onChange={(event) => setProjectFilterId(event.target.value)}
+          >
+            <option value="all">Alle projecten</option>
+            {(projectsQuery.data ?? []).map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
         </label>
 
         <form className="planning-form" onSubmit={submitPlanningRule}>
@@ -583,6 +635,21 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
             {planningThemeOptions.map((themeOption) => (
               <option key={themeOption} value={themeOption}>
                 {themeOption}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Project"
+            value={newProjectId}
+            onChange={(event) => setNewProjectId(event.target.value)}
+            required
+          >
+            <option value="" disabled>
+              Kies project
+            </option>
+            {(projectsQuery.data ?? []).map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
               </option>
             ))}
           </select>
@@ -644,6 +711,9 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
               <th aria-sort={ariaSortFor("theme")}>
                 <button type="button" className={`table-sort ${sortClass("theme")}`} onClick={() => toggleSort("theme")}>Thema</button>
               </th>
+              <th aria-sort={ariaSortFor("project")}>
+                <button type="button" className={`table-sort ${sortClass("project")}`} onClick={() => toggleSort("project")}>Project</button>
+              </th>
               <th aria-sort={ariaSortFor("status")}>
                 <button type="button" className={`table-sort ${sortClass("status")}`} onClick={() => toggleSort("status")}>Status</button>
               </th>
@@ -666,15 +736,16 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
             </tr>
           </thead>
           <tbody>
-            {topics.length === 0 && (
+            {sortedTopics.length === 0 && (
               <tr>
-                <td colSpan={9}>Nog geen records beschikbaar.</td>
+                <td colSpan={10}>Nog geen records beschikbaar.</td>
               </tr>
             )}
             {sortedTopics.map((topic) => (
               <tr key={topic.id}>
                 <td>{topic.subject}</td>
                 <td>{topic.theme}</td>
+                <td>{topic.project_name}</td>
                 <td>
                   <span title={statusHelp(topic.workflow_state)}>{displayStatus(topic.workflow_state)}</span>
                 </td>
@@ -1796,6 +1867,7 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
           </tbody>
         </table>
       </div>
+
     </section>
   );
 }
@@ -2005,6 +2077,17 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
+  const [genAIApiKey, setGenAIApiKey] = useState("");
+  const [genAIForm, setGenAIForm] = useState<{
+    system_prompt: string;
+    website_prompt: string;
+    facebook_prompt: string;
+    newsletter_prompt: string;
+    text_model: string;
+    image_model: string;
+    websearch_enabled: boolean;
+    websearch_max_results: number;
+  } | null>(null);
   const [projectDrafts, setProjectDrafts] = useState<Record<string, string>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<
     Record<string, { password: string; confirm: string }>
@@ -2021,6 +2104,42 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     queryFn: listAdminProjects,
     enabled: currentUser?.is_admin === true
   });
+
+  const genAIConfigQuery = useQuery({
+    queryKey: ["admin-genai-config"],
+    queryFn: getAdminGenAIConfig,
+    enabled: currentUser?.is_admin === true
+  });
+
+  const modelOptionsQuery = useQuery({
+    queryKey: ["admin-genai-model-options"],
+    queryFn: getAdminGenAIModelOptions,
+    enabled: currentUser?.is_admin === true
+  });
+
+  const modelOptions: GenAIModelOptions = modelOptionsQuery.data ?? {
+    text_models: [],
+    image_models: []
+  };
+  const textModelOptions = modelOptions.text_models;
+  const imageModelOptions = modelOptions.image_models;
+
+  useEffect(() => {
+    if (!genAIConfigQuery.data) {
+      return;
+    }
+    setGenAIForm({
+      system_prompt: genAIConfigQuery.data.system_prompt,
+      website_prompt: genAIConfigQuery.data.website_prompt,
+      facebook_prompt: genAIConfigQuery.data.facebook_prompt,
+      newsletter_prompt: genAIConfigQuery.data.newsletter_prompt,
+      text_model: genAIConfigQuery.data.text_model,
+      image_model: genAIConfigQuery.data.image_model,
+      websearch_enabled: genAIConfigQuery.data.websearch_enabled,
+      websearch_max_results: genAIConfigQuery.data.websearch_max_results
+    });
+    setGenAIApiKey("");
+  }, [genAIConfigQuery.data]);
 
   const updateMutation = useMutation({
     mutationFn: ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) =>
@@ -2167,6 +2286,33 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const updateGenAIMutation = useMutation({
+    mutationFn: (payload: {
+      system_prompt: string;
+      website_prompt: string;
+      facebook_prompt: string;
+      newsletter_prompt: string;
+      text_model: string;
+      image_model: string;
+      websearch_enabled: boolean;
+      websearch_max_results: number;
+      openai_api_key?: string;
+    }) => updateAdminGenAIConfig(payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<GenAIConfig | undefined>(["admin-genai-config"], updated);
+      setGenAIApiKey("");
+      setFeedback("GenAI-config opgeslagen.");
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("422")) {
+        setFeedback("GenAI-config bevat ongeldige waarden.");
+        return;
+      }
+      setFeedback("GenAI-config opslaan is mislukt.");
+    }
+  });
+
   const passwordMutation = useMutation({
     mutationFn: ({ userId, password }: { userId: string; password: string }) =>
       changeAdminUserPassword(userId, password),
@@ -2208,6 +2354,21 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }));
   }
 
+  function updateGenAIField<K extends keyof NonNullable<typeof genAIForm>>(
+    field: K,
+    value: NonNullable<typeof genAIForm>[K]
+  ) {
+    setGenAIForm((current) => {
+      if (!current) {
+        return current;
+      }
+      return {
+        ...current,
+        [field]: value
+      };
+    });
+  }
+
   if (!currentUser?.is_admin) {
     return (
       <section className="panel">
@@ -2217,7 +2378,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isLoading || projectsQuery.isLoading) {
+  if (usersQuery.isLoading || projectsQuery.isLoading || genAIConfigQuery.isLoading) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -2226,7 +2387,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isError || projectsQuery.isError) {
+  if (usersQuery.isError || projectsQuery.isError || genAIConfigQuery.isError) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -2536,6 +2697,143 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </tbody>
         </table>
       </div>
+
+      <h2>GenAI configuratie</h2>
+      <p className="muted">Compact beheer van prompts, modellen en websearch.</p>
+      {genAIForm && (
+        <form
+          className="admin-genai-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setFeedback(null);
+            updateGenAIMutation.mutate({
+              ...genAIForm,
+              ...(genAIApiKey.trim() ? { openai_api_key: genAIApiKey.trim() } : {})
+            });
+          }}
+        >
+          <label className="admin-genai-span-2">
+            Systeemprompt
+            <textarea
+              value={genAIForm.system_prompt}
+              onChange={(event) => updateGenAIField("system_prompt", event.target.value)}
+              rows={10}
+              required
+            />
+          </label>
+          <label>
+            Website prompt
+            <input
+              type="text"
+              value={genAIForm.website_prompt}
+              onChange={(event) => updateGenAIField("website_prompt", event.target.value)}
+              minLength={5}
+              required
+            />
+          </label>
+          <label>
+            Facebook prompt
+            <input
+              type="text"
+              value={genAIForm.facebook_prompt}
+              onChange={(event) => updateGenAIField("facebook_prompt", event.target.value)}
+              minLength={5}
+              required
+            />
+          </label>
+          <label>
+            Nieuwsbrief prompt
+            <input
+              type="text"
+              value={genAIForm.newsletter_prompt}
+              onChange={(event) => updateGenAIField("newsletter_prompt", event.target.value)}
+              minLength={5}
+              required
+            />
+          </label>
+          <label>
+            Tekstmodel
+            <select
+              value={genAIForm.text_model}
+              onChange={(event) => updateGenAIField("text_model", event.target.value)}
+            >
+              {!textModelOptions.includes(genAIForm.text_model) && (
+                <option value={genAIForm.text_model}>{genAIForm.text_model}</option>
+              )}
+              {textModelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Afbeeldingsmodel
+            <select
+              value={genAIForm.image_model}
+              onChange={(event) => updateGenAIField("image_model", event.target.value)}
+            >
+              {!imageModelOptions.includes(genAIForm.image_model) && (
+                <option value={genAIForm.image_model}>{genAIForm.image_model}</option>
+              )}
+              {imageModelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            OpenAI API key {genAIConfigQuery.data?.has_api_key ? "(ingesteld)" : "(niet ingesteld)"}
+            <input
+              type="password"
+              value={genAIApiKey}
+              onChange={(event) => setGenAIApiKey(event.target.value)}
+              placeholder="Leeg laten om bestaande key te behouden"
+            />
+          </label>
+          <label className="admin-checkbox-field">
+            <input
+              type="checkbox"
+              checked={genAIForm.websearch_enabled}
+              onChange={(event) =>
+                updateGenAIField("websearch_enabled", event.target.checked)
+              }
+            />
+            Websearch inschakelen (standaard uit)
+          </label>
+          <label>
+            Max websearch resultaten
+            <input
+              type="number"
+              min={1}
+              max={10}
+              value={genAIForm.websearch_max_results}
+              onChange={(event) =>
+                updateGenAIField(
+                  "websearch_max_results",
+                  Math.max(1, Math.min(10, Number(event.target.value) || 1))
+                )
+              }
+              required
+            />
+          </label>
+          <div className="admin-account-actions">
+            <button
+              type="submit"
+              disabled={
+                updateGenAIMutation.isPending ||
+                genAIForm.system_prompt.trim().length < 10 ||
+                genAIForm.website_prompt.trim().length < 5 ||
+                genAIForm.facebook_prompt.trim().length < 5 ||
+                genAIForm.newsletter_prompt.trim().length < 5
+              }
+            >
+              GenAI-config opslaan
+            </button>
+          </div>
+        </form>
+      )}
     </section>
   );
 }

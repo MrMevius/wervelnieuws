@@ -9,8 +9,15 @@ def _login(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _default_project_id(client, headers):
+    projects = client.get("/api/database/projects", headers=headers)
+    assert projects.status_code == 200
+    return projects.json()[0]["id"]
+
+
 def test_upload_txt_document_ingests(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -18,6 +25,7 @@ def test_upload_txt_document_ingests(client):
             "title": "Geluid meting",
             "subject": "Meetwaarden",
             "theme": "Milieu",
+            "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
         },
@@ -40,6 +48,7 @@ def test_upload_txt_document_ingests(client):
 
 def test_upload_rejects_empty_document(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -47,6 +56,7 @@ def test_upload_rejects_empty_document(client):
             "title": "Lege bron",
             "subject": "Controle",
             "theme": "Validatie",
+            "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
         },

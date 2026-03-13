@@ -7,6 +7,7 @@ from app.core.db import Base
 from app.models.entities import (
     ChannelPublicationState,
     ContentVersion,
+    Project,
     PublicationRecord,
     PublicationSchedule,
     RetryJob,
@@ -47,10 +48,14 @@ def _mock_publishers(workflow: PublishingWorkflow) -> None:
 
 def test_publish_due_claims_once_and_avoids_duplicates():
     db = _session()
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db.add(project)
+    db.flush()
     topic = Topic(
         title="T",
         subject="S",
         theme="Th",
+        project_id=project.id,
         editorial_notes="",
         workflow_state=WorkflowState.scheduled,
     )
@@ -92,10 +97,14 @@ def test_publish_due_claims_once_and_avoids_duplicates():
 
 def test_retry_flow_executes_publish_and_resolves_job():
     db = _session()
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db.add(project)
+    db.flush()
     topic = Topic(
         title="T",
         subject="S",
         theme="Th",
+        project_id=project.id,
         editorial_notes="",
         workflow_state=WorkflowState.error,
     )
@@ -156,10 +165,14 @@ def test_dual_worker_claim_only_one_succeeds(tmp_path):
     db_url = f"sqlite:///{db_file}"
 
     setup = _session(db_url)
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    setup.add(project)
+    setup.flush()
     topic = Topic(
         title="T",
         subject="S",
         theme="Th",
+        project_id=project.id,
         editorial_notes="",
         workflow_state=WorkflowState.scheduled,
     )
@@ -201,10 +214,14 @@ def test_dual_worker_claim_only_one_succeeds(tmp_path):
 
 def test_publish_respects_topic_target_channels():
     db = _session()
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db.add(project)
+    db.flush()
     topic = Topic(
         title="T",
         subject="S",
         theme="Th",
+        project_id=project.id,
         editorial_notes="",
         workflow_state=WorkflowState.scheduled,
         target_channels_json='["website"]',

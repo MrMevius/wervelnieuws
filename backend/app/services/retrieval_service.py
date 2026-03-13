@@ -14,7 +14,9 @@ class RetrievalService:
         database_limit = max(1, limit - topic_limit)
 
         topic_hits = self._search_topic_chunks(topic.id, query, topic_limit)
-        database_hits = self._search_database_chunks(query, database_limit)
+        database_hits = self._search_database_chunks(
+            query, database_limit, topic.project_id
+        )
         return topic_hits + database_hits
 
     def _build_query(self, topic: Topic) -> str:
@@ -55,7 +57,9 @@ class RetrievalService:
             for row in rows.fetchall()
         ]
 
-    def _search_database_chunks(self, query: str, limit: int) -> list[dict[str, str]]:
+    def _search_database_chunks(
+        self, query: str, limit: int, project_id: str
+    ) -> list[dict[str, str]]:
         rows = self.db.execute(
             text(
                 """
@@ -71,11 +75,11 @@ class RetrievalService:
                 JOIN knowledge_documents d ON d.id = f.knowledge_document_id
                 JOIN projects p ON p.id = f.project_id
                 JOIN knowledge_chunks c ON c.id = f.chunk_id
-                WHERE f.text MATCH :q
+                WHERE f.text MATCH :q AND f.project_id = :project_id
                 LIMIT :limit
                 """
             ),
-            {"q": query, "limit": limit},
+            {"q": query, "limit": limit, "project_id": project_id},
         )
         return [
             {

@@ -1,5 +1,5 @@
 from sqlalchemy import desc, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.entities import ContentVersion, Topic, TopicNote, TopicSourceDocument
 
@@ -10,11 +10,17 @@ class TopicRepository:
 
     def list(self) -> list[Topic]:
         return list(
-            self.db.scalars(select(Topic).order_by(desc(Topic.created_at))).all()
+            self.db.scalars(
+                select(Topic)
+                .options(joinedload(Topic.project))
+                .order_by(desc(Topic.created_at))
+            ).all()
         )
 
     def get(self, topic_id: str) -> Topic | None:
-        return self.db.get(Topic, topic_id)
+        return self.db.scalar(
+            select(Topic).options(joinedload(Topic.project)).where(Topic.id == topic_id)
+        )
 
     def create(self, **kwargs) -> Topic:
         topic = Topic(**kwargs)

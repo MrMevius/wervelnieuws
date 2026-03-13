@@ -4,7 +4,13 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import Base
-from app.models.entities import ContentVersion, PublicationSchedule, RetryJob, Topic
+from app.models.entities import (
+    ContentVersion,
+    Project,
+    PublicationSchedule,
+    RetryJob,
+    Topic,
+)
 from app.models.enums import RetryStatus, WorkflowState
 from app.workflows.publishing_workflow import PublishingWorkflow
 from app.workflows.worker_cycle import run_worker_cycle
@@ -37,10 +43,14 @@ def _mock_publishers(workflow: PublishingWorkflow) -> None:
 
 def test_worker_cycle_resolves_publish_retry_job(monkeypatch):
     db = _session()
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db.add(project)
+    db.flush()
     topic = Topic(
         title="T",
         subject="S",
         theme="Th",
+        project_id=project.id,
         editorial_notes="",
         workflow_state=WorkflowState.error,
     )

@@ -106,6 +106,26 @@ def _default_about() -> AboutResponse:
                     "Goedkeuren of afwijzen gebeurt nu per medium, met akkoord op regelniveau pas wanneer alle media akkoord zijn.",
                 ],
             },
+            {
+                "iteration": "09",
+                "date": "2026-03-13",
+                "title": "GenAI-instellingen vanuit Admin en optionele websearch",
+                "highlights": [
+                    "In Admin kun je nu centrale GenAI-instellingen beheren, zoals prompts en modelkeuze.",
+                    "Websearch is nu als optie beschikbaar voor generatie, maar staat standaard uit.",
+                    "Wanneer websearch aan staat, zie je in bronweergave duidelijk welke webcontext is gebruikt.",
+                ],
+            },
+            {
+                "iteration": "10",
+                "date": "2026-03-14",
+                "title": "Planningregels nu gekoppeld aan projecten",
+                "highlights": [
+                    "Elke planningsregel krijgt nu een verplicht project, zodat direct duidelijk is waar het bericht bij hoort.",
+                    "In Planning zie je het project als extra kolom en kun je regels filteren per project.",
+                    "AI gebruikt nu alleen databasebronnen uit hetzelfde project als de planningsregel.",
+                ],
+            },
         ],
     )
 

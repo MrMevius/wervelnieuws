@@ -10,8 +10,15 @@ def _login(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _default_project_id(client, headers):
+    projects = client.get("/api/database/projects", headers=headers)
+    assert projects.status_code == 200
+    return projects.json()[0]["id"]
+
+
 def test_generation_creates_version(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -19,6 +26,7 @@ def test_generation_creates_version(client):
             "title": "Onderhoud turbines",
             "subject": "Onderhoud",
             "theme": "Techniek",
+            "project_id": project_id,
             "editorial_notes": "Feiten uit bron",
             "planning_at": None,
         },
@@ -36,6 +44,7 @@ def test_generation_creates_version(client):
 
 def test_generation_combines_topic_and_database_sources(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -43,6 +52,7 @@ def test_generation_combines_topic_and_database_sources(client):
             "title": "Onderhoud turbine A",
             "subject": "Onderhoud",
             "theme": "Techniek",
+            "project_id": project_id,
             "editorial_notes": "Gebruik alleen bronnen",
             "planning_at": None,
         },
@@ -60,10 +70,6 @@ def test_generation_combines_topic_and_database_sources(client):
         },
     )
     assert topic_doc.status_code == 200
-
-    projects = client.get("/api/database/projects", headers=headers)
-    assert projects.status_code == 200
-    project_id = projects.json()[0]["id"]
 
     db_doc = client.post(
         "/api/database/documents",
@@ -99,3 +105,37 @@ def test_generation_combines_topic_and_database_sources(client):
     assert all("chunk_index" in item for item in trace)
     assert len(typed_trace) == len(trace)
     assert all("source_type" in item for item in typed_trace)
+
+
+def test_generation_includes_websearch_trace_when_enabled(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+
+    config_update = client.patch(
+        "/api/admin/genai-config",
+        headers=headers,
+        json={"websearch_enabled": True, "websearch_max_results": 2},
+    )
+    assert config_update.status_code == 200
+    assert config_update.json()["websearch_enabled"] is True
+
+    topic = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "Buurtupdate",
+            "subject": "Buurtupdate",
+            "theme": "Communicatie",
+            "project_id": project_id,
+            "editorial_notes": "Gebruik lokale bronnen en wees helder.",
+            "planning_at": None,
+        },
+    ).json()
+
+    gen = client.post(f"/api/content/{topic['id']}/generate", headers=headers)
+    assert gen.status_code == 200
+
+    versions = client.get(f"/api/content/{topic['id']}/versions", headers=headers)
+    assert versions.status_code == 200
+    trace = json.loads(versions.json()[0]["source_trace_json"])
+    assert any(hit.get("source_type") == "websearch" for hit in trace)

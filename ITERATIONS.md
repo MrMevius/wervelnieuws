@@ -1,3 +1,15 @@
+Iteratie #10
+- breid de planning uit met:
+- project
+
+Iteratie #09
+- Tekstgeneratie ontwikkelen
+- Op basis van ondererp voor de drie doelmedia een tekst genereren
+- Aanvullende info uit het infoveld meenemen
+- Waarnodig informatie uit bestanden in de database meenemen
+- In het admin menu een pagina waar de genai config te bedienen is (system prompt, OpenAI API integratie, andere suggesties)
+- Mogelijkheid voor genai to websearch inbouwen
+
 Iteratie #08
 - Pas de Planningsregel detail (dummy) pagina aan
 - Bouw 'm logischer op, ga efficiënter om met de beschikbare ruimte

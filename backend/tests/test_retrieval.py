@@ -51,9 +51,16 @@ def db_session(tmp_path: Path) -> Session:
 
 def test_retrieval_combines_topic_and_database_hits(db_session: Session):
     user = User(username="admin", password_hash="x", is_active=True, is_admin=True)
-    topic = Topic(title="Onderhoud", subject="Onderhoud", theme="Techniek")
     project = Project(name="Windpark de Boldijk", is_active=True)
-    db_session.add_all([user, topic, project])
+    db_session.add_all([user, project])
+    db_session.flush()
+    topic = Topic(
+        title="Onderhoud",
+        subject="Onderhoud",
+        theme="Techniek",
+        project_id=project.id,
+    )
+    db_session.add(topic)
     db_session.flush()
 
     topic_doc = TopicSourceDocument(
@@ -123,7 +130,15 @@ def test_retrieval_combines_topic_and_database_hits(db_session: Session):
 
 
 def test_retrieval_keeps_topic_only_flow_when_database_has_no_hits(db_session: Session):
-    topic = Topic(title="Planning", subject="Planning", theme="Communicatie")
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+    topic = Topic(
+        title="Planning",
+        subject="Planning",
+        theme="Communicatie",
+        project_id=project.id,
+    )
     db_session.add(topic)
     db_session.flush()
 
@@ -159,3 +174,81 @@ def test_retrieval_keeps_topic_only_flow_when_database_has_no_hits(db_session: S
     hits = RetrievalService(db_session).retrieve_context(topic, limit=4)
     assert hits
     assert all(hit["source_type"] == "topic" for hit in hits)
+
+
+def test_retrieval_filters_database_hits_by_topic_project(db_session: Session):
+    user = User(username="admin2", password_hash="x", is_active=True, is_admin=True)
+    project_a = Project(name="Project A", is_active=True)
+    project_b = Project(name="Project B", is_active=True)
+    db_session.add_all([user, project_a, project_b])
+    db_session.flush()
+
+    topic = Topic(
+        title="Netwerk",
+        subject="Onderhoud",
+        theme="Techniek",
+        project_id=project_a.id,
+    )
+    db_session.add(topic)
+    db_session.flush()
+
+    doc_a = KnowledgeDocument(
+        project_id=project_a.id,
+        uploaded_by_user_id=user.id,
+        filename="bron-a.txt",
+        file_path="/tmp/bron-a.txt",
+        content_type="text/plain",
+        doc_type=DocumentType.txt,
+        status=DocumentStatus.indexed,
+        extraction_error="",
+        size_bytes=100,
+    )
+    doc_b = KnowledgeDocument(
+        project_id=project_b.id,
+        uploaded_by_user_id=user.id,
+        filename="bron-b.txt",
+        file_path="/tmp/bron-b.txt",
+        content_type="text/plain",
+        doc_type=DocumentType.txt,
+        status=DocumentStatus.indexed,
+        extraction_error="",
+        size_bytes=100,
+    )
+    db_session.add_all([doc_a, doc_b])
+    db_session.flush()
+
+    chunk_a = KnowledgeChunk(
+        knowledge_document_id=doc_a.id,
+        project_id=project_a.id,
+        chunk_index=0,
+        text="Onderhoud met veiligheidsscan project a.",
+        metadata_json="{}",
+    )
+    chunk_b = KnowledgeChunk(
+        knowledge_document_id=doc_b.id,
+        project_id=project_b.id,
+        chunk_index=0,
+        text="Onderhoud met veiligheidsscan project b.",
+        metadata_json="{}",
+    )
+    db_session.add_all([chunk_a, chunk_b])
+    db_session.flush()
+
+    db_session.execute(
+        text(
+            "INSERT INTO knowledge_chunks_fts(chunk_id, knowledge_document_id, project_id, text) VALUES (:c, :d, :p, :x)"
+        ),
+        {"c": chunk_a.id, "d": doc_a.id, "p": project_a.id, "x": chunk_a.text},
+    )
+    db_session.execute(
+        text(
+            "INSERT INTO knowledge_chunks_fts(chunk_id, knowledge_document_id, project_id, text) VALUES (:c, :d, :p, :x)"
+        ),
+        {"c": chunk_b.id, "d": doc_b.id, "p": project_b.id, "x": chunk_b.text},
+    )
+    db_session.commit()
+
+    hits = RetrievalService(db_session).retrieve_context(topic, limit=6)
+    database_hits = [hit for hit in hits if hit.get("source_type") == "database"]
+    assert database_hits
+    assert all(hit.get("project_id") == project_a.id for hit in database_hits)

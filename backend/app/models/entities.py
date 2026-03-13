@@ -73,6 +73,7 @@ class Project(Base, TimestampMixin):
     documents: Mapped[list["KnowledgeDocument"]] = relationship(
         back_populates="project", cascade="all,delete"
     )
+    topics: Mapped[list["Topic"]] = relationship(back_populates="project")
 
 
 class KnowledgeDocument(Base, TimestampMixin):
@@ -126,6 +127,9 @@ class Topic(Base, TimestampMixin):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     theme: Mapped[str] = mapped_column(String(255), nullable=False)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False
+    )
     editorial_notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
     planning_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -149,6 +153,11 @@ class Topic(Base, TimestampMixin):
     versions: Mapped[list["ContentVersion"]] = relationship(
         back_populates="topic", cascade="all,delete"
     )
+    project: Mapped[Project] = relationship(back_populates="topics")
+
+    @property
+    def project_name(self) -> str:
+        return self.project.name if self.project else ""
 
     @property
     def target_channels(self) -> list[ChannelName]:

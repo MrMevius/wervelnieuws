@@ -6,8 +6,15 @@ def _login(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _default_project_id(client, headers):
+    projects = client.get("/api/database/projects", headers=headers)
+    assert projects.status_code == 200
+    return projects.json()[0]["id"]
+
+
 def test_review_support_endpoints(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -15,6 +22,7 @@ def test_review_support_endpoints(client):
             "title": "Planning update",
             "subject": "Planning",
             "theme": "Werkfase",
+            "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
         },
@@ -39,6 +47,7 @@ def test_review_support_endpoints(client):
 
 def test_current_schedule_endpoint_returns_latest_schedule(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -46,6 +55,7 @@ def test_current_schedule_endpoint_returns_latest_schedule(client):
             "title": "Planning update",
             "subject": "Planning",
             "theme": "Werkfase",
+            "project_id": project_id,
             "editorial_notes": "",
             "planning_at": "2026-03-20T09:00:00Z",
         },

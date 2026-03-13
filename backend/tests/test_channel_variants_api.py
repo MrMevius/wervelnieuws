@@ -6,8 +6,15 @@ def _login(client):
     return {"Authorization": f"Bearer {token}"}
 
 
+def _default_project_id(client, headers):
+    projects = client.get("/api/database/projects", headers=headers)
+    assert projects.status_code == 200
+    return projects.json()[0]["id"]
+
+
 def test_channel_variants_flow_and_topic_approval_guard(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -15,6 +22,7 @@ def test_channel_variants_flow_and_topic_approval_guard(client):
             "title": "Kanaaltest",
             "subject": "Kanaaltest",
             "theme": "Planning",
+            "project_id": project_id,
             "editorial_notes": "Gebruik lokale context",
             "planning_at": None,
             "target_channels": ["website", "facebook"],
@@ -67,6 +75,7 @@ def test_channel_variants_flow_and_topic_approval_guard(client):
 
 def test_regenerate_with_selected_channels(client):
     headers = _login(client)
+    project_id = _default_project_id(client, headers)
     topic = client.post(
         "/api/topics",
         headers=headers,
@@ -74,6 +83,7 @@ def test_regenerate_with_selected_channels(client):
             "title": "Regenerate",
             "subject": "Regenerate",
             "theme": "Planning",
+            "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
             "target_channels": ["website", "facebook", "newsletter"],

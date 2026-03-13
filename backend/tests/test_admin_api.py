@@ -324,3 +324,76 @@ def test_admin_project_endpoints_require_admin_role(client):
     )
     assert create_response.status_code == 403
     assert create_response.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_get_and_update_genai_config(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    initial = client.get("/api/admin/genai-config", headers=admin_headers)
+    assert initial.status_code == 200
+    initial_payload = initial.json()
+    assert "system_prompt" in initial_payload
+    assert "website_prompt" in initial_payload
+    assert "openai_api_key" not in initial_payload
+    assert initial_payload["has_api_key"] in {True, False}
+
+    update = client.patch(
+        "/api/admin/genai-config",
+        headers=admin_headers,
+        json={
+            "websearch_enabled": True,
+            "websearch_max_results": 4,
+            "website_prompt": "Websiteprompt iteratie 9",
+            "openai_api_key": "test-secret-key",
+        },
+    )
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["websearch_enabled"] is True
+    assert updated["websearch_max_results"] == 4
+    assert updated["website_prompt"] == "Websiteprompt iteratie 9"
+    assert updated["has_api_key"] is True
+    assert "openai_api_key" not in updated
+
+    follow_up = client.get("/api/admin/genai-config", headers=admin_headers)
+    assert follow_up.status_code == 200
+    follow_up_payload = follow_up.json()
+    assert follow_up_payload["websearch_enabled"] is True
+    assert follow_up_payload["websearch_max_results"] == 4
+    assert follow_up_payload["has_api_key"] is True
+
+
+def test_genai_config_endpoints_require_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    get_response = client.get("/api/admin/genai-config", headers=editor_headers)
+    assert get_response.status_code == 403
+    assert get_response.json()["detail"] == "Admin access required"
+
+    patch_response = client.patch(
+        "/api/admin/genai-config",
+        headers=editor_headers,
+        json={"websearch_enabled": True},
+    )
+    assert patch_response.status_code == 403
+    assert patch_response.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_get_genai_model_options(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    response = client.get("/api/admin/genai-model-options", headers=admin_headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert "text_models" in payload
+    assert "image_models" in payload
+    assert "gpt-4.1-mini" in payload["text_models"]
+    assert "gpt-image-1" in payload["image_models"]
+
+
+def test_genai_model_options_endpoint_requires_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    response = client.get("/api/admin/genai-model-options", headers=editor_headers)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admin access required"

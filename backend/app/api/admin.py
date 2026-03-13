@@ -19,8 +19,42 @@ from app.schemas.database import (
     ProjectResponse,
     UpdateProjectRequest,
 )
+from app.schemas.genai import (
+    GenAIConfigResponse,
+    GenAIModelOptionsResponse,
+    UpdateGenAIConfigRequest,
+)
+from app.services.genai_config_service import GenAIConfigService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+@router.get("/genai-config", response_model=GenAIConfigResponse)
+def get_genai_config(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> GenAIConfigResponse:
+    del current
+    return GenAIConfigService(db).get_admin_config()
+
+
+@router.patch("/genai-config", response_model=GenAIConfigResponse)
+def update_genai_config(
+    payload: UpdateGenAIConfigRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> GenAIConfigResponse:
+    del current
+    return GenAIConfigService(db).update_config(payload)
+
+
+@router.get("/genai-model-options", response_model=GenAIModelOptionsResponse)
+def get_genai_model_options(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> GenAIModelOptionsResponse:
+    del current
+    return GenAIConfigService(db).get_model_options()
 
 
 @router.get("/projects", response_model=list[ProjectResponse])

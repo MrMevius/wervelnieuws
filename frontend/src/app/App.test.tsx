@@ -86,6 +86,32 @@ const mockApi = vi.hoisted(() => ({
     name: "Windpark de Boldijk Updated",
     is_active: false
   }),
+  getAdminGenAIConfig: vi.fn().mockResolvedValue({
+    system_prompt: "Standaard systeemprompt voor lokale windparkcommunicatie.",
+    website_prompt: "Schrijf uitgebreid voor website.",
+    facebook_prompt: "Schrijf kort voor Facebook.",
+    newsletter_prompt: "Schrijf overzichtelijk voor nieuwsbrief.",
+    text_model: "gpt-4.1-mini",
+    image_model: "gpt-image-1",
+    websearch_enabled: false,
+    websearch_max_results: 3,
+    has_api_key: false
+  }),
+  getAdminGenAIModelOptions: vi.fn().mockResolvedValue({
+    text_models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
+    image_models: ["gpt-image-1"]
+  }),
+  updateAdminGenAIConfig: vi.fn().mockResolvedValue({
+    system_prompt: "Aangepaste systeemprompt.",
+    website_prompt: "Websiteprompt",
+    facebook_prompt: "Facebookprompt",
+    newsletter_prompt: "Nieuwsbriefprompt",
+    text_model: "gpt-4.1-mini",
+    image_model: "gpt-image-1",
+    websearch_enabled: true,
+    websearch_max_results: 4,
+    has_api_key: true
+  }),
   listDatabaseProjects: vi.fn().mockResolvedValue([
     {
       id: "p1",
@@ -150,6 +176,8 @@ const mockApi = vi.hoisted(() => ({
     title: "Nieuw onderwerp",
     subject: "Nieuw onderwerp",
     theme: "Planning",
+    project_id: "p1",
+    project_name: "Windpark de Boldijk",
     editorial_notes: "Handmatig toegevoegd",
     planning_at: "2026-03-20T09:00:00Z",
     workflow_state: "draft",
@@ -161,6 +189,8 @@ const mockApi = vi.hoisted(() => ({
     title: "Titel",
     subject: "Onderwerp test",
     theme: "Thema test",
+    project_id: "p1",
+    project_name: "Windpark de Boldijk",
     editorial_notes: "Notitie",
     planning_at: null,
     workflow_state: "planned",
@@ -179,6 +209,8 @@ const mockApi = vi.hoisted(() => ({
       title: "Titel",
       subject: "Onderwerp test",
       theme: "Thema test",
+      project_id: "p1",
+      project_name: "Windpark de Boldijk",
       editorial_notes: "Notitie",
       planning_at: "2026-03-20T09:00:00Z",
       workflow_state: "draft",
@@ -685,6 +717,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("columnheader", { name: "Onderwerp" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Thema" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Project" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Geplande datum" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Plaatsingdatum" })).toBeInTheDocument();
@@ -742,15 +775,16 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Regel toevoegen" }));
 
     await waitFor(() => {
-      expect(mockApi.createTopic).toHaveBeenCalledWith(
-        expect.objectContaining({
-          title: "Handmatige regel",
-          subject: "Handmatige regel",
-          theme: "Planning",
-          editorial_notes: "",
-          target_channels: ["website", "facebook"]
-        }),
-        expect.any(Object)
+        expect(mockApi.createTopic).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Handmatige regel",
+            subject: "Handmatige regel",
+            theme: "Planning",
+            editorial_notes: "",
+            project_id: "p1",
+            target_channels: ["website", "facebook"]
+          }),
+          expect.any(Object)
       );
       expect(screen.getByText("Planningsregel toegevoegd.")).toBeInTheDocument();
     });
@@ -767,8 +801,8 @@ describe("App", () => {
     });
 
     const file = new File([
-      "onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief\n" +
-        "Regel 1,Planning,2026-03-20 09:00,Opmerking,ja,nee,1\n"
+      "onderwerp,thema,project,geplande_datum,opmerkingen,website,facebook,nieuwsbrief\n" +
+        "Regel 1,Planning,Windpark de Boldijk,2026-03-20 09:00,Opmerking,ja,nee,1\n"
     ], "planning.csv", { type: "text/csv" });
     fireEvent.change(screen.getByLabelText("CSV planning import"), {
       target: { files: [file] }
@@ -1025,6 +1059,43 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.createAdminProject).toHaveBeenCalledWith("Project Noord");
       expect(screen.getByText("Project toegevoegd.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to update GenAI configuration", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "GenAI configuratie" })).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Website prompt"), {
+      target: { value: "Websiteprompt iteratie 9" }
+    });
+    fireEvent.click(screen.getByLabelText("Websearch inschakelen (standaard uit)"));
+    fireEvent.change(screen.getByLabelText(/OpenAI API key/i), {
+      target: { value: "new-api-key" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "GenAI-config opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateAdminGenAIConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          website_prompt: "Websiteprompt iteratie 9",
+          websearch_enabled: true,
+          openai_api_key: "new-api-key"
+        })
+      );
+      expect(screen.getByText("GenAI-config opgeslagen.")).toBeInTheDocument();
     });
   });
 
