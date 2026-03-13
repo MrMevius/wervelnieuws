@@ -1,4 +1,6 @@
+import json
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from sqlalchemy import (
@@ -131,6 +133,11 @@ class Topic(Base, TimestampMixin):
         Enum(WorkflowState), default=WorkflowState.draft, nullable=False
     )
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    target_channels_json: Mapped[str] = mapped_column(
+        Text,
+        default='["website","facebook","newsletter"]',
+        nullable=False,
+    )
 
     source_documents: Mapped[list["TopicSourceDocument"]] = relationship(
         back_populates="topic", cascade="all,delete"
@@ -141,6 +148,41 @@ class Topic(Base, TimestampMixin):
     versions: Mapped[list["ContentVersion"]] = relationship(
         back_populates="topic", cascade="all,delete"
     )
+
+    @property
+    def target_channels(self) -> list[ChannelName]:
+        default_channels = [
+            ChannelName.website,
+            ChannelName.facebook,
+            ChannelName.newsletter,
+        ]
+        try:
+            parsed = json.loads(self.target_channels_json or "[]")
+        except (TypeError, ValueError):
+            return default_channels
+        if not isinstance(parsed, list):
+            return default_channels
+        result: list[ChannelName] = []
+        for item in parsed:
+            try:
+                channel = ChannelName(str(item))
+            except ValueError:
+                continue
+            if channel not in result:
+                result.append(channel)
+        return result or default_channels
+
+    @target_channels.setter
+    def target_channels(self, channels: Sequence[ChannelName | str]) -> None:
+        normalized: list[str] = []
+        for item in channels:
+            if isinstance(item, ChannelName):
+                channel = item.value
+            else:
+                channel = ChannelName(item).value
+            if channel not in normalized:
+                normalized.append(channel)
+        self.target_channels_json = json.dumps(normalized)
 
 
 class TopicSourceDocument(Base, TimestampMixin):

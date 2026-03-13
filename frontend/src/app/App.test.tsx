@@ -145,6 +145,34 @@ const mockApi = vi.hoisted(() => ({
   changeCurrentUserPassword: vi.fn().mockResolvedValue({ status: "ok" }),
   uploadCurrentUserAvatar: vi.fn(),
   getCurrentUserAvatarBlob: vi.fn(),
+  createTopic: vi.fn().mockResolvedValue({
+    id: "abc99999-1111",
+    title: "Nieuw onderwerp",
+    subject: "Nieuw onderwerp",
+    theme: "Planning",
+    editorial_notes: "Handmatig toegevoegd",
+    planning_at: "2026-03-20T09:00:00Z",
+    workflow_state: "draft",
+    is_archived: false,
+    target_channels: ["website", "facebook"]
+  }),
+  updateTopic: vi.fn().mockResolvedValue({
+    id: "abc12345-1111",
+    title: "Titel",
+    subject: "Onderwerp test",
+    theme: "Thema test",
+    editorial_notes: "Notitie",
+    planning_at: null,
+    workflow_state: "planned",
+    is_archived: false,
+    target_channels: ["website", "facebook", "newsletter"]
+  }),
+  deleteTopic: vi.fn().mockResolvedValue({ status: "deleted" }),
+  importTopicsCsv: vi.fn().mockResolvedValue({
+    created: 2,
+    failed: 0,
+    errors: []
+  }),
   listTopics: vi.fn().mockResolvedValue([
     {
       id: "abc12345-1111",
@@ -154,7 +182,8 @@ const mockApi = vi.hoisted(() => ({
       editorial_notes: "Notitie",
       planning_at: null,
       workflow_state: "draft",
-      is_archived: false
+      is_archived: false,
+      target_channels: ["website", "facebook", "newsletter"]
     }
   ]),
   listVersions: vi.fn().mockResolvedValue([
@@ -597,26 +626,143 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("link", { name: "Planning" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Onderwerp" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Thema" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Geplande datum" })).toBeInTheDocument();
       expect(screen.getByRole("columnheader", { name: "Plaatsingdatum" })).toBeInTheDocument();
-      expect(screen.getByRole("columnheader", { name: "Illustratie" })).toBeInTheDocument();
-      expect(screen.getByRole("columnheader", { name: "Opmerkingen" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Website" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Facebook" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Nieuwsbrief" })).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Acties" })).toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "Illustratie" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("columnheader", { name: "Opmerkingen" })).not.toBeInTheDocument();
     });
   });
 
-  it("shows source passages in planning review", async () => {
+  it("keeps status read-only and updates per-row target media", async () => {
     renderApp();
     await loginIntoApp();
 
     fireEvent.click(screen.getByRole("link", { name: "Planning" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Review en bronpassages" })).toBeInTheDocument();
-      expect(screen.getByText("Onderhoudsupdate")).toBeInTheDocument();
+      expect(screen.getByText("Nieuw")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Status Onderwerp test")).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Nieuwsbrief Onderwerp test"));
+
+    await waitFor(() => {
+      expect(mockApi.updateTopic).toHaveBeenCalledWith(
+        "abc12345-1111",
+        expect.objectContaining({ target_channels: ["website", "facebook"] })
+      );
+    });
+  });
+
+  it("adds planning rule manually with selected target channels", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Onderwerp"), {
+      target: { value: "Handmatige regel" }
+    });
+    fireEvent.change(screen.getByLabelText("Thema"), {
+      target: { value: "Planning" }
+    });
+    fireEvent.change(screen.getByLabelText("Geplande datum en tijd"), {
+      target: { value: "2026-03-20T09:00" }
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Nieuwsbrief" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Regel toevoegen" }));
+
+    await waitFor(() => {
+      expect(mockApi.createTopic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Handmatige regel",
+          subject: "Handmatige regel",
+          theme: "Planning",
+          editorial_notes: "",
+          target_channels: ["website", "facebook"]
+        }),
+        expect.any(Object)
+      );
+      expect(screen.getByText("Planningsregel toegevoegd.")).toBeInTheDocument();
+    });
+  });
+
+  it("imports planning rules via csv", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("CSV planning import")).toBeInTheDocument();
+    });
+
+    const file = new File([
+      "onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief\n" +
+        "Regel 1,Planning,2026-03-20 09:00,Opmerking,ja,nee,1\n"
+    ], "planning.csv", { type: "text/csv" });
+    fireEvent.change(screen.getByLabelText("CSV planning import"), {
+      target: { files: [file] }
+    });
+
+    await waitFor(() => {
+      expect(mockApi.importTopicsCsv).toHaveBeenCalledWith(file, expect.any(Object));
+      expect(screen.getByText("Import klaar: 2 toegevoegd.")).toBeInTheDocument();
+    });
+  });
+
+  it("opens planning rule detail dummy page from table", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Verwijder planningsregel Onderwerp test" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Planningsregel detail (dummy)" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Planningvoortgang" })).toBeInTheDocument();
+      expect(screen.getByText(/Huidige stap:/)).toBeInTheDocument();
+      expect(screen.getAllByText("moet nog gebeuren").length).toBeGreaterThan(0);
+      expect(screen.getByText(/AI generatie gepland:/)).toBeInTheDocument();
+      expect(screen.getByText(/Geplande publicatiedatum:/)).toBeInTheDocument();
+      expect(screen.getByText(/tijdelijke detailpagina voor beoordelen\/wijzigen/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Review (dummy)" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wijzigingen (dummy)" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Publicatiebesluit (dummy)" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Wijziging simuleren" })).toBeInTheDocument();
+    });
+  });
+
+  it("shows source passages on planning detail page", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Bronpassages" })).toBeInTheDocument();
       expect(screen.getByText(/Topic - topic-bron.txt, chunk 0/)).toBeInTheDocument();
       expect(
         screen.getByText(/Database - Windpark de Boldijk - database-bron.txt, chunk 1/)

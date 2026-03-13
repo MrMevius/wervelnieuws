@@ -19,10 +19,13 @@ def test_topic_creation_and_listing(client):
             "theme": "Planning",
             "editorial_notes": "Gebruik neutrale toon",
             "planning_at": None,
+            "target_channels": ["website", "newsletter"],
         },
     )
     assert create.status_code == 200
+    assert create.json()["target_channels"] == ["website", "newsletter"]
 
     listing = client.get("/api/topics", headers=headers)
     assert listing.status_code == 200
     assert len(listing.json()) == 1
+    assert listing.json()[0]["target_channels"] == ["website", "newsletter"]

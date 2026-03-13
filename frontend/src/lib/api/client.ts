@@ -32,6 +32,13 @@ export type Topic = {
   planning_at: string | null;
   workflow_state: string;
   is_archived: boolean;
+  target_channels: string[];
+};
+
+export type TopicImportResult = {
+  created: number;
+  failed: number;
+  errors: Array<{ line: number; error: string }>;
 };
 
 export type Note = { id: string; note: string };
@@ -395,8 +402,37 @@ export function listTopics() {
   return request<Topic[]>("/topics");
 }
 
-export function createTopic(payload: Omit<Topic, "id" | "workflow_state" | "is_archived">) {
+export type CreateTopicPayload = {
+  title: string;
+  subject: string;
+  theme: string;
+  editorial_notes: string;
+  planning_at: string | null;
+  target_channels: string[];
+};
+
+export function createTopic(payload: CreateTopicPayload) {
   return request<Topic>("/topics", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function updateTopic(topicId: string, payload: Partial<CreateTopicPayload> & { workflow_state?: string }) {
+  return request<Topic>(`/topics/${topicId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteTopic(topicId: string) {
+  return request<{ status: string }>(`/topics/${topicId}`, { method: "DELETE" });
+}
+
+export function importTopicsCsv(file: File) {
+  const fd = new FormData();
+  fd.append("file", file);
+  return request<TopicImportResult>("/topics/import-csv", {
+    method: "POST",
+    body: fd
+  });
 }
 
 export function triggerGeneration(topicId: string) {

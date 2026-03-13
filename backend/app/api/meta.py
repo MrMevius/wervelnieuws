@@ -86,6 +86,16 @@ def _default_about() -> AboutResponse:
                     "In Planning zie je bij de review direct welke bronpassages zijn gebruikt, inclusief document en project.",
                 ],
             },
+            {
+                "iteration": "07B",
+                "date": "2026-03-13",
+                "title": "Planningimport met doelmedia per bericht",
+                "highlights": [
+                    "In Planning kun je nu een CSV importeren met vaste kolommen voor onderwerp, datum en doelmedia.",
+                    "Je kunt ook handmatig losse planningsregels toevoegen, waarbij elke regel precies een bericht is.",
+                    "Per regel kun je Website, Facebook en Nieuwsbrief apart aan- of uitzetten en regels ook verwijderen.",
+                ],
+            },
         ],
     )
 

@@ -75,6 +75,7 @@ class PublishingWorkflow:
             self.db.add(record)
             self.db.flush()
 
+        selected_channels = set(topic.target_channels)
         for channel in (
             ChannelName.website,
             ChannelName.facebook,
@@ -87,7 +88,12 @@ class PublishingWorkflow:
                     channel=channel,
                     state=ChannelPublishState.pending,
                 )
-            state_row.state = ChannelPublishState.publishing
+            if channel in selected_channels:
+                state_row.state = ChannelPublishState.publishing
+                state_row.error_message = ""
+            else:
+                state_row.state = ChannelPublishState.skipped
+                state_row.error_message = "Channel not selected for this planning rule"
             self.db.add(state_row)
         self.db.commit()
 
@@ -95,41 +101,48 @@ class PublishingWorkflow:
             website_state = self._find_state(record.id, ChannelName.website)
             if not website_state:
                 raise RuntimeError("Website channel state missing")
-            website_payload = {
-                "title": version.title,
-                "slug": version.slug,
-                "article_body": version.article_body,
-                "summary": version.summary,
-                "image": version.generated_image.image_path
-                if version.generated_image
-                else "",
-                "publication_timestamp": schedule.scheduled_for.isoformat(),
-                "version_number": version.version_number,
-                "topic_identifier": topic.id,
-                "is_update": version.is_published,
-            }
-            website_state.external_id = self.website.publish(website_payload)
-            website_state.state = (
-                ChannelPublishState.updated
-                if version.is_published
-                else ChannelPublishState.published
-            )
+            if ChannelName.website in selected_channels:
+                website_payload = {
+                    "title": version.title,
+                    "slug": version.slug,
+                    "article_body": version.article_body,
+                    "summary": version.summary,
+                    "image": version.generated_image.image_path
+                    if version.generated_image
+                    else "",
+                    "publication_timestamp": schedule.scheduled_for.isoformat(),
+                    "version_number": version.version_number,
+                    "topic_identifier": topic.id,
+                    "is_update": version.is_published,
+                }
+                website_state.external_id = self.website.publish(website_payload)
+                website_state.state = (
+                    ChannelPublishState.updated
+                    if version.is_published
+                    else ChannelPublishState.published
+                )
 
             facebook_state = self._find_state(record.id, ChannelName.facebook)
             if not facebook_state:
                 raise RuntimeError("Facebook channel state missing")
-            fb_message = f"{version.title}\n\n{version.summary}"
-            facebook_state.external_id = self.facebook.publish(fb_message)
-            facebook_state.state = (
-                ChannelPublishState.updated
-                if version.is_published
-                else ChannelPublishState.published
-            )
+            if ChannelName.facebook in selected_channels:
+                fb_message = f"{version.title}\n\n{version.summary}"
+                facebook_state.external_id = self.facebook.publish(fb_message)
+                facebook_state.state = (
+                    ChannelPublishState.updated
+                    if version.is_published
+                    else ChannelPublishState.published
+                )
 
             newsletter_state = self._find_state(record.id, ChannelName.newsletter)
             if not newsletter_state:
                 raise RuntimeError("Newsletter channel state missing")
-            if version.is_published:
+            if ChannelName.newsletter not in selected_channels:
+                newsletter_state.state = ChannelPublishState.skipped
+                newsletter_state.error_message = (
+                    "Channel not selected for this planning rule"
+                )
+            elif version.is_published:
                 newsletter_state.state = ChannelPublishState.skipped
                 newsletter_state.error_message = "No auto resend on updates"
             else:

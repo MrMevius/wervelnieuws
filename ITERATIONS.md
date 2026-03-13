@@ -1,3 +1,11 @@
+Iteratie #07
+- Importmogelijkheid toevoegen aan de planning
+- Accepteer CSV met vaste kolommen
+- Mogelijkheid tot toevoegen individuele planningsregels
+- Logica: elke planningsregel is 1 bericht
+- Breidt de kolom uit met doelmediums (dus Facebook, Nieuwsbrief, Website), dit is aan of uit te vinken met medium
+- Mogelijkheid tot het verwijderen van regels
+
 Iteratie #06
 - verwijder de upload file functionalitieit van de main page
 - voeg een drag en drop upload functionaliteit toe aan de database page

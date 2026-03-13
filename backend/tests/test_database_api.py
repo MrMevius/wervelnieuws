@@ -174,7 +174,11 @@ def test_bulk_move_and_copy_documents(client):
 
     projects = client.get("/api/database/projects", headers=headers)
     assert projects.status_code == 200
-    source_project_id = projects.json()[0]["id"]
+    source_project_id = next(
+        project["id"]
+        for project in projects.json()
+        if project["id"] != target_project_id
+    )
 
     upload = client.post(
         "/api/database/documents",

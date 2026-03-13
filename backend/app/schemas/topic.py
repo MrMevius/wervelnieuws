@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import DocumentStatus, WorkflowState
+from app.models.enums import ChannelName, DocumentStatus, WorkflowState
 
 
 class TopicCreate(BaseModel):
@@ -11,6 +11,14 @@ class TopicCreate(BaseModel):
     theme: str = Field(min_length=2, max_length=255)
     editorial_notes: str = ""
     planning_at: datetime | None = None
+    target_channels: list[ChannelName] = Field(
+        default_factory=lambda: [
+            ChannelName.website,
+            ChannelName.facebook,
+            ChannelName.newsletter,
+        ],
+        min_length=1,
+    )
 
 
 class TopicUpdate(BaseModel):
@@ -21,6 +29,7 @@ class TopicUpdate(BaseModel):
     planning_at: datetime | None = None
     workflow_state: WorkflowState | None = None
     is_archived: bool | None = None
+    target_channels: list[ChannelName] | None = Field(default=None, min_length=1)
 
 
 class TopicResponse(BaseModel):
@@ -32,6 +41,7 @@ class TopicResponse(BaseModel):
     planning_at: datetime | None
     workflow_state: WorkflowState
     is_archived: bool
+    target_channels: list[ChannelName]
 
     model_config = ConfigDict(from_attributes=True)
 

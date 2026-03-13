@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DragEvent, FormEvent, Fragment, useEffect, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes } from "react-router-dom";
+import { DragEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import {
   AdminUser,
   AboutContent,
@@ -17,10 +17,12 @@ import {
   bulkCopyDatabaseDocuments,
   bulkDeleteDatabaseDocuments,
   bulkMoveDatabaseDocuments,
+  createTopic,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
   getCurrentUser,
+  importTopicsCsv,
   listAdminUsers,
   listAdminProjects,
   listDatabaseDocuments,
@@ -29,6 +31,7 @@ import {
   listTopics,
   login,
   setToken,
+  updateTopic,
   updateAdminUserActive,
   updateAdminProject,
   updateAdminUser,
@@ -225,6 +228,10 @@ export function App() {
           <Route path="/" element={<Navigate to="/main" replace />} />
           <Route path="/main" element={<MainPage username={displayName} />} />
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
+          <Route
+            path="/planning/:topicId"
+            element={<PlanningRuleDetailPage topics={topicsQuery.data ?? []} />}
+          />
           <Route path="/database" element={<DatabasePage currentUser={currentUserQuery.data} />} />
           <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
           <Route
@@ -313,118 +320,651 @@ function MainPage({ username }: { username: string }) {
 }
 
 function PlanningPage({ topics }: { topics: Topic[] }) {
-  const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
+  type PlanningSortKey =
+    | "subject"
+    | "theme"
+    | "status"
+    | "planning_at"
+    | "published_at"
+    | "website"
+    | "facebook"
+    | "newsletter";
 
-  useEffect(() => {
-    if (topics.length === 0) {
-      setSelectedTopicId(null);
-      return;
-    }
-    if (selectedTopicId && topics.some((topic) => topic.id === selectedTopicId)) {
-      return;
-    }
-    setSelectedTopicId(topics[0].id);
-  }, [topics, selectedTopicId]);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const [newSubject, setNewSubject] = useState("");
+  const [newTheme, setNewTheme] = useState("");
+  const [newPlanningAt, setNewPlanningAt] = useState("");
+  const [newChannels, setNewChannels] = useState<string[]>([
+    "website",
+    "facebook",
+    "newsletter"
+  ]);
+  const planningThemeOptions = useMemo(() => {
+    const fallback = [
+      "Algemeen",
+      "Planning",
+      "Techniek",
+      "Omgeving",
+      "Veiligheid",
+      "Participatie"
+    ];
+    const fromExistingTopics = topics
+      .map((topic) => topic.theme.trim())
+      .filter((value) => value.length > 0);
+    return Array.from(new Set([...fromExistingTopics, ...fallback])).sort((left, right) =>
+      left.localeCompare(right, "nl-NL")
+    );
+  }, [topics]);
+  const [sortKey, setSortKey] = useState<PlanningSortKey>("planning_at");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
-  const versionsQuery = useQuery({
-    queryKey: ["topic-versions", selectedTopicId],
-    queryFn: () => listVersions(String(selectedTopicId)),
-    enabled: Boolean(selectedTopicId)
+  const createTopicMutation = useMutation({
+    mutationFn: createTopic,
+    onSuccess: () => {
+      setFeedback("Planningsregel toegevoegd.");
+      setNewSubject("");
+      setNewTheme("");
+      setNewPlanningAt("");
+      setNewChannels(["website", "facebook", "newsletter"]);
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => setFeedback("Toevoegen van planningsregel is mislukt.")
   });
 
-  const selectedTopic = topics.find((topic) => topic.id === selectedTopicId) ?? null;
-  const selectedVersion =
-    (versionsQuery.data ?? []).find((version) => version.is_current) ??
-    (versionsQuery.data ?? [])[0] ??
-    null;
-  const sourceTrace = extractSourceTrace(selectedVersion);
+  const updateTopicMutation = useMutation({
+    mutationFn: ({
+      topicId,
+      payload
+    }: {
+      topicId: string;
+      payload: Partial<{
+        workflow_state: string;
+        target_channels: string[];
+      }>;
+    }) => updateTopic(topicId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => {
+      setFeedback("Bijwerken van planningsregel is mislukt.");
+    }
+  });
+
+  const importCsvMutation = useMutation({
+    mutationFn: importTopicsCsv,
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        const first = result.errors[0]?.error ?? "Onbekende fout";
+        setFeedback(
+          `Import klaar: ${result.created} toegevoegd, ${result.failed} mislukt (eerste fout: ${first}).`
+        );
+      } else {
+        setFeedback(`Import klaar: ${result.created} toegevoegd.`);
+      }
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("CSV columns must be exactly")) {
+        setFeedback(
+          "CSV-kolommen zijn ongeldig. Gebruik: onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief"
+        );
+        return;
+      }
+      setFeedback("CSV-import mislukt.");
+    }
+  });
+
+  const sortedTopics = [...topics].sort((left, right) => {
+    const leftStatus = displayStatus(left.workflow_state);
+    const rightStatus = displayStatus(right.workflow_state);
+    const leftPlan = left.planning_at ? new Date(left.planning_at).getTime() : 0;
+    const rightPlan = right.planning_at ? new Date(right.planning_at).getTime() : 0;
+    const leftWeb = left.target_channels.includes("website") ? 1 : 0;
+    const rightWeb = right.target_channels.includes("website") ? 1 : 0;
+    const leftFb = left.target_channels.includes("facebook") ? 1 : 0;
+    const rightFb = right.target_channels.includes("facebook") ? 1 : 0;
+    const leftNl = left.target_channels.includes("newsletter") ? 1 : 0;
+    const rightNl = right.target_channels.includes("newsletter") ? 1 : 0;
+    let compare = 0;
+    if (sortKey === "subject") {
+      compare = left.subject.localeCompare(right.subject);
+    } else if (sortKey === "theme") {
+      compare = left.theme.localeCompare(right.theme);
+    } else if (sortKey === "status") {
+      compare = leftStatus.localeCompare(rightStatus);
+    } else if (sortKey === "planning_at") {
+      compare = leftPlan - rightPlan;
+    } else if (sortKey === "published_at") {
+      compare = 0;
+    } else if (sortKey === "website") {
+      compare = leftWeb - rightWeb;
+    } else if (sortKey === "facebook") {
+      compare = leftFb - rightFb;
+    } else if (sortKey === "newsletter") {
+      compare = leftNl - rightNl;
+    }
+    return sortDirection === "asc" ? compare : -compare;
+  });
+
+  function toggleChannel(channel: string, checked: boolean) {
+    setNewChannels((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, channel]));
+      }
+      return current.filter((item) => item !== channel);
+    });
+  }
+
+  function submitPlanningRule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFeedback(null);
+    if (newChannels.length === 0) {
+      setFeedback("Selecteer minimaal een doelmedium.");
+      return;
+    }
+    if (!newPlanningAt) {
+      setFeedback("Vul een geplande datum en tijd in.");
+      return;
+    }
+    if (!newTheme) {
+      setFeedback("Kies een thema.");
+      return;
+    }
+    createTopicMutation.mutate({
+      title: newSubject.trim(),
+      subject: newSubject.trim(),
+      theme: newTheme.trim(),
+      editorial_notes: "",
+      planning_at: new Date(newPlanningAt).toISOString(),
+      target_channels: newChannels
+    });
+  }
+
+  async function onCsvPicked(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setFeedback("CSV wordt geimporteerd...");
+    await importCsvMutation.mutateAsync(file);
+  }
+
+  function toggleSort(nextKey: PlanningSortKey) {
+    if (sortKey === nextKey) {
+      setSortDirection((current) => (current === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDirection(nextKey === "planning_at" ? "desc" : "asc");
+  }
+
+  function sortClass(key: PlanningSortKey): string {
+    if (sortKey !== key) {
+      return "";
+    }
+    return sortDirection === "asc" ? "is-sorted-asc" : "is-sorted-desc";
+  }
+
+  function ariaSortFor(key: PlanningSortKey): "none" | "ascending" | "descending" {
+    if (sortKey !== key) {
+      return "none";
+    }
+    return sortDirection === "asc" ? "ascending" : "descending";
+  }
+
+  function updateTopicChannel(topic: Topic, channel: string, checked: boolean) {
+    const next = checked
+      ? Array.from(new Set([...topic.target_channels, channel]))
+      : topic.target_channels.filter((item) => item !== channel);
+    if (next.length === 0) {
+      setFeedback("Minimaal een doelmedium moet aan staan.");
+      return;
+    }
+    setFeedback(null);
+    updateTopicMutation.mutate({
+      topicId: topic.id,
+      payload: { target_channels: next }
+    });
+  }
 
   return (
     <section className="panel">
       <h1>Planning</h1>
+      <p className="muted">Elke planningsregel is een apart bericht met eigen doelmedia.</p>
+
+      <div className="planning-actions">
+        <label className="planning-import-label">
+          CSV importeren
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="CSV planning import"
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              void onCsvPicked(file);
+              event.currentTarget.value = "";
+            }}
+            disabled={importCsvMutation.isPending}
+          />
+          <span className="muted small-text">
+            Vaste kolommen: onderwerp,thema,geplande_datum,opmerkingen,website,facebook,nieuwsbrief
+          </span>
+        </label>
+
+        <form className="planning-form" onSubmit={submitPlanningRule}>
+          <input
+            aria-label="Onderwerp"
+            placeholder="Onderwerp"
+            value={newSubject}
+            onChange={(event) => setNewSubject(event.target.value)}
+            minLength={3}
+            required
+          />
+          <select
+            aria-label="Thema"
+            value={newTheme}
+            onChange={(event) => setNewTheme(event.target.value)}
+            required
+          >
+            <option value="" disabled>
+              Kies thema
+            </option>
+            {planningThemeOptions.map((themeOption) => (
+              <option key={themeOption} value={themeOption}>
+                {themeOption}
+              </option>
+            ))}
+          </select>
+          <input
+            type="datetime-local"
+            aria-label="Geplande datum en tijd"
+            value={newPlanningAt}
+            onChange={(event) => setNewPlanningAt(event.target.value)}
+            required
+          />
+          <div className="planning-media-options" role="group" aria-label="Doelmedia">
+            <label>
+              <input
+                type="checkbox"
+                checked={newChannels.includes("website")}
+                onChange={(event) => toggleChannel("website", event.target.checked)}
+              />
+              Website
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={newChannels.includes("facebook")}
+                onChange={(event) => toggleChannel("facebook", event.target.checked)}
+              />
+              Facebook
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={newChannels.includes("newsletter")}
+                onChange={(event) => toggleChannel("newsletter", event.target.checked)}
+              />
+              Nieuwsbrief
+            </label>
+          </div>
+          <button type="submit" disabled={createTopicMutation.isPending}>
+            Regel toevoegen
+          </button>
+        </form>
+      </div>
+
+      {feedback && (
+        <p
+          role="status"
+          className={feedback.includes("mislukt") || feedback.includes("ongeldig") ? "error" : "success"}
+        >
+          {feedback}
+        </p>
+      )}
+
       <div className="table-wrap">
-        <table>
+        <table className="planning-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Onderwerp</th>
-              <th>Thema</th>
-              <th>Status</th>
-              <th>Geplande datum</th>
-              <th>Plaatsingdatum</th>
-              <th>Illustratie</th>
-              <th>Opmerkingen</th>
+              <th aria-sort={ariaSortFor("subject")}>
+                <button type="button" className={`table-sort ${sortClass("subject")}`} onClick={() => toggleSort("subject")}>Onderwerp</button>
+              </th>
+              <th aria-sort={ariaSortFor("theme")}>
+                <button type="button" className={`table-sort ${sortClass("theme")}`} onClick={() => toggleSort("theme")}>Thema</button>
+              </th>
+              <th aria-sort={ariaSortFor("status")}>
+                <button type="button" className={`table-sort ${sortClass("status")}`} onClick={() => toggleSort("status")}>Status</button>
+              </th>
+              <th aria-sort={ariaSortFor("planning_at")}>
+                <button type="button" className={`table-sort ${sortClass("planning_at")}`} onClick={() => toggleSort("planning_at")}>Geplande datum</button>
+              </th>
+              <th aria-sort={ariaSortFor("published_at")}>
+                <button type="button" className={`table-sort ${sortClass("published_at")}`} onClick={() => toggleSort("published_at")}>Plaatsingdatum</button>
+              </th>
+              <th aria-sort={ariaSortFor("website")}>
+                <button type="button" className={`table-sort ${sortClass("website")}`} onClick={() => toggleSort("website")}>Website</button>
+              </th>
+              <th aria-sort={ariaSortFor("facebook")}>
+                <button type="button" className={`table-sort ${sortClass("facebook")}`} onClick={() => toggleSort("facebook")}>Facebook</button>
+              </th>
+              <th aria-sort={ariaSortFor("newsletter")}>
+                <button type="button" className={`table-sort ${sortClass("newsletter")}`} onClick={() => toggleSort("newsletter")}>Nieuwsbrief</button>
+              </th>
+              <th>Acties</th>
             </tr>
           </thead>
           <tbody>
             {topics.length === 0 && (
               <tr>
-                <td colSpan={8}>Nog geen records beschikbaar.</td>
+                <td colSpan={9}>Nog geen records beschikbaar.</td>
               </tr>
             )}
-            {topics.map((topic) => (
-              <tr
-                key={topic.id}
-                className={selectedTopicId === topic.id ? "row-selected" : ""}
-                onClick={() => setSelectedTopicId(topic.id)}
-              >
-                <td>{topic.id.slice(0, 8)}</td>
+            {sortedTopics.map((topic) => (
+              <tr key={topic.id}>
                 <td>{topic.subject}</td>
                 <td>{topic.theme}</td>
-                <td>{topic.workflow_state}</td>
-                <td>{topic.planning_at ? new Date(topic.planning_at).toLocaleString() : "-"}</td>
+                <td>
+                  <span title={statusHelp(topic.workflow_state)}>{displayStatus(topic.workflow_state)}</span>
+                </td>
+                <td>{topic.planning_at ? formatAmsterdamDateTime(topic.planning_at) : "-"}</td>
                 <td>-</td>
-                <td>Standaard</td>
-                <td>{topic.editorial_notes || "-"}</td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Website ${topic.subject}`}
+                    checked={topic.target_channels.includes("website")}
+                    onChange={(event) => updateTopicChannel(topic, "website", event.target.checked)}
+                    disabled={updateTopicMutation.isPending}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Facebook ${topic.subject}`}
+                    checked={topic.target_channels.includes("facebook")}
+                    onChange={(event) => updateTopicChannel(topic, "facebook", event.target.checked)}
+                    disabled={updateTopicMutation.isPending}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`Nieuwsbrief ${topic.subject}`}
+                    checked={topic.target_channels.includes("newsletter")}
+                    onChange={(event) => updateTopicChannel(topic, "newsletter", event.target.checked)}
+                    disabled={updateTopicMutation.isPending}
+                  />
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/planning/${topic.id}`)}
+                    aria-label={`Open planningsregel ${topic.subject}`}
+                  >
+                    Open
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
 
-      <section className="review-panel" aria-label="Bronreview">
-        <h2>Review en bronpassages</h2>
-        {!selectedTopic && <p>Kies een onderwerp in de tabel om de laatste versie te bekijken.</p>}
-        {selectedTopic && versionsQuery.isLoading && <p>Laatst gegenereerde versie wordt geladen...</p>}
-        {selectedTopic && versionsQuery.isError && (
-          <p className="error">Versiegegevens konden niet worden geladen.</p>
-        )}
-        {selectedTopic && !versionsQuery.isLoading && !versionsQuery.isError && !selectedVersion && (
-          <p>Nog geen gegenereerde versie voor dit onderwerp.</p>
-        )}
-        {selectedTopic && selectedVersion && (
-          <div className="review-content">
-            <p className="muted">
-              Onderwerp: <strong>{selectedTopic.subject}</strong>
-            </p>
-            <h3>{selectedVersion.title}</h3>
-            <p>{selectedVersion.summary || "Geen samenvatting beschikbaar."}</p>
+function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
+  const navigate = useNavigate();
+  const params = useParams<{ topicId: string }>();
+  const topicId = params.topicId ?? "";
+  const topic = topics.find((item) => item.id === topicId) ?? null;
+  const [dummyMessage, setDummyMessage] = useState<string | null>(null);
 
-            <h4>Gebruikte bronpassages</h4>
-            {sourceTrace.length === 0 ? (
-              <p>Geen bronpassages gekoppeld.</p>
-            ) : (
-              <div className="source-trace-list">
-                {sourceTrace.map((hit) => (
-                  <article className="source-trace-item" key={`${hit.source_type}-${hit.chunk_id}`}>
-                    <p className="source-label">
-                      {hit.source_type === "database"
-                        ? `Database - ${hit.project_name || "Onbekend project"} - ${
-                            hit.document_name || "Onbekend document"
-                          }`
-                        : `Topic - ${hit.document_name || "Onbekend document"}`}
-                      {`, chunk ${hit.chunk_index || "?"}`}
-                    </p>
-                    <p>{hit.text}</p>
-                  </article>
-                ))}
-              </div>
-            )}
+  const versionsQuery = useQuery({
+    queryKey: ["topic-versions", topicId],
+    queryFn: () => listVersions(topicId),
+    enabled: Boolean(topicId)
+  });
+
+  const selectedVersion =
+    (versionsQuery.data ?? []).find((version) => version.is_current) ??
+    (versionsQuery.data ?? [])[0] ??
+    null;
+  const sourceTrace = extractSourceTrace(selectedVersion);
+  if (!topic) {
+    return (
+      <section className="panel">
+        <h1>Planningsregel niet gevonden</h1>
+        <p className="muted">Deze planningsregel bestaat niet meer of is nog niet geladen.</p>
+        <div className="detail-actions">
+          <button type="button" onClick={() => navigate("/planning")}>Terug naar planning</button>
+        </div>
+      </section>
+    );
+  }
+
+  const generationPlannedAt = topic.planning_at
+    ? formatAmsterdamDateTime(topic.planning_at)
+    : "nog niet gepland";
+  const publicationPlannedAt =
+    selectedVersion?.is_published && selectedVersion.created_at
+      ? formatAmsterdamDateTime(selectedVersion.created_at)
+      : "nog niet gepland";
+
+  const planningSteps = getPlanningSteps({
+    workflowState: topic.workflow_state,
+    generationPlannedAt,
+    publicationPlannedAt
+  });
+  const currentStep = planningSteps.find((step) => step.isCurrent) ?? planningSteps[0];
+
+  return (
+    <section className="panel planning-detail-page">
+      <h1>Planningsregel detail (dummy)</h1>
+      <p className="muted">
+        Dit is een tijdelijke detailpagina voor beoordelen/wijzigen. Uitwerking volgt in de volgende iteratie.
+      </p>
+
+      <section className="panel planning-progress-panel" aria-label="Planningvoortgang">
+        <h2>Planningvoortgang</h2>
+        <p className="muted">
+          Huidige stap: <strong>{currentStep.label}</strong>
+        </p>
+        <ul className="planning-step-list">
+          {planningSteps.map((step) => (
+            <li key={step.key} className={step.isDone ? "step-done" : "step-pending"}>
+              <span className="step-indicator" aria-hidden="true">
+                {step.isDone ? "x" : "-"}
+              </span>
+              <span className="step-label">{step.label}</span>
+              <span className="step-meta">{step.isDone ? "afgerond" : "moet nog gebeuren"}</span>
+              {step.detail && <span className="step-detail">{step.detail}</span>}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <div className="panel-grid planning-detail-grid">
+        <article className="panel">
+          <h2>Review (dummy)</h2>
+          <p><strong>Onderwerp:</strong> {topic.subject}</p>
+          <p><strong>Thema:</strong> {topic.theme}</p>
+          <p><strong>Status:</strong> {displayStatus(topic.workflow_state)}</p>
+          <p><strong>Geplande datum:</strong> {topic.planning_at ? formatAmsterdamDateTime(topic.planning_at) : "-"}</p>
+          <p><strong>Doelmedia:</strong> {topic.target_channels.join(", ")}</p>
+          <p><strong>Opmerkingen:</strong> {topic.editorial_notes || "-"}</p>
+        </article>
+
+        <article className="panel">
+          <h2>Wijzigingen (dummy)</h2>
+          <label>
+            Artikel (dummy)
+            <textarea defaultValue={selectedVersion?.article_body ?? ""} rows={6} />
+          </label>
+          <label>
+            Samenvatting (dummy)
+            <textarea defaultValue={selectedVersion?.summary ?? ""} rows={4} />
+          </label>
+          <div className="detail-actions">
+            <button
+              type="button"
+              onClick={() => setDummyMessage("Dummy: wijziging lokaal bekeken, nog niet opgeslagen.")}
+            >
+              Wijziging simuleren
+            </button>
+            <button
+              type="button"
+              onClick={() => setDummyMessage("Dummy: beoordeling geregistreerd voor demo.")}
+            >
+              Beoordeling simuleren
+            </button>
+          </div>
+          {dummyMessage && <p role="status" className="success">{dummyMessage}</p>}
+        </article>
+
+        <article className="panel">
+          <h2>Publicatiebesluit (dummy)</h2>
+          <p className="muted">
+            Hier komt in de volgende iteratie het besluitproces voor akkoord, afwijzing en publicatieplanning.
+          </p>
+          <div className="detail-actions">
+            <button
+              type="button"
+              onClick={() => setDummyMessage("Dummy: publicatiebesluit voorlopig op akkoord gezet.")}
+            >
+              Akkoord simuleren
+            </button>
+            <button
+              type="button"
+              onClick={() => setDummyMessage("Dummy: publicatiebesluit voorlopig afgewezen.")}
+            >
+              Afwijzing simuleren
+            </button>
+          </div>
+        </article>
+      </div>
+
+      <section className="review-panel" aria-label="Bronreview detail">
+        <h2>Bronpassages</h2>
+        {versionsQuery.isLoading && <p>Bronpassages worden geladen...</p>}
+        {versionsQuery.isError && <p className="error">Bronpassages konden niet worden geladen.</p>}
+        {!versionsQuery.isLoading && !versionsQuery.isError && sourceTrace.length === 0 && (
+          <p>Geen bronpassages gekoppeld.</p>
+        )}
+        {sourceTrace.length > 0 && (
+          <div className="source-trace-list">
+            {sourceTrace.map((hit) => (
+              <article className="source-trace-item" key={`${hit.source_type}-${hit.chunk_id}`}>
+                <p className="source-label">
+                  {hit.source_type === "database"
+                    ? `Database - ${hit.project_name || "Onbekend project"} - ${
+                        hit.document_name || "Onbekend document"
+                      }`
+                    : `Topic - ${hit.document_name || "Onbekend document"}`}
+                  {`, chunk ${hit.chunk_index || "?"}`}
+                </p>
+                <p>{hit.text}</p>
+              </article>
+            ))}
           </div>
         )}
       </section>
+
+      <div className="detail-actions">
+        <button type="button" onClick={() => navigate("/planning")}>Terug naar planning</button>
+      </div>
     </section>
   );
+}
+
+function displayStatus(workflowState: string): "Nieuw" | "Gepland" | "Gereed" | "Akkoord" | "Gepubliceerd" {
+  if (workflowState === "published") {
+    return "Gepubliceerd";
+  }
+  if (workflowState === "approved") {
+    return "Akkoord";
+  }
+  if (workflowState === "review") {
+    return "Gereed";
+  }
+  if (workflowState === "planned" || workflowState === "scheduled") {
+    return "Gepland";
+  }
+  return "Nieuw";
+}
+
+function statusHelp(workflowState: string): string {
+  const status = displayStatus(workflowState);
+  if (status === "Nieuw") {
+    return "nog niet ingepland";
+  }
+  if (status === "Gepland") {
+    return "onderwerp gekozen voor generatie op Geplande datum";
+  }
+  if (status === "Gereed") {
+    return "artikel, samenvatting en illustratie zijn afgerond";
+  }
+  if (status === "Akkoord") {
+    return "klaar voor publicatie";
+  }
+  return "bericht en samenvatting live gezet";
+}
+
+function getPlanningSteps(input: {
+  workflowState: string;
+  generationPlannedAt: string;
+  publicationPlannedAt: string;
+}): Array<{
+  key: string;
+  label: string;
+  isDone: boolean;
+  isCurrent: boolean;
+  detail?: string;
+}> {
+  let currentIndex = 0;
+  if (input.workflowState === "planned" || input.workflowState === "generating") {
+    currentIndex = 1;
+  } else if (input.workflowState === "review") {
+    currentIndex = 2;
+  } else if (input.workflowState === "approved") {
+    currentIndex = 3;
+  } else if (input.workflowState === "scheduled" || input.workflowState === "publishing") {
+    currentIndex = 4;
+  } else if (input.workflowState === "published") {
+    currentIndex = 5;
+  }
+
+  const ordered = [
+    { key: "nieuw", label: "Nieuw" },
+    {
+      key: "gepland",
+      label: "Gepland",
+      detail: `AI generatie gepland: ${input.generationPlannedAt}`
+    },
+    { key: "gereed", label: "Gereed" },
+    { key: "akkoord", label: "Akkoord" },
+    {
+      key: "publicatie-gepland",
+      label: "Publicatie gepland",
+      detail: `Publicatie gepland: ${input.publicationPlannedAt}`
+    },
+    {
+      key: "gepubliceerd",
+      label: "Gepubliceerd",
+      detail: `Geplande publicatiedatum: ${input.publicationPlannedAt}`
+    }
+  ];
+
+  return ordered.map((step, index) => ({
+    key: step.key,
+    label: step.label,
+    detail: step.detail,
+    isDone: index <= currentIndex,
+    isCurrent: index === currentIndex
+  }));
 }
 
 function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
