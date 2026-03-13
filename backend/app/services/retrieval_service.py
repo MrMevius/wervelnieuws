@@ -1,3 +1,5 @@
+import re
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -22,10 +24,18 @@ class RetrievalService:
     def _build_query(self, topic: Topic) -> str:
         base = topic.subject.strip() if topic.subject else ""
         if base:
-            return base
+            return self._to_safe_fts_query(base)
         if topic.title:
-            return topic.title.strip()
-        return "windpark"
+            return self._to_safe_fts_query(topic.title.strip())
+        return self._to_safe_fts_query("windpark")
+
+    def _to_safe_fts_query(self, raw: str) -> str:
+        tokens = [token.lower() for token in re.findall(r"\w+", raw)]
+        if not tokens:
+            return '"windpark"'
+        unique_tokens = list(dict.fromkeys(tokens))
+        quoted_tokens = [f'"{token}"' for token in unique_tokens]
+        return " OR ".join(quoted_tokens)
 
     def _search_topic_chunks(
         self, topic_id: str, query: str, limit: int

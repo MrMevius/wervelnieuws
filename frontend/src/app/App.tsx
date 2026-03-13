@@ -39,6 +39,7 @@ import {
   listVersions,
   listTopics,
   login,
+  triggerGeneration,
   regenerateContent,
   rejectVariant,
   scheduleTopic,
@@ -881,7 +882,32 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
       queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
       queryClient.invalidateQueries({ queryKey: ["topics"] });
     },
-    onError: () => setFeedback("Opnieuw genereren is mislukt.")
+    onError: (error) => {
+      const message = extractApiErrorMessage(error);
+      if (message) {
+        setFeedback(`Opnieuw genereren is mislukt: ${message}`);
+        return;
+      }
+      setFeedback("Opnieuw genereren is mislukt.");
+    }
+  });
+
+  const generateMutation = useMutation({
+    mutationFn: () => triggerGeneration(topicId),
+    onSuccess: () => {
+      setFeedback("Content gegenereerd.");
+      queryClient.invalidateQueries({ queryKey: ["topic-versions", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: (error) => {
+      const message = extractApiErrorMessage(error);
+      if (message) {
+        setFeedback(`Genereren is mislukt: ${message}`);
+        return;
+      }
+      setFeedback("Genereren is mislukt.");
+    }
   });
 
   const saveVariantMutation = useMutation({
@@ -938,6 +964,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     (versionsQuery.data ?? [])[0] ??
     null;
   const variants = variantsQuery.data ?? [];
+  const variantsErrorMessage = extractApiErrorMessage(variantsQuery.error);
 
   useEffect(() => {
     setNotesDraft(topic?.editorial_notes ?? "");
@@ -1086,9 +1113,19 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
               type="button"
               onClick={() => {
                 setFeedback(null);
+                generateMutation.mutate();
+              }}
+              disabled={generateMutation.isPending || regenerateMutation.isPending}
+            >
+              Genereer content
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
                 regenerateMutation.mutate();
               }}
-              disabled={regenerateMutation.isPending}
+              disabled={generateMutation.isPending || regenerateMutation.isPending}
             >
               Artikelen opnieuw genereren
             </button>
@@ -1135,7 +1172,12 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
               <h2>{channelLabel(channel)}</h2>
               <p className="muted">Status: {approvalLabel}</p>
               {variantsQuery.isLoading && <p>Laden...</p>}
-              {variantsQuery.isError && <p className="error">Kanaalvariant kon niet worden geladen.</p>}
+              {variantsQuery.isError && (
+                <p className="error">
+                  Kanaalvariant kon niet worden geladen
+                  {variantsErrorMessage ? `: ${variantsErrorMessage}` : "."}
+                </p>
+              )}
               {!variantsQuery.isLoading && !variantsQuery.isError && (
                 <>
                   <label>

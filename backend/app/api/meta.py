@@ -126,6 +126,16 @@ def _default_about() -> AboutResponse:
                     "AI gebruikt nu alleen databasebronnen uit hetzelfde project als de planningsregel.",
                 ],
             },
+            {
+                "iteration": "11",
+                "date": "2026-03-14",
+                "title": "Duidelijke melding bij ontbrekende kanaalvariant-migratie",
+                "highlights": [
+                    "Bij artikelgeneratie en kanaalvarianten krijg je nu een duidelijke foutmelding als een database-migratie ontbreekt.",
+                    "De melding vertelt precies welk commando je moet draaien om de migratie uit te voeren.",
+                    "Hierdoor is de storing sneller op te lossen zonder onduidelijke serverfouten in Planning.",
+                ],
+            },
         ],
     )
 

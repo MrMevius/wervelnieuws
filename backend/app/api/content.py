@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -43,6 +44,12 @@ from app.services.generation_service import GenerationService, slugify
 
 router = APIRouter(prefix="/content", tags=["content"])
 
+MIGRATION_REQUIRED_DETAIL = (
+    "Database mist schema voor kanaalvarianten. "
+    "Voer eerst migraties uit met 'docker compose run --rm migrate' "
+    "en start backend en worker opnieuw."
+)
+
 
 def _parse_channel(channel: str) -> ChannelName:
     try:
@@ -57,6 +64,20 @@ def _serialize_variant(variant: ContentChannelVariant) -> ContentChannelVariantR
         variant.generated_image.image_path if variant.generated_image else None
     )
     return payload
+
+
+def _is_missing_channel_variants_table(error: DBAPIError) -> bool:
+    message = str(getattr(error, "orig", error)).lower()
+    has_table_name = "content_channel_variants" in message
+    has_missing_table = "no such table" in message or "does not exist" in message
+    return has_table_name and has_missing_table
+
+
+def _raise_if_missing_variants_schema(error: DBAPIError) -> None:
+    if _is_missing_channel_variants_table(error):
+        raise HTTPException(
+            status_code=503, detail=MIGRATION_REQUIRED_DETAIL
+        ) from error
 
 
 def _ensure_channel_variants(
@@ -100,7 +121,11 @@ def generate(
     topic = TopicRepository(db).get(topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="Topic not found")
-    version_id = GenerationService(db).generate_for_topic(topic)
+    try:
+        version_id = GenerationService(db).generate_for_topic(topic)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     AuditService(db).log(
         "content.generated", topic_id=topic_id, actor_user_id=current.id
     )
@@ -131,9 +156,13 @@ def regenerate(
                 detail="No valid channels selected for regeneration",
             )
 
-    version_id = GenerationService(db).generate_for_topic(
-        topic, requested_channels or None
-    )
+    try:
+        version_id = GenerationService(db).generate_for_topic(
+            topic, requested_channels or None
+        )
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     AuditService(db).log(
         "content.regenerated",
         topic_id=topic_id,
@@ -225,7 +254,11 @@ def approve(
     latest = ContentVersionRepository(db).latest_for_topic(topic_id)
     if not latest:
         raise HTTPException(status_code=400, detail="No content version available")
-    variants = _ensure_channel_variants(db, topic, latest)
+    try:
+        variants = _ensure_channel_variants(db, topic, latest)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     required_channels = set(topic.target_channels)
     approved_channels = {
         variant.channel
@@ -421,7 +454,11 @@ def list_current_variants(
     latest = ContentVersionRepository(db).latest_for_topic(topic_id)
     if not latest:
         raise HTTPException(status_code=404, detail="No content version available")
-    variants = _ensure_channel_variants(db, topic, latest)
+    try:
+        variants = _ensure_channel_variants(db, topic, latest)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     by_order = {channel: index for index, channel in enumerate(topic.target_channels)}
     variants.sort(key=lambda row: by_order.get(row.channel, 999))
     return [_serialize_variant(variant) for variant in variants]
@@ -444,7 +481,11 @@ def update_current_variant(
     if not latest:
         raise HTTPException(status_code=404, detail="No content version available")
     parsed_channel = _parse_channel(channel)
-    variants = _ensure_channel_variants(db, topic, latest)
+    try:
+        variants = _ensure_channel_variants(db, topic, latest)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     target = next((item for item in variants if item.channel == parsed_channel), None)
     if not target:
         raise HTTPException(status_code=404, detail="Channel variant not found")
@@ -490,7 +531,11 @@ def approve_variant(
     if not latest:
         raise HTTPException(status_code=404, detail="No content version available")
     parsed_channel = _parse_channel(channel)
-    variants = _ensure_channel_variants(db, topic, latest)
+    try:
+        variants = _ensure_channel_variants(db, topic, latest)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     target = next((item for item in variants if item.channel == parsed_channel), None)
     if not target:
         raise HTTPException(status_code=404, detail="Channel variant not found")
@@ -526,7 +571,11 @@ def reject_variant(
     if not latest:
         raise HTTPException(status_code=404, detail="No content version available")
     parsed_channel = _parse_channel(channel)
-    variants = _ensure_channel_variants(db, topic, latest)
+    try:
+        variants = _ensure_channel_variants(db, topic, latest)
+    except DBAPIError as exc:
+        _raise_if_missing_variants_schema(exc)
+        raise
     target = next((item for item in variants if item.channel == parsed_channel), None)
     if not target:
         raise HTTPException(status_code=404, detail="Channel variant not found")

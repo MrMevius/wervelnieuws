@@ -34,25 +34,47 @@ class OpenAIClient:
                 )
             return "[MOCK]" + prompt[:200], []
 
-        request_payload: dict = {"model": self.text_model, "input": prompt}
-        if websearch_enabled:
-            request_payload["tools"] = [{"type": "web_search_preview"}]
+        if self._supports_responses_api():
+            request_payload: dict = {"model": self.text_model, "input": prompt}
+            if websearch_enabled:
+                request_payload["tools"] = [{"type": "web_search_preview"}]
 
-        response = self.client.responses.create(**request_payload)
-        text = response.output_text
+            response = self.client.responses.create(**request_payload)
+            text = self._extract_output_text(response)
+            if not websearch_enabled:
+                return text, []
+
+            web_hits = self._extract_web_hits(response)
+            if web_hits:
+                return text, web_hits[:websearch_max_results]
+            return (
+                text,
+                [
+                    {
+                        "title": "Websearch context",
+                        "url": "",
+                        "snippet": "Websearch stond aan maar leverde geen expliciete bronlinks op.",
+                    }
+                ],
+            )
+
+        completion = self.client.chat.completions.create(
+            model=self.text_model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = self._extract_chat_text(completion)
         if not websearch_enabled:
             return text, []
-
-        web_hits = self._extract_web_hits(response)
-        if web_hits:
-            return text, web_hits[:websearch_max_results]
         return (
             text,
             [
                 {
-                    "title": "Websearch context",
+                    "title": "Websearch niet beschikbaar",
                     "url": "",
-                    "snippet": "Websearch stond aan maar leverde geen expliciete bronlinks op.",
+                    "snippet": (
+                        "Websearch is ingeschakeld, maar deze OpenAI SDK ondersteunt "
+                        "geen Responses API. Update de SDK voor echte webbronnen."
+                    ),
                 }
             ],
         )
@@ -95,3 +117,39 @@ class OpenAIClient:
                         continue
                     hits.append({"title": title, "url": url, "snippet": snippet})
         return hits
+
+    def _supports_responses_api(self) -> bool:
+        return bool(self.client and hasattr(self.client, "responses"))
+
+    def _extract_output_text(self, response: object) -> str:
+        text_value = getattr(response, "output_text", None)
+        if isinstance(text_value, str) and text_value.strip():
+            return text_value
+        model_dump = getattr(response, "model_dump", None)
+        if callable(model_dump):
+            payload = model_dump()
+            if isinstance(payload, dict):
+                return str(payload)
+        return ""
+
+    def _extract_chat_text(self, completion: object) -> str:
+        choices = getattr(completion, "choices", None)
+        if not isinstance(choices, list) or not choices:
+            return ""
+        first = choices[0]
+        message = getattr(first, "message", None)
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+            return "\n".join(parts)
+        return ""

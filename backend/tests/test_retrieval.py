@@ -252,3 +252,51 @@ def test_retrieval_filters_database_hits_by_topic_project(db_session: Session):
     database_hits = [hit for hit in hits if hit.get("source_type") == "database"]
     assert database_hits
     assert all(hit.get("project_id") == project_a.id for hit in database_hits)
+
+
+def test_retrieval_handles_colon_in_subject_without_fts_crash(db_session: Session):
+    project = Project(name="Windpark de Boldijk", is_active=True)
+    db_session.add(project)
+    db_session.flush()
+
+    topic = Topic(
+        title="Onderhoud nacelle",
+        subject="nacelle: onderhoud",
+        theme="Techniek",
+        project_id=project.id,
+    )
+    db_session.add(topic)
+    db_session.flush()
+
+    topic_doc = TopicSourceDocument(
+        topic_id=topic.id,
+        filename="nacelle-bron.txt",
+        file_path="/tmp/nacelle-bron.txt",
+        content_type="text/plain",
+        doc_type=DocumentType.txt,
+        status=DocumentStatus.indexed,
+    )
+    db_session.add(topic_doc)
+    db_session.flush()
+
+    topic_chunk = DocumentChunk(
+        document_id=topic_doc.id,
+        topic_id=topic.id,
+        chunk_index=0,
+        text="Nacelle onderhoud staat gepland voor volgende week.",
+        metadata_json="{}",
+    )
+    db_session.add(topic_chunk)
+    db_session.flush()
+
+    db_session.execute(
+        text(
+            "INSERT INTO document_chunks_fts(chunk_id, topic_id, text) VALUES (:c, :t, :x)"
+        ),
+        {"c": topic_chunk.id, "t": topic.id, "x": topic_chunk.text},
+    )
+    db_session.commit()
+
+    hits = RetrievalService(db_session).retrieve_context(topic, limit=4)
+    assert hits
+    assert any(hit.get("source_type") == "topic" for hit in hits)

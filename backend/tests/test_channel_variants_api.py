@@ -1,3 +1,8 @@
+from sqlalchemy import text
+
+from app.api.deps import get_db
+
+
 def _login(client):
     response = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin12345"}
@@ -106,3 +111,43 @@ def test_regenerate_with_selected_channels(client):
     assert variants.status_code == 200
     channels = {item["channel"] for item in variants.json()}
     assert channels == {"website", "newsletter"}
+
+
+def test_channel_variants_endpoints_return_actionable_error_when_schema_missing(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+    topic = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "Schemafout",
+            "subject": "Schemafout",
+            "theme": "Planning",
+            "project_id": project_id,
+            "editorial_notes": "",
+            "planning_at": None,
+            "target_channels": ["website"],
+        },
+    ).json()
+
+    generated = client.post(f"/api/content/{topic['id']}/generate", headers=headers)
+    assert generated.status_code == 200
+
+    db_gen = client.app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    try:
+        db.execute(text("DROP TABLE content_channel_variants"))
+        db.commit()
+    finally:
+        db.close()
+        db_gen.close()
+
+    variants = client.get(
+        f"/api/content/{topic['id']}/variants/current", headers=headers
+    )
+    assert variants.status_code == 503
+    assert "docker compose run --rm migrate" in variants.json()["detail"]
+
+    regenerate = client.post(f"/api/content/{topic['id']}/regenerate", headers=headers)
+    assert regenerate.status_code == 503
+    assert "docker compose run --rm migrate" in regenerate.json()["detail"]
