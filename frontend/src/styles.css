@@ -1217,7 +1217,62 @@ thead th {
     grid-template-columns: 1fr;
   }
 
+  .planning-channel-workspace {
+    gap: 10px;
+  }
+
+  .preview-mode-toggle {
+    width: 100%;
+  }
+
+  .preview-mode-button {
+    flex: 1 1 180px;
+    text-align: center;
+  }
+
+  .channel-workspace-grid,
+  .all-previews-grid {
+    gap: 10px;
+  }
+
   .channel-tab {
     justify-items: stretch;
+    padding: 9px 10px;
+  }
+
+  .channel-status-line {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .channel-preview {
+    padding: 10px;
+    border-radius: 12px;
+  }
+
+  .media-preview-card {
+    padding: 10px;
+    gap: 8px;
+  }
+
+  .media-preview-html {
+    max-height: 180px;
+    font-size: 0.93rem;
+    line-height: 1.48;
+  }
+
+  .preview-website h4,
+  .preview-facebook h4,
+  .preview-newsletter h4 {
+    font-size: 1.08rem;
+  }
+
+  .preview-facebook .media-preview-card {
+    max-width: 100%;
+    justify-self: stretch;
+  }
+
+  .preview-newsletter .media-preview-card {
+    padding: 12px;
   }
 }
