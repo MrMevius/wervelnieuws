@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DragEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import {
+  AdminTheme,
   AdminUser,
   AboutContent,
   ContentChannelVariant,
@@ -17,6 +18,7 @@ import {
   changeAdminUserPassword,
   changeCurrentUserPassword,
   createAdminUser,
+  createAdminTheme,
   createAdminProject,
   bulkCopyDatabaseDocuments,
   bulkDeleteDatabaseDocuments,
@@ -30,6 +32,8 @@ import {
   getCurrentUser,
   importTopicsCsv,
   listAdminUsers,
+  listAdminActivity,
+  listAdminThemes,
   getCurrentSchedule,
   getAdminGenAIConfig,
   getAdminGenAIModelOptions,
@@ -37,6 +41,8 @@ import {
   listAdminProjects,
   listDatabaseDocuments,
   listDatabaseProjects,
+  listTopicScheduleTemplates,
+  listTopicThemes,
   listVersions,
   listTopics,
   login,
@@ -51,6 +57,7 @@ import {
   updateAdminUserActive,
   updateAdminGenAIConfig,
   updateAdminProject,
+  updateAdminTheme,
   updateAdminUser,
   uploadDatabaseDocumentWithProgress,
   uploadCurrentUserAvatar,
@@ -231,11 +238,6 @@ export function App() {
               {currentUserQuery.data?.is_admin && (
                 <NavLink to="/admin" role="menuitem" onClick={() => setMenuOpen(false)}>
                   Admin
-                </NavLink>
-              )}
-              {currentUserQuery.data?.is_admin && (
-                <NavLink to="/admin/scheduler" role="menuitem" onClick={() => setMenuOpen(false)}>
-                  Scheduler
                 </NavLink>
               )}
               <button type="button" role="menuitem" onClick={logout}>
@@ -483,9 +485,19 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [newSubject, setNewSubject] = useState("");
   const [newTheme, setNewTheme] = useState("");
+  const [newEditorialNotes, setNewEditorialNotes] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const projectsQuery = useQuery({
     queryKey: ["database-projects"],
     queryFn: listDatabaseProjects
+  });
+  const topicThemesQuery = useQuery({
+    queryKey: ["topic-themes"],
+    queryFn: listTopicThemes
+  });
+  const topicTemplatesQuery = useQuery({
+    queryKey: ["topic-schedule-templates"],
+    queryFn: listTopicScheduleTemplates
   });
   const [newProjectId, setNewProjectId] = useState("");
   const [projectFilterId, setProjectFilterId] = useState("all");
@@ -496,21 +508,13 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
     "newsletter"
   ]);
   const planningThemeOptions = useMemo(() => {
-    const fallback = [
-      "Algemeen",
-      "Planning",
-      "Techniek",
-      "Omgeving",
-      "Veiligheid",
-      "Participatie"
-    ];
-    const fromExistingTopics = topics
-      .map((topic) => topic.theme.trim())
-      .filter((value) => value.length > 0);
-    return Array.from(new Set([...fromExistingTopics, ...fallback])).sort((left, right) =>
-      left.localeCompare(right, "nl-NL")
-    );
-  }, [topics]);
+    const fromApi = (topicThemesQuery.data ?? []).map((item) => item.name.trim()).filter(Boolean);
+    if (fromApi.length > 0) {
+      return fromApi.sort((left, right) => left.localeCompare(right, "nl-NL"));
+    }
+    const fallback = ["Algemeen", "Planning", "Techniek", "Omgeving", "Veiligheid", "Participatie"];
+    return fallback.sort((left, right) => left.localeCompare(right, "nl-NL"));
+  }, [topicThemesQuery.data]);
   const [sortKey, setSortKey] = useState<PlanningSortKey>("planning_at");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
 
@@ -530,6 +534,8 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       setFeedback("Planningsregel toegevoegd.");
       setNewSubject("");
       setNewTheme("");
+      setNewEditorialNotes("");
+      setSelectedTemplateId("");
       setNewProjectId(projectsQuery.data?.[0]?.id ?? "");
       setNewPlanningAt("");
       setNewChannels(["website", "facebook", "newsletter"]);
@@ -655,10 +661,33 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       subject: newSubject.trim(),
       theme: newTheme.trim(),
       project_id: newProjectId,
-      editorial_notes: "",
+      editorial_notes: newEditorialNotes.trim(),
       planning_at: new Date(newPlanningAt).toISOString(),
       target_channels: newChannels
     });
+  }
+
+  function applyPlanningTemplate(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const template = (topicTemplatesQuery.data ?? []).find((item) => item.id === templateId);
+    if (!template) {
+      return;
+    }
+    const projectName =
+      (projectsQuery.data ?? []).find((project) => project.id === newProjectId)?.name ?? "project";
+    const subject = template.subject_template.replaceAll("{project}", projectName);
+    setNewSubject(subject);
+    setNewTheme(template.theme);
+    setNewEditorialNotes(template.editorial_notes);
+    const base = new Date();
+    base.setDate(base.getDate() + 1);
+    const [hours, minutes] = template.planning_time.split(":").map((value) => Number(value));
+    base.setHours(Number.isFinite(hours) ? hours : 9, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+    const localIso = new Date(base.getTime() - base.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+    setNewPlanningAt(localIso);
+    setFeedback(`Sjabloon toegepast: ${template.label}.`);
   }
 
   async function onCsvPicked(file: File | null) {
@@ -748,6 +777,18 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
         </label>
 
         <form className="planning-form" onSubmit={submitPlanningRule}>
+          <select
+            aria-label="Planningssjabloon"
+            value={selectedTemplateId}
+            onChange={(event) => applyPlanningTemplate(event.target.value)}
+          >
+            <option value="">Kies sjabloon (optioneel)</option>
+            {(topicTemplatesQuery.data ?? []).map((template) => (
+              <option key={template.id} value={template.id}>
+                {template.label}
+              </option>
+            ))}
+          </select>
           <input
             aria-label="Onderwerp"
             placeholder="Onderwerp"
@@ -792,6 +833,13 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
             value={newPlanningAt}
             onChange={(event) => setNewPlanningAt(event.target.value)}
             required
+          />
+          <textarea
+            aria-label="Opmerkingen"
+            placeholder="Opmerkingen voor redactie/AI"
+            value={newEditorialNotes}
+            onChange={(event) => setNewEditorialNotes(event.target.value)}
+            rows={2}
           />
           <div className="planning-media-options" role="group" aria-label="Doelmedia">
             <label>
@@ -2682,12 +2730,16 @@ function DummyPage({ title, text }: { title: string; text: string }) {
 }
 
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
+  type AdminTab = "users" | "projects" | "themes" | "ai" | "scheduler" | "activity";
+
   const queryClient = useQueryClient();
+  const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>("users");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [passwordEditorUserId, setPasswordEditorUserId] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
+  const [newThemeName, setNewThemeName] = useState("");
   const [genAIApiKey, setGenAIApiKey] = useState("");
   const [genAIForm, setGenAIForm] = useState<{
     system_prompt: string;
@@ -2700,6 +2752,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     websearch_max_results: number;
   } | null>(null);
   const [projectDrafts, setProjectDrafts] = useState<Record<string, string>>({});
+  const [themeDrafts, setThemeDrafts] = useState<Record<string, string>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<
     Record<string, { password: string; confirm: string }>
   >({});
@@ -2714,6 +2767,26 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     queryKey: ["admin-projects"],
     queryFn: listAdminProjects,
     enabled: currentUser?.is_admin === true
+  });
+
+  const themesQuery = useQuery({
+    queryKey: ["admin-themes"],
+    queryFn: listAdminThemes,
+    enabled: currentUser?.is_admin === true
+  });
+
+  const adminActivityQuery = useQuery({
+    queryKey: ["admin-activity"],
+    queryFn: listAdminActivity,
+    enabled: currentUser?.is_admin === true,
+    refetchInterval: 30000
+  });
+
+  const schedulerQuery = useQuery({
+    queryKey: ["scheduler-overview"],
+    queryFn: getSchedulerOverview,
+    enabled: currentUser?.is_admin === true,
+    refetchInterval: 30000
   });
 
   const genAIConfigQuery = useQuery({
@@ -2897,6 +2970,54 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const createThemeMutation = useMutation({
+    mutationFn: (name: string) => createAdminTheme(name),
+    onSuccess: (created) => {
+      queryClient.setQueryData(["admin-themes"], (existing: AdminTheme[] | undefined) => {
+        if (!existing) {
+          return [created];
+        }
+        return [...existing, created].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setNewThemeName("");
+      setFeedback("Thema toegevoegd.");
+      queryClient.invalidateQueries({ queryKey: ["topic-themes"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("already exists")) {
+        setFeedback("Themanaam bestaat al.");
+        return;
+      }
+      setFeedback("Thema toevoegen is mislukt.");
+    }
+  });
+
+  const updateThemeMutation = useMutation({
+    mutationFn: ({ themeId, payload }: { themeId: string; payload: { name?: string; is_active?: boolean } }) =>
+      updateAdminTheme(themeId, payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["admin-themes"], (existing: AdminTheme[] | undefined) => {
+        if (!existing) {
+          return existing;
+        }
+        return existing
+          .map((theme) => (theme.id === updated.id ? updated : theme))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setFeedback("Thema bijgewerkt.");
+      queryClient.invalidateQueries({ queryKey: ["topic-themes"] });
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("already exists")) {
+        setFeedback("Themanaam bestaat al.");
+        return;
+      }
+      setFeedback("Thema bijwerken is mislukt.");
+    }
+  });
+
   const updateGenAIMutation = useMutation({
     mutationFn: (payload: {
       system_prompt: string;
@@ -2965,6 +3086,13 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }));
   }
 
+  function updateThemeDraft(themeId: string, value: string) {
+    setThemeDrafts((current) => ({
+      ...current,
+      [themeId]: value
+    }));
+  }
+
   function updateGenAIField<K extends keyof NonNullable<typeof genAIForm>>(
     field: K,
     value: NonNullable<typeof genAIForm>[K]
@@ -2989,7 +3117,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isLoading || projectsQuery.isLoading || genAIConfigQuery.isLoading) {
+  if (
+    usersQuery.isLoading ||
+    projectsQuery.isLoading ||
+    themesQuery.isLoading ||
+    genAIConfigQuery.isLoading
+  ) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -2998,7 +3131,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (usersQuery.isError || projectsQuery.isError || genAIConfigQuery.isError) {
+  if (
+    usersQuery.isError ||
+    projectsQuery.isError ||
+    themesQuery.isError ||
+    genAIConfigQuery.isError
+  ) {
     return (
       <section className="panel">
         <h1>Admin</h1>
@@ -3010,6 +3148,31 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   return (
     <section className="panel">
       <h1>Admin</h1>
+      <div className="admin-tab-row" role="tablist" aria-label="Admin onderdelen">
+        <button type="button" role="tab" aria-selected={activeAdminTab === "users"} onClick={() => setActiveAdminTab("users")}>Gebruikers</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "projects"} onClick={() => setActiveAdminTab("projects")}>Projecten</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "themes"} onClick={() => setActiveAdminTab("themes")}>Thema&apos;s</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "ai"} onClick={() => setActiveAdminTab("ai")}>AI</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "scheduler"} onClick={() => setActiveAdminTab("scheduler")}>Scheduler</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "activity"} onClick={() => setActiveAdminTab("activity")}>Activiteit</button>
+      </div>
+      {feedback && (
+        <p
+          role="status"
+          className={
+            feedback.includes("mislukt") ||
+            feedback.includes("laatste") ||
+            feedback.includes("niet") ||
+            feedback.includes("bestaat")
+              ? "error"
+              : "success"
+          }
+        >
+          {feedback}
+        </p>
+      )}
+
+      <div hidden={activeAdminTab !== "users"}>
       <p className="muted">Geef gebruikers adminrechten of haal ze weer weg.</p>
       <form
         className="admin-create-user"
@@ -3205,22 +3368,9 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </tbody>
         </table>
       </div>
-      {feedback && (
-        <p
-          role="status"
-          className={
-            feedback.includes("mislukt") ||
-            feedback.includes("laatste") ||
-            feedback.includes("niet") ||
-            feedback.includes("bestaat")
-              ? "error"
-              : "success"
-          }
-        >
-          {feedback}
-        </p>
-      )}
+      </div>
 
+      <div hidden={activeAdminTab !== "projects"}>
       <h2>Projecten</h2>
       <p className="muted">Beheer hier de projecten waaraan databasebestanden gekoppeld worden.</p>
       <form
@@ -3308,7 +3458,99 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </tbody>
         </table>
       </div>
+      </div>
 
+      <div hidden={activeAdminTab !== "themes"}>
+        <h2>Thema&apos;s</h2>
+        <p className="muted">Beheer hier de themalijst die gebruikt wordt in Planning en AI-context.</p>
+        <form
+          className="admin-create-user"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setFeedback(null);
+            createThemeMutation.mutate(newThemeName.trim());
+          }}
+        >
+          <input
+            type="text"
+            value={newThemeName}
+            onChange={(event) => setNewThemeName(event.target.value)}
+            placeholder="Nieuw thema"
+            aria-label="Nieuw thema"
+            minLength={2}
+            maxLength={120}
+            required
+          />
+          <span />
+          <button
+            type="submit"
+            disabled={createThemeMutation.isPending || newThemeName.trim().length < 2}
+          >
+            Thema toevoegen
+          </button>
+        </form>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Thema</th>
+                <th>Status</th>
+                <th>Bewerken</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(themesQuery.data ?? []).map((theme) => {
+                const draftName = themeDrafts[theme.id] ?? theme.name;
+                return (
+                  <tr key={theme.id}>
+                    <td>
+                      <input
+                        type="text"
+                        value={draftName}
+                        aria-label={`Themanaam ${theme.name}`}
+                        onChange={(event) => updateThemeDraft(theme.id, event.target.value)}
+                      />
+                    </td>
+                    <td>{theme.is_active ? "actief" : "inactief"}</td>
+                    <td>
+                      <div className="admin-account-actions">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFeedback(null);
+                            updateThemeMutation.mutate({
+                              themeId: theme.id,
+                              payload: { name: draftName.trim() }
+                            });
+                          }}
+                          disabled={updateThemeMutation.isPending || draftName.trim().length < 2}
+                        >
+                          Naam opslaan
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFeedback(null);
+                            updateThemeMutation.mutate({
+                              themeId: theme.id,
+                              payload: { is_active: !theme.is_active }
+                            });
+                          }}
+                          disabled={updateThemeMutation.isPending}
+                        >
+                          {theme.is_active ? "Deactiveer" : "Activeer"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div hidden={activeAdminTab !== "ai"}>
       <h2>GenAI configuratie</h2>
       <p className="muted">Compact beheer van prompts, modellen en websearch.</p>
       {genAIForm && (
@@ -3445,6 +3687,90 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </div>
         </form>
       )}
+      </div>
+
+      <div hidden={activeAdminTab !== "scheduler"}>
+        <h2>Scheduler</h2>
+        {schedulerQuery.isLoading && <p>Laden...</p>}
+        {schedulerQuery.isError && <p className="error">Scheduler-overzicht kon niet worden geladen.</p>}
+        {schedulerQuery.data && (
+          <div className="scheduler-grid">
+            <article className="panel">
+              <h3>Recent gedraaid</h3>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Taak</th>
+                      <th>Status</th>
+                      <th>Gepland voor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedulerQuery.data.recent_runs.slice(0, 8).map((run) => (
+                      <tr key={run.schedule_id}>
+                        <td>{run.topic_subject}</td>
+                        <td>{run.status}</td>
+                        <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+            <article className="panel">
+              <h3>Komende planning</h3>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Taak</th>
+                      <th>Status</th>
+                      <th>Volgende run</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {schedulerQuery.data.upcoming_runs.slice(0, 8).map((run) => (
+                      <tr key={run.schedule_id}>
+                        <td>{run.topic_subject}</td>
+                        <td>{run.status}</td>
+                        <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        )}
+      </div>
+
+      <div hidden={activeAdminTab !== "activity"}>
+        <h2>Admin-activiteit</h2>
+        <p className="muted">Recente beheeracties en systeemevents (automatisch elke 30 sec ververst).</p>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tijd</th>
+                <th>Gebruiker</th>
+                <th>Actie</th>
+                <th>Topic</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(adminActivityQuery.data ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{formatAmsterdamDateTime(item.created_at)}</td>
+                  <td>{item.actor_username}</td>
+                  <td>{item.event_type}</td>
+                  <td>{item.topic_id ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
   );
 }

@@ -1,19 +1,27 @@
 import csv
 import io
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import ValidationError
-from sqlalchemy import desc
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.core.rate_limit import rate_limit
 from app.core.settings import get_settings
-from app.models.entities import AuditEvent, Topic, TopicNote, TopicSourceDocument, User
+from app.models.entities import (
+    AuditEvent,
+    SystemSetting,
+    Topic,
+    TopicNote,
+    TopicSourceDocument,
+    User,
+)
 from app.models.enums import ChannelName
 from app.repositories.database_repository import DatabaseRepository
 from app.repositories.topic_repository import TopicRepository
@@ -23,6 +31,8 @@ from app.schemas.topic import (
     NoteCreate,
     NoteResponse,
     TopicCreate,
+    TopicScheduleTemplateResponse,
+    TopicThemeOptionResponse,
     TopicResponse,
     TopicUpdate,
 )
@@ -40,6 +50,44 @@ CSV_COLUMNS = [
     "website",
     "facebook",
     "nieuwsbrief",
+]
+
+THEMES_SETTING_KEY = "admin_topic_themes_v1"
+SCHEDULE_TEMPLATES_SETTING_KEY = "admin_schedule_templates_v1"
+DEFAULT_ADMIN_THEMES = [
+    {"id": "algemeen", "name": "Algemeen", "is_active": True},
+    {"id": "planning", "name": "Planning", "is_active": True},
+    {"id": "techniek", "name": "Techniek", "is_active": True},
+    {"id": "omgeving", "name": "Omgeving", "is_active": True},
+    {"id": "veiligheid", "name": "Veiligheid", "is_active": True},
+    {"id": "participatie", "name": "Participatie", "is_active": True},
+]
+
+DEFAULT_SCHEDULE_TEMPLATES = [
+    {
+        "id": "weekly-update",
+        "label": "Wekelijkse projectupdate",
+        "subject_template": "Wekelijkse update {project}",
+        "theme": "Planning",
+        "editorial_notes": "Benoem voortgang, komende werkzaamheden en wat bewoners kunnen verwachten.",
+        "planning_time": "09:00",
+    },
+    {
+        "id": "monthly-overview",
+        "label": "Maandoverzicht",
+        "subject_template": "Maandoverzicht {project}",
+        "theme": "Algemeen",
+        "editorial_notes": "Vat de maand samen in rustige, feitelijke taal en benoem vervolgstappen.",
+        "planning_time": "10:00",
+    },
+    {
+        "id": "resident-info",
+        "label": "Bewonersinformatie",
+        "subject_template": "Informatie voor omwonenden {project}",
+        "theme": "Omgeving",
+        "editorial_notes": "Leg duidelijk uit wat verandert, wanneer het plaatsvindt en waar vragen gesteld kunnen worden.",
+        "planning_time": "18:30",
+    },
 ]
 
 
@@ -60,6 +108,92 @@ def _parse_bool_cell(value: str) -> bool:
     if normalized in {"0", "false", "nee", "no"}:
         return False
     raise ValueError(f"Invalid boolean value '{value}'")
+
+
+def _load_theme_options(db: Session) -> list[dict[str, str | bool]]:
+    setting = db.scalar(
+        select(SystemSetting).where(SystemSetting.key == THEMES_SETTING_KEY)
+    )
+    if not setting:
+        return DEFAULT_ADMIN_THEMES
+    try:
+        parsed = json.loads(setting.value)
+    except json.JSONDecodeError:
+        return DEFAULT_ADMIN_THEMES
+    if not isinstance(parsed, list):
+        return DEFAULT_ADMIN_THEMES
+    normalized: list[dict[str, str | bool]] = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        theme_id = str(item.get("id", "")).strip()
+        if not name or not theme_id:
+            continue
+        normalized.append(
+            {
+                "id": theme_id,
+                "name": name,
+                "is_active": bool(item.get("is_active", True)),
+            }
+        )
+    return normalized or DEFAULT_ADMIN_THEMES
+
+
+def _active_theme_names(db: Session) -> set[str]:
+    return {
+        str(item["name"]).strip().lower()
+        for item in _load_theme_options(db)
+        if item.get("is_active") is True
+    }
+
+
+def _require_active_theme(db: Session, theme_name: str) -> None:
+    normalized = theme_name.strip().lower()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Theme is required")
+    active_names = _active_theme_names(db)
+    if active_names and normalized not in active_names:
+        raise HTTPException(status_code=400, detail="Theme is not active")
+
+
+def _load_schedule_templates(db: Session) -> list[dict[str, str]]:
+    setting = db.scalar(
+        select(SystemSetting).where(SystemSetting.key == SCHEDULE_TEMPLATES_SETTING_KEY)
+    )
+    if not setting:
+        return DEFAULT_SCHEDULE_TEMPLATES
+    try:
+        parsed = json.loads(setting.value)
+    except json.JSONDecodeError:
+        return DEFAULT_SCHEDULE_TEMPLATES
+    if not isinstance(parsed, list):
+        return DEFAULT_SCHEDULE_TEMPLATES
+    normalized: list[dict[str, str]] = []
+    required_keys = {
+        "id",
+        "label",
+        "subject_template",
+        "theme",
+        "editorial_notes",
+        "planning_time",
+    }
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        if not required_keys.issubset(item.keys()):
+            continue
+        normalized.append(
+            {
+                "id": str(item["id"]),
+                "label": str(item["label"]),
+                "subject_template": str(item["subject_template"]),
+                "theme": str(item["theme"]),
+                "editorial_notes": str(item["editorial_notes"]),
+                "planning_time": str(item["planning_time"]),
+            }
+        )
+    return normalized or DEFAULT_SCHEDULE_TEMPLATES
 
 
 def _parse_planning_datetime(value: str) -> datetime:
@@ -90,6 +224,36 @@ def list_topics(
     return TopicRepository(db).list()
 
 
+@router.get("/themes", response_model=list[TopicThemeOptionResponse])
+def list_topic_themes(
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[TopicThemeOptionResponse]:
+    del current
+    options = [
+        item for item in _load_theme_options(db) if item.get("is_active") is True
+    ]
+    return [
+        TopicThemeOptionResponse(
+            id=str(item["id"]),
+            name=str(item["name"]),
+        )
+        for item in options
+    ]
+
+
+@router.get("/schedule-templates", response_model=list[TopicScheduleTemplateResponse])
+def list_topic_schedule_templates(
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[TopicScheduleTemplateResponse]:
+    del current
+    return [
+        TopicScheduleTemplateResponse.model_validate(item)
+        for item in _load_schedule_templates(db)
+    ]
+
+
 @router.post("", response_model=TopicResponse)
 def create_topic(
     payload: TopicCreate,
@@ -97,6 +261,7 @@ def create_topic(
     db: Session = Depends(get_db),
 ) -> Topic:
     _require_active_project(db, payload.project_id)
+    _require_active_theme(db, payload.theme)
     payload_data = payload.model_dump(exclude={"target_channels"})
     topic = TopicRepository(db).create(**payload_data)
     topic.target_channels = payload.target_channels
@@ -131,6 +296,8 @@ def update_topic(
     updates = payload.model_dump(exclude_none=True)
     if "project_id" in updates:
         _require_active_project(db, updates["project_id"])
+    if "theme" in updates:
+        _require_active_theme(db, str(updates["theme"]))
     for key, value in updates.items():
         setattr(topic, key, value)
     topic = TopicRepository(db).save(topic)
@@ -201,6 +368,8 @@ async def import_topics_csv(
                 raise ValueError(f"Onbekend project '{project_name}'")
             if not project.is_active:
                 raise ValueError(f"Project '{project_name}' is inactief")
+            if theme.lower() not in _active_theme_names(db):
+                raise ValueError(f"Thema '{theme}' is onbekend of inactief")
 
             selected_channels: list[ChannelName] = []
             if _parse_bool_cell(row.get("website") or ""):

@@ -202,6 +202,35 @@ export type Project = {
   is_active: boolean;
 };
 
+export type AdminTheme = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
+export type TopicThemeOption = {
+  id: string;
+  name: string;
+};
+
+export type AdminScheduleTemplate = {
+  id: string;
+  label: string;
+  subject_template: string;
+  theme: string;
+  editorial_notes: string;
+  planning_time: string;
+};
+
+export type AdminActivity = {
+  id: string;
+  event_type: string;
+  topic_id: string | null;
+  actor_user_id: string | null;
+  actor_username: string;
+  created_at: string;
+};
+
 export type GenAIConfig = {
   system_prompt: string;
   website_prompt: string;
@@ -514,6 +543,14 @@ export function listTopics() {
   return request<Topic[]>("/topics");
 }
 
+export function listTopicThemes() {
+  return request<TopicThemeOption[]>("/topics/themes");
+}
+
+export function listTopicScheduleTemplates() {
+  return request<AdminScheduleTemplate[]>("/topics/schedule-templates");
+}
+
 export type CreateTopicPayload = {
   title: string;
   subject: string;
@@ -658,6 +695,32 @@ export function requeueRetryJob(jobId: string) {
 
 export function getSchedulerOverview() {
   return request<SchedulerOverview>("/content/scheduler/overview");
+}
+
+export function listAdminThemes() {
+  return request<AdminTheme[]>("/admin/themes");
+}
+
+export function createAdminTheme(name: string) {
+  return request<AdminTheme>("/admin/themes", {
+    method: "POST",
+    body: JSON.stringify({ name })
+  });
+}
+
+export function updateAdminTheme(themeId: string, payload: Partial<Pick<AdminTheme, "name" | "is_active">>) {
+  return request<AdminTheme>(`/admin/themes/${themeId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function listAdminScheduleTemplates() {
+  return request<AdminScheduleTemplate[]>("/admin/schedule-templates");
+}
+
+export function listAdminActivity() {
+  return request<AdminActivity[]>("/admin/activity");
 }
 
 export function listAuditEvents(topicId: string) {

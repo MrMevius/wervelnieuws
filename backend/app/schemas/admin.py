@@ -30,3 +30,48 @@ class CreateAdminUserRequest(BaseModel):
     @classmethod
     def normalize_username(cls, value: str) -> str:
         return value.strip()
+
+
+class AdminThemeResponse(BaseModel):
+    id: str
+    name: str
+    is_active: bool
+
+
+class CreateAdminThemeRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_name(cls, value: str) -> str:
+        return value.strip()
+
+
+class UpdateAdminThemeRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=120)
+    is_active: bool | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_optional_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip()
+
+
+class AdminScheduleTemplateResponse(BaseModel):
+    id: str
+    label: str
+    subject_template: str
+    theme: str
+    editorial_notes: str
+    planning_time: str
+
+
+class AdminActivityResponse(BaseModel):
+    id: str
+    event_type: str
+    topic_id: str | None
+    actor_user_id: str | None
+    actor_username: str
+    created_at: str

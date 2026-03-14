@@ -127,6 +127,16 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
+                "iteration": "10B",
+                "date": "2026-03-14",
+                "title": "Admin-tabs, themabeheer en slimme planningssjablonen",
+                "highlights": [
+                    "De Admin-pagina is opgedeeld in duidelijke tabs voor gebruikers, projecten, thema's, AI, scheduler en activiteit.",
+                    "Admins kunnen nu thema's beheren; Planning gebruikt direct de actieve themalijst uit de backend.",
+                    "In Planning kun je logische sjablonen kiezen om onderwerp, thema, opmerkingen en planning sneller voor te vullen.",
+                ],
+            },
+            {
                 "iteration": "11",
                 "date": "2026-03-14",
                 "title": "Duidelijke melding bij ontbrekende kanaalvariant-migratie",

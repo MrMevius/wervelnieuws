@@ -497,9 +497,13 @@ button:disabled {
 
 .planning-form {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 8px;
-  align-items: center;
+  align-items: start;
+}
+
+.planning-form textarea {
+  min-height: 42px;
 }
 
 .planning-media-options {
@@ -977,6 +981,24 @@ tbody tr.row-selected {
   margin-bottom: 12px;
 }
 
+.admin-tab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-tab-row button[role="tab"] {
+  border: 1px solid var(--line);
+  background: var(--surface-muted);
+  color: var(--text);
+}
+
+.admin-tab-row button[aria-selected="true"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface) 85%);
+}
+
 .admin-genai-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1203,6 +1225,10 @@ thead th {
 
   .planning-form {
     grid-template-columns: 1fr;
+  }
+
+  .admin-tab-row button[role="tab"] {
+    width: 100%;
   }
 
   .planning-detail-grid {

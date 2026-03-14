@@ -397,3 +397,51 @@ def test_genai_model_options_endpoint_requires_admin_role(client):
     response = client.get("/api/admin/genai-model-options", headers=editor_headers)
     assert response.status_code == 403
     assert response.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_manage_themes(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    listing = client.get("/api/admin/themes", headers=admin_headers)
+    assert listing.status_code == 200
+    assert any(item["name"] == "Planning" for item in listing.json())
+
+    create = client.post(
+        "/api/admin/themes",
+        headers=admin_headers,
+        json={"name": "Communicatie"},
+    )
+    assert create.status_code == 200
+    created = create.json()
+    assert created["name"] == "Communicatie"
+    assert created["is_active"] is True
+
+    rename = client.patch(
+        f"/api/admin/themes/{created['id']}",
+        headers=admin_headers,
+        json={"name": "Communicatie extern", "is_active": False},
+    )
+    assert rename.status_code == 200
+    updated = rename.json()
+    assert updated["name"] == "Communicatie extern"
+    assert updated["is_active"] is False
+
+
+def test_admin_theme_endpoints_require_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    response = client.get("/api/admin/themes", headers=editor_headers)
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Admin access required"
+
+
+def test_admin_can_view_schedule_templates_and_activity(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    templates = client.get("/api/admin/schedule-templates", headers=admin_headers)
+    assert templates.status_code == 200
+    assert len(templates.json()) >= 3
+
+    activity = client.get("/api/admin/activity", headers=admin_headers)
+    assert activity.status_code == 200
+    assert isinstance(activity.json(), list)

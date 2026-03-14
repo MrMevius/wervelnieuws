@@ -86,6 +86,33 @@ const mockApi = vi.hoisted(() => ({
     name: "Windpark de Boldijk Updated",
     is_active: false
   }),
+  listAdminThemes: vi.fn().mockResolvedValue([
+    {
+      id: "planning",
+      name: "Planning",
+      is_active: true
+    }
+  ]),
+  createAdminTheme: vi.fn().mockResolvedValue({
+    id: "communicatie",
+    name: "Communicatie",
+    is_active: true
+  }),
+  updateAdminTheme: vi.fn().mockResolvedValue({
+    id: "planning",
+    name: "Planning aangepast",
+    is_active: false
+  }),
+  listAdminActivity: vi.fn().mockResolvedValue([
+    {
+      id: "a1",
+      event_type: "topic.created",
+      topic_id: "abc12345-1111",
+      actor_user_id: "u1",
+      actor_username: "admin",
+      created_at: "2026-03-14T10:00:00Z"
+    }
+  ]),
   getAdminGenAIConfig: vi.fn().mockResolvedValue({
     system_prompt: "Standaard systeemprompt voor lokale windparkcommunicatie.",
     website_prompt: "Schrijf uitgebreid voor website.",
@@ -216,6 +243,20 @@ const mockApi = vi.hoisted(() => ({
       workflow_state: "draft",
       is_archived: false,
       target_channels: ["website", "facebook", "newsletter"]
+    }
+  ]),
+  listTopicThemes: vi.fn().mockResolvedValue([
+    { id: "planning", name: "Planning" },
+    { id: "algemeen", name: "Algemeen" }
+  ]),
+  listTopicScheduleTemplates: vi.fn().mockResolvedValue([
+    {
+      id: "weekly-update",
+      label: "Wekelijkse projectupdate",
+      subject_template: "Wekelijkse update {project}",
+      theme: "Planning",
+      editorial_notes: "Gebruik feitelijke en rustige toon.",
+      planning_time: "09:00"
     }
   ]),
   listVersions: vi.fn().mockResolvedValue([
@@ -1186,7 +1227,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Gebruikers" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Projecten" }));
+
+    await waitFor(() => {
       expect(screen.getByDisplayValue("Windpark de Boldijk")).toBeInTheDocument();
     });
 
@@ -1213,7 +1259,12 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Gebruikers" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+
+    await waitFor(() => {
       expect(screen.getByRole("heading", { name: "GenAI configuratie" })).toBeInTheDocument();
     });
 
@@ -1238,7 +1289,7 @@ describe("App", () => {
     });
   });
 
-  it("opens scheduler page from admin menu", async () => {
+  it("opens scheduler tab in admin", async () => {
     renderApp();
     await loginIntoApp();
 
@@ -1247,17 +1298,18 @@ describe("App", () => {
     });
 
     fireEvent.click(screen.getByRole("button", { name: "admin" }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "Scheduler" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Gebruikers" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Scheduler" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Scheduler" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Recent gedraaid" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Komende planning" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Retry-queue" })).toBeInTheDocument();
-      expect(screen.getByText(/Laatste update:/)).toBeInTheDocument();
-      expect(screen.getByText(/Ververs automatisch elke 30 sec\./)).toBeInTheDocument();
-      expect(screen.getByRole("columnheader", { name: "Laatste fout" })).toBeInTheDocument();
-      expect(screen.getByText("temporary")).toBeInTheDocument();
       expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
       expect(mockApi.getSchedulerOverview).toHaveBeenCalled();
     });

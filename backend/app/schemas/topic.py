@@ -50,6 +50,20 @@ class TopicResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class TopicThemeOptionResponse(BaseModel):
+    id: str
+    name: str
+
+
+class TopicScheduleTemplateResponse(BaseModel):
+    id: str
+    label: str
+    subject_template: str
+    theme: str
+    editorial_notes: str
+    planning_time: str
+
+
 class NoteCreate(BaseModel):
     note: str = Field(min_length=1)
 

@@ -1,15 +1,23 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import require_admin
 from app.core.db import get_db
 from app.core.security import hash_password
-from app.models.entities import Project, User
+from app.models.entities import AuditEvent, Project, SystemSetting, User
 from app.repositories.database_repository import DatabaseRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.admin import (
+    AdminActivityResponse,
+    AdminScheduleTemplateResponse,
+    AdminThemeResponse,
     AdminUserResponse,
+    CreateAdminThemeRequest,
     CreateAdminUserRequest,
+    UpdateAdminThemeRequest,
     UpdateAdminUserActiveRequest,
     UpdateAdminUserPasswordRequest,
     UpdateAdminUserRequest,
@@ -27,6 +35,143 @@ from app.schemas.genai import (
 from app.services.genai_config_service import GenAIConfigService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+THEMES_SETTING_KEY = "admin_topic_themes_v1"
+SCHEDULE_TEMPLATES_SETTING_KEY = "admin_schedule_templates_v1"
+
+DEFAULT_ADMIN_THEMES = [
+    {"id": "algemeen", "name": "Algemeen", "is_active": True},
+    {"id": "planning", "name": "Planning", "is_active": True},
+    {"id": "techniek", "name": "Techniek", "is_active": True},
+    {"id": "omgeving", "name": "Omgeving", "is_active": True},
+    {"id": "veiligheid", "name": "Veiligheid", "is_active": True},
+    {"id": "participatie", "name": "Participatie", "is_active": True},
+]
+
+DEFAULT_SCHEDULE_TEMPLATES = [
+    {
+        "id": "weekly-update",
+        "label": "Wekelijkse projectupdate",
+        "subject_template": "Wekelijkse update {project}",
+        "theme": "Planning",
+        "editorial_notes": "Benoem voortgang, komende werkzaamheden en wat bewoners kunnen verwachten.",
+        "planning_time": "09:00",
+    },
+    {
+        "id": "monthly-overview",
+        "label": "Maandoverzicht",
+        "subject_template": "Maandoverzicht {project}",
+        "theme": "Algemeen",
+        "editorial_notes": "Vat de maand samen in rustige, feitelijke taal en benoem vervolgstappen.",
+        "planning_time": "10:00",
+    },
+    {
+        "id": "resident-info",
+        "label": "Bewonersinformatie",
+        "subject_template": "Informatie voor omwonenden {project}",
+        "theme": "Omgeving",
+        "editorial_notes": "Leg duidelijk uit wat verandert, wanneer het plaatsvindt en waar vragen gesteld kunnen worden.",
+        "planning_time": "18:30",
+    },
+]
+
+
+def _slugify_theme_id(name: str) -> str:
+    normalized = []
+    for char in name.lower().strip():
+        if char.isalnum():
+            normalized.append(char)
+        elif char in {" ", "-", "_"}:
+            normalized.append("-")
+    slug = "".join(normalized).strip("-")
+    while "--" in slug:
+        slug = slug.replace("--", "-")
+    return slug or "theme"
+
+
+def _load_json_setting(db: Session, key: str, default_value: list[dict]) -> list[dict]:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting:
+        setting = SystemSetting(key=key, value=json.dumps(default_value))
+        db.add(setting)
+        db.commit()
+        return default_value
+    try:
+        parsed = json.loads(setting.value)
+    except json.JSONDecodeError:
+        parsed = default_value
+    if not isinstance(parsed, list):
+        parsed = default_value
+    return parsed
+
+
+def _save_json_setting(db: Session, key: str, value: list[dict]) -> None:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting:
+        setting = SystemSetting(key=key, value=json.dumps(value))
+    else:
+        setting.value = json.dumps(value)
+    db.add(setting)
+    db.commit()
+
+
+def _normalize_themes(raw_themes: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    seen_ids: set[str] = set()
+    seen_names: set[str] = set()
+    for item in raw_themes:
+        if not isinstance(item, dict):
+            continue
+        raw_name = str(item.get("name", "")).strip()
+        if not raw_name:
+            continue
+        raw_id = str(item.get("id", "")).strip() or _slugify_theme_id(raw_name)
+        is_active = bool(item.get("is_active", True))
+        lower_name = raw_name.lower()
+        if raw_id in seen_ids or lower_name in seen_names:
+            continue
+        seen_ids.add(raw_id)
+        seen_names.add(lower_name)
+        normalized.append({"id": raw_id, "name": raw_name, "is_active": is_active})
+    return normalized
+
+
+def _read_themes(db: Session) -> list[dict]:
+    raw_themes = _load_json_setting(db, THEMES_SETTING_KEY, DEFAULT_ADMIN_THEMES)
+    themes = _normalize_themes(raw_themes)
+    if not themes:
+        themes = DEFAULT_ADMIN_THEMES
+    _save_json_setting(db, THEMES_SETTING_KEY, themes)
+    return themes
+
+
+def _read_schedule_templates(db: Session) -> list[dict]:
+    raw_templates = _load_json_setting(
+        db,
+        SCHEDULE_TEMPLATES_SETTING_KEY,
+        DEFAULT_SCHEDULE_TEMPLATES,
+    )
+    normalized: list[dict] = []
+    for item in raw_templates:
+        if not isinstance(item, dict):
+            continue
+        if not all(
+            key in item
+            for key in [
+                "id",
+                "label",
+                "subject_template",
+                "theme",
+                "editorial_notes",
+                "planning_time",
+            ]
+        ):
+            continue
+        normalized.append(item)
+    if not normalized:
+        normalized = DEFAULT_SCHEDULE_TEMPLATES
+    _save_json_setting(db, SCHEDULE_TEMPLATES_SETTING_KEY, normalized)
+    return normalized
 
 
 @router.get("/genai-config", response_model=GenAIConfigResponse)
@@ -55,6 +200,107 @@ def get_genai_model_options(
 ) -> GenAIModelOptionsResponse:
     del current
     return GenAIConfigService(db).get_model_options()
+
+
+@router.get("/themes", response_model=list[AdminThemeResponse])
+def list_themes(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[AdminThemeResponse]:
+    del current
+    themes = _read_themes(db)
+    return [AdminThemeResponse.model_validate(item) for item in themes]
+
+
+@router.post("/themes", response_model=AdminThemeResponse)
+def create_theme(
+    payload: CreateAdminThemeRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminThemeResponse:
+    themes = _read_themes(db)
+    name = payload.name.strip()
+    if any(theme["name"].lower() == name.lower() for theme in themes):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Theme name already exists",
+        )
+    item = {"id": _slugify_theme_id(name), "name": name, "is_active": True}
+    suffix = 2
+    existing_ids = {theme["id"] for theme in themes}
+    while item["id"] in existing_ids:
+        item["id"] = f"{_slugify_theme_id(name)}-{suffix}"
+        suffix += 1
+    themes.append(item)
+    _save_json_setting(db, THEMES_SETTING_KEY, themes)
+    return AdminThemeResponse.model_validate(item)
+
+
+@router.patch("/themes/{theme_id}", response_model=AdminThemeResponse)
+def update_theme(
+    theme_id: str,
+    payload: UpdateAdminThemeRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminThemeResponse:
+    del current
+    themes = _read_themes(db)
+    index = next((i for i, item in enumerate(themes) if item["id"] == theme_id), -1)
+    if index < 0:
+        raise HTTPException(status_code=404, detail="Theme not found")
+    current_item = themes[index]
+    if payload.name is not None:
+        new_name = payload.name.strip()
+        if any(
+            item["id"] != theme_id and item["name"].lower() == new_name.lower()
+            for item in themes
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Theme name already exists",
+            )
+        current_item["name"] = new_name
+    if payload.is_active is not None:
+        current_item["is_active"] = payload.is_active
+    themes[index] = current_item
+    _save_json_setting(db, THEMES_SETTING_KEY, themes)
+    return AdminThemeResponse.model_validate(current_item)
+
+
+@router.get("/schedule-templates", response_model=list[AdminScheduleTemplateResponse])
+def list_schedule_templates(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[AdminScheduleTemplateResponse]:
+    del current
+    templates = _read_schedule_templates(db)
+    return [AdminScheduleTemplateResponse.model_validate(item) for item in templates]
+
+
+@router.get("/activity", response_model=list[AdminActivityResponse])
+def list_admin_activity(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> list[AdminActivityResponse]:
+    del current
+    rows = (
+        db.query(AuditEvent, User.username)
+        .outerjoin(User, User.id == AuditEvent.actor_user_id)
+        .order_by(desc(AuditEvent.created_at))
+        .limit(40)
+        .all()
+    )
+    return [
+        AdminActivityResponse(
+            id=event.id,
+            event_type=event.event_type,
+            topic_id=event.topic_id,
+            actor_user_id=event.actor_user_id,
+            actor_username=username or "Systeem",
+            created_at=event.created_at.isoformat(),
+        )
+        for event, username in rows
+    ]
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
