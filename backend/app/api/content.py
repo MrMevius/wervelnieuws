@@ -8,7 +8,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.entities import (
     ContentChannelVariant,
@@ -36,6 +36,10 @@ from app.schemas.versioning import (
     ManualEditRequest,
     RegenerateRequest,
     RetryJobResponse,
+    SchedulerOverviewResponse,
+    SchedulerRecentRunResponse,
+    SchedulerRetryJobResponse,
+    SchedulerUpcomingRunResponse,
     ScheduleRequest,
     VariantUpdateRequest,
 )
@@ -43,6 +47,10 @@ from app.services.audit_service import AuditService
 from app.services.generation_service import GenerationService, slugify
 
 router = APIRouter(prefix="/content", tags=["content"])
+
+SCHEDULER_RECENT_LIMIT = 25
+SCHEDULER_UPCOMING_LIMIT = 25
+SCHEDULER_RETRY_LIMIT = 25
 
 MIGRATION_REQUIRED_DETAIL = (
     "Database mist schema voor kanaalvarianten. "
@@ -409,6 +417,81 @@ def current_version(
     if not version:
         raise HTTPException(status_code=404, detail="No current version")
     return version
+
+
+@router.get("/scheduler/overview", response_model=SchedulerOverviewResponse)
+def scheduler_overview(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> SchedulerOverviewResponse:
+    del current
+    now = datetime.now(UTC)
+
+    recent_rows = (
+        db.query(PublicationSchedule, Topic.subject)
+        .join(Topic, Topic.id == PublicationSchedule.topic_id)
+        .order_by(desc(PublicationSchedule.updated_at))
+        .limit(SCHEDULER_RECENT_LIMIT)
+        .all()
+    )
+    upcoming_rows = (
+        db.query(PublicationSchedule, Topic.subject)
+        .join(Topic, Topic.id == PublicationSchedule.topic_id)
+        .filter(PublicationSchedule.status == WorkflowState.scheduled)
+        .filter(PublicationSchedule.scheduled_for >= now)
+        .order_by(PublicationSchedule.scheduled_for.asc())
+        .limit(SCHEDULER_UPCOMING_LIMIT)
+        .all()
+    )
+    retry_rows = (
+        db.query(RetryJob, Topic.subject)
+        .join(Topic, Topic.id == RetryJob.topic_id)
+        .order_by(desc(RetryJob.created_at))
+        .limit(SCHEDULER_RETRY_LIMIT)
+        .all()
+    )
+
+    return SchedulerOverviewResponse(
+        generated_at=now,
+        recent_runs=[
+            SchedulerRecentRunResponse(
+                schedule_id=schedule.id,
+                topic_id=schedule.topic_id,
+                topic_subject=subject,
+                content_version_id=schedule.content_version_id,
+                scheduled_for=schedule.scheduled_for,
+                status=schedule.status.value,
+                updated_at=schedule.updated_at,
+            )
+            for schedule, subject in recent_rows
+        ],
+        upcoming_runs=[
+            SchedulerUpcomingRunResponse(
+                schedule_id=schedule.id,
+                topic_id=schedule.topic_id,
+                topic_subject=subject,
+                content_version_id=schedule.content_version_id,
+                scheduled_for=schedule.scheduled_for,
+                status=schedule.status.value,
+            )
+            for schedule, subject in upcoming_rows
+        ],
+        retry_jobs=[
+            SchedulerRetryJobResponse(
+                id=job.id,
+                topic_id=job.topic_id,
+                topic_subject=subject,
+                flow_name=job.flow_name,
+                status=job.status.value,
+                attempt=job.attempt,
+                max_attempts=job.max_attempts,
+                next_run_at=job.next_run_at,
+                error_type=job.error_type,
+                error_message=job.error_message,
+            )
+            for job, subject in retry_rows
+        ],
+    )
 
 
 @router.get("/retry-jobs", response_model=list[RetryJobResponse])

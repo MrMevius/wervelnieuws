@@ -12,6 +12,7 @@ import {
   GenAIModelOptions,
   Project,
   SourceTraceHit,
+  SchedulerOverview,
   Topic,
   changeAdminUserPassword,
   changeCurrentUserPassword,
@@ -41,6 +42,7 @@ import {
   login,
   triggerGeneration,
   regenerateContent,
+  getSchedulerOverview,
   rejectVariant,
   scheduleTopic,
   setToken,
@@ -56,6 +58,7 @@ import {
 } from "../lib/api/client";
 
 type ThemePreference = "light" | "dark" | "system";
+type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
 
 export function App() {
   const queryClient = useQueryClient();
@@ -230,6 +233,11 @@ export function App() {
                   Admin
                 </NavLink>
               )}
+              {currentUserQuery.data?.is_admin && (
+                <NavLink to="/admin/scheduler" role="menuitem" onClick={() => setMenuOpen(false)}>
+                  Scheduler
+                </NavLink>
+              )}
               <button type="button" role="menuitem" onClick={logout}>
                 Uitloggen
               </button>
@@ -276,6 +284,10 @@ export function App() {
           <Route
             path="/admin"
             element={<AdminPage currentUser={currentUserQuery.data} />}
+          />
+          <Route
+            path="/admin/scheduler"
+            element={<AdminSchedulerPage currentUser={currentUserQuery.data} />}
           />
           <Route path="/about" element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
           <Route path="*" element={<Navigate to="/main" replace />} />
@@ -927,9 +939,9 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const [notesDraft, setNotesDraft] = useState("");
   const [generationAtDraft, setGenerationAtDraft] = useState("");
   const [publicationAtDraft, setPublicationAtDraft] = useState("");
-  const [variantDrafts, setVariantDrafts] = useState<
-    Record<string, Pick<ContentChannelVariant, "title" | "article_body" | "summary">>
-  >({});
+  const [variantDrafts, setVariantDrafts] = useState<Record<string, VariantDraft>>({});
+  const [activeChannel, setActiveChannel] = useState<ContentChannelVariant["channel"] | null>(null);
+  const [previewMode, setPreviewMode] = useState<"focused" | "all">("focused");
 
   const versionsQuery = useQuery({
     queryKey: ["topic-versions", topicId],
@@ -1118,6 +1130,20 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     });
   }, [variants]);
 
+  useEffect(() => {
+    const firstChannel = topic?.target_channels[0] as ContentChannelVariant["channel"] | undefined;
+    if (!firstChannel) {
+      setActiveChannel(null);
+      return;
+    }
+    setActiveChannel((current) => {
+      if (current && topic?.target_channels.includes(current)) {
+        return current;
+      }
+      return firstChannel;
+    });
+  }, [topic?.id, topic?.target_channels]);
+
   const sourceTrace = extractSourceTrace(selectedVersion);
   if (!topic) {
     return (
@@ -1134,6 +1160,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const generationPlannedAt = topic.planning_at
     ? formatAmsterdamDateTime(topic.planning_at)
     : "nog niet gepland";
+  const topicSubject = topic.subject;
   const publicationPlannedAt = scheduleQuery.data?.scheduled_for
     ? formatAmsterdamDateTime(scheduleQuery.data.scheduled_for)
     : "nog niet gepland";
@@ -1151,6 +1178,34 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     const item = variants.find((variant) => variant.channel === channel);
     return item?.approval_state === "approved";
   });
+
+  const availableChannels = topic.target_channels as ContentChannelVariant["channel"][];
+  const selectedChannel =
+    (activeChannel && availableChannels.includes(activeChannel) ? activeChannel : availableChannels[0]) ??
+    "website";
+  const selectedVariant = variants.find((item) => item.channel === selectedChannel) ?? null;
+  const selectedFallbackDraft: VariantDraft = {
+    title: selectedVariant?.title ?? selectedVersion?.title ?? topicSubject,
+    article_body: selectedVariant?.article_body ?? selectedVersion?.article_body ?? "",
+    summary: selectedVariant?.summary ?? selectedVersion?.summary ?? ""
+  };
+  const selectedDraft = normalizeVariantDraft(variantDrafts[selectedChannel] ?? selectedFallbackDraft, {
+    fallbackTitle: topicSubject
+  });
+  const selectedApprovalState = selectedVariant?.approval_state ?? "pending";
+  const selectedApprovalLabel = approvalStateLabel(selectedApprovalState);
+
+  function getNormalizedDraftForChannel(channel: ContentChannelVariant["channel"]): VariantDraft {
+    const variant = variants.find((item) => item.channel === channel) ?? null;
+    const fallbackDraft: VariantDraft = {
+      title: variant?.title ?? selectedVersion?.title ?? topicSubject,
+      article_body: variant?.article_body ?? selectedVersion?.article_body ?? "",
+      summary: variant?.summary ?? selectedVersion?.summary ?? ""
+    };
+    return normalizeVariantDraft(variantDrafts[channel] ?? fallbackDraft, {
+      fallbackTitle: topicSubject
+    });
+  }
 
   return (
     <section className="panel planning-detail-page">
@@ -1272,116 +1327,172 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
         </section>
       </div>
 
-      <div className="panel-grid planning-detail-grid">
-        {topic.target_channels.map((channel) => {
-          const channelKey = channel as ContentChannelVariant["channel"];
-          const variant = variants.find((item) => item.channel === channel) ?? null;
-          const draft = variantDrafts[channel] ?? {
-            title: variant?.title ?? selectedVersion?.title ?? topic.subject,
-            article_body: variant?.article_body ?? selectedVersion?.article_body ?? "",
-            summary: variant?.summary ?? selectedVersion?.summary ?? ""
-          };
-          const approvalLabel =
-            variant?.approval_state === "approved"
-              ? "Akkoord"
-              : variant?.approval_state === "rejected"
-                ? "Afgekeurd"
-                : "In review";
-          return (
-            <article className="panel channel-panel" key={channel}>
-              <h2>{channelLabel(channel)}</h2>
-              <p className="muted">Status: {approvalLabel}</p>
-              {variantsQuery.isLoading && <p>Laden...</p>}
-              {variantsQuery.isError && (
-                <p className="error">
-                  Kanaalvariant kon niet worden geladen
-                  {variantsErrorMessage ? `: ${variantsErrorMessage}` : "."}
-                </p>
-              )}
-              {!variantsQuery.isLoading && !variantsQuery.isError && (
-                <>
-                  <label>
-                    Titel
-                    <input
-                      value={draft.title}
-                      onChange={(event) =>
-                        setVariantDrafts((current) => ({
-                          ...current,
-                          [channel]: { ...draft, title: event.target.value }
-                        }))
-                      }
-                      aria-label={`Titel ${channelLabel(channel)}`}
-                    />
-                  </label>
-                  <RichTextEditor
-                    label={`Artikel ${channelLabel(channel)}`}
-                    value={draft.article_body}
-                    onChange={(value) =>
+      <section className="panel planning-channel-workspace" aria-label="Kanaalredactie">
+        <div className="planning-channel-header">
+          <h2>Kanaalredactie</h2>
+          <p className="muted">Kies een doelmedium en werk gericht in editor en live preview naast elkaar.</p>
+          <div className="preview-mode-toggle" role="group" aria-label="Previewmodus">
+            <button
+              type="button"
+              className={previewMode === "focused" ? "preview-mode-button active" : "preview-mode-button"}
+              aria-pressed={previewMode === "focused"}
+              onClick={() => setPreviewMode("focused")}
+            >
+              Gefocuste preview
+            </button>
+            <button
+              type="button"
+              className={previewMode === "all" ? "preview-mode-button active" : "preview-mode-button"}
+              aria-pressed={previewMode === "all"}
+              onClick={() => setPreviewMode("all")}
+            >
+              Alle previews
+            </button>
+          </div>
+        </div>
+
+        <div className="planning-channel-tabs" role="tablist" aria-label="Doelmedia">
+          {availableChannels.map((channel) => {
+            const variant = variants.find((item) => item.channel === channel) ?? null;
+            const isActive = selectedChannel === channel;
+            return (
+              <button
+                type="button"
+                key={channel}
+                className={isActive ? "channel-tab active" : "channel-tab"}
+                aria-selected={isActive}
+                role="tab"
+                onClick={() => setActiveChannel(channel)}
+              >
+                <span>{channelLabel(channel)}</span>
+                <span className={`status-pill status-${variant?.approval_state ?? "pending"}`}>
+                  {approvalStateLabel(variant?.approval_state ?? "pending")}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className={previewMode === "all" ? "channel-workspace-grid all-mode" : "channel-workspace-grid"}>
+          <article className="channel-editor" aria-label={`Redactie ${channelLabel(selectedChannel)}`}>
+            <h3>{channelLabel(selectedChannel)}</h3>
+            <p className="muted channel-status-line">
+              Status: <span className={`status-pill status-${selectedApprovalState}`}>{selectedApprovalLabel}</span>
+            </p>
+            {variantsQuery.isLoading && <p>Laden...</p>}
+            {variantsQuery.isError && (
+              <p className="error">
+                Kanaalvariant kon niet worden geladen
+                {variantsErrorMessage ? `: ${variantsErrorMessage}` : "."}
+              </p>
+            )}
+            {!variantsQuery.isLoading && !variantsQuery.isError && (
+              <>
+                <label>
+                  Titel
+                  <input
+                    value={selectedDraft.title}
+                    onChange={(event) =>
                       setVariantDrafts((current) => ({
                         ...current,
-                        [channel]: { ...draft, article_body: value }
+                        [selectedChannel]: { ...selectedDraft, title: event.target.value }
                       }))
                     }
+                    aria-label={`Titel ${channelLabel(selectedChannel)}`}
                   />
-                  <RichTextEditor
-                    label={`Samenvatting ${channelLabel(channel)}`}
-                    value={draft.summary}
-                    onChange={(value) =>
-                      setVariantDrafts((current) => ({
-                        ...current,
-                        [channel]: { ...draft, summary: value }
-                      }))
-                    }
-                    compact
-                  />
-                  {variant?.generated_image_path && (
-                    <p className="muted">Illustratie: {variant.generated_image_path}</p>
-                  )}
-                  <div className="detail-actions">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeedback(null);
-                        saveVariantMutation.mutate({
-                          channel: channelKey,
-                          payload: {
-                            title: draft.title,
-                            article_body: draft.article_body,
-                            summary: draft.summary
-                          }
-                        });
-                      }}
-                      disabled={saveVariantMutation.isPending || draft.title.trim().length < 3}
-                    >
-                      Opslaan
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeedback(null);
-                        approveVariantMutation.mutate(channelKey);
-                      }}
-                      disabled={approveVariantMutation.isPending}
-                    >
-                      Akkoord
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFeedback(null);
-                        rejectVariantMutation.mutate(channelKey);
-                      }}
-                      disabled={rejectVariantMutation.isPending}
-                    >
-                      Afwijzen
-                    </button>
-                  </div>
-                </>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                </label>
+                <RichTextEditor
+                  label={`Artikel ${channelLabel(selectedChannel)}`}
+                  value={selectedDraft.article_body}
+                  onChange={(value) =>
+                    setVariantDrafts((current) => ({
+                      ...current,
+                      [selectedChannel]: { ...selectedDraft, article_body: value }
+                    }))
+                  }
+                />
+                <RichTextEditor
+                  label={`Samenvatting ${channelLabel(selectedChannel)}`}
+                  value={selectedDraft.summary}
+                  onChange={(value) =>
+                    setVariantDrafts((current) => ({
+                      ...current,
+                      [selectedChannel]: { ...selectedDraft, summary: value }
+                    }))
+                  }
+                  compact
+                />
+                <div className="detail-actions">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedback(null);
+                      saveVariantMutation.mutate({
+                        channel: selectedChannel,
+                        payload: {
+                          title: selectedDraft.title,
+                          article_body: selectedDraft.article_body,
+                          summary: selectedDraft.summary
+                        }
+                      });
+                    }}
+                    disabled={saveVariantMutation.isPending || selectedDraft.title.trim().length < 3}
+                  >
+                    Opslaan
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedback(null);
+                      approveVariantMutation.mutate(selectedChannel);
+                    }}
+                    disabled={approveVariantMutation.isPending}
+                  >
+                    Akkoord
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFeedback(null);
+                      rejectVariantMutation.mutate(selectedChannel);
+                    }}
+                    disabled={rejectVariantMutation.isPending}
+                  >
+                    Afwijzen
+                  </button>
+                </div>
+              </>
+            )}
+          </article>
+
+          {previewMode === "focused" && (
+            <ChannelPreview
+              channel={selectedChannel}
+              draft={selectedDraft}
+              imagePath={selectedVariant?.generated_image_path ?? null}
+              approvalState={selectedApprovalState}
+            />
+          )}
+        </div>
+
+        {previewMode === "all" && (
+          <div className="all-previews-grid" aria-label="Alle kanaalpreviews">
+            {availableChannels.map((channel) => {
+              const variant = variants.find((item) => item.channel === channel) ?? null;
+              const approvalState = variant?.approval_state ?? "pending";
+              return (
+                <ChannelPreview
+                  key={`all-preview-${channel}`}
+                  channel={channel}
+                  draft={getNormalizedDraftForChannel(channel)}
+                  imagePath={variant?.generated_image_path ?? null}
+                  approvalState={approvalState}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {feedback && (
         <p
@@ -1453,6 +1564,162 @@ function channelLabel(channel: string): string {
     return "Nieuwsbrief";
   }
   return channel;
+}
+
+function approvalStateLabel(state: ContentChannelVariant["approval_state"]): string {
+  if (state === "approved") {
+    return "Akkoord";
+  }
+  if (state === "rejected") {
+    return "Afgekeurd";
+  }
+  return "In review";
+}
+
+function schedulerStatusTone(status: string): "approved" | "pending" | "rejected" {
+  if (status === "published" || status === "updated" || status === "resolved") {
+    return "approved";
+  }
+  if (status === "error" || status === "failed") {
+    return "rejected";
+  }
+  return "pending";
+}
+
+function ChannelPreview({
+  channel,
+  draft,
+  imagePath,
+  approvalState
+}: {
+  channel: ContentChannelVariant["channel"];
+  draft: VariantDraft;
+  imagePath: string | null;
+  approvalState: ContentChannelVariant["approval_state"];
+}) {
+  const approvalLabel = approvalStateLabel(approvalState);
+  return (
+    <aside className={`channel-preview preview-${channel}`} aria-label={`Preview ${channelLabel(channel)}`}>
+      <h3>Preview {channelLabel(channel)}</h3>
+      <p className="muted channel-status-line">
+        Status: <span className={`status-pill status-${approvalState}`}>{approvalLabel}</span>
+      </p>
+      <article className="media-preview-card">
+        <p className="media-preview-eyebrow">
+          {channel === "facebook" ? "Facebook bericht" : channel === "newsletter" ? "Nieuwsbrief" : "Website artikel"}
+        </p>
+        <h4>{draft.title.trim() || "Zonder titel"}</h4>
+        <section className="media-preview-section">
+          <p className="media-preview-label">Artikel</p>
+          <div className="media-preview-html" dangerouslySetInnerHTML={{ __html: toPreviewHtml(draft.article_body) }} />
+        </section>
+        <section className="media-preview-section">
+          <p className="media-preview-label">Samenvatting</p>
+          <div className="media-preview-html" dangerouslySetInnerHTML={{ __html: toPreviewHtml(draft.summary) }} />
+        </section>
+        {imagePath && (
+          <p className="media-preview-image">
+            Illustratiepad: <code>{imagePath}</code>
+          </p>
+        )}
+      </article>
+    </aside>
+  );
+}
+
+function normalizeVariantDraft(draft: VariantDraft, options: { fallbackTitle: string }): VariantDraft {
+  let normalizedTitle = draft.title.trim() || options.fallbackTitle;
+  let normalizedArticleBody = draft.article_body;
+  let normalizedSummary = draft.summary;
+
+  const candidates = [draft.title, draft.article_body, draft.summary]
+    .map((value) => extractStructuredContentFromRaw(value))
+    .filter((value): value is Partial<VariantDraft> => value !== null);
+
+  for (const candidate of candidates) {
+    if (candidate.title && candidate.title.trim().length > 0) {
+      normalizedTitle = candidate.title.trim();
+    }
+    if (candidate.article_body && candidate.article_body.trim().length > 0) {
+      normalizedArticleBody = candidate.article_body;
+    }
+    if (candidate.summary && candidate.summary.trim().length > 0) {
+      normalizedSummary = candidate.summary;
+    }
+  }
+
+  return {
+    title: normalizedTitle,
+    article_body: normalizedArticleBody,
+    summary: normalizedSummary
+  };
+}
+
+function extractStructuredContentFromRaw(raw: string): Partial<VariantDraft> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  let candidate = trimmed;
+  const codeFence = candidate.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (codeFence?.[1]) {
+    candidate = codeFence[1].trim();
+  }
+  if (candidate.toLowerCase().startsWith("json")) {
+    candidate = candidate.slice(4).trim();
+  }
+  if (!(candidate.startsWith("{") && candidate.endsWith("}"))) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(candidate) as {
+      title?: unknown;
+      article_body?: unknown;
+      summary?: unknown;
+    };
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    const next: Partial<VariantDraft> = {};
+    if (typeof parsed.title === "string") {
+      next.title = parsed.title;
+    }
+    if (typeof parsed.article_body === "string") {
+      next.article_body = parsed.article_body;
+    }
+    if (typeof parsed.summary === "string") {
+      next.summary = parsed.summary;
+    }
+    return Object.keys(next).length > 0 ? next : null;
+  } catch {
+    return null;
+  }
+}
+
+function toPreviewHtml(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "<p>Nog geen inhoud toegevoegd.</p>";
+  }
+  if (looksLikeHtml(trimmed)) {
+    return trimmed;
+  }
+  return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br />")}</p>`;
+}
+
+function looksLikeHtml(value: string): boolean {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 function RichTextEditor({
@@ -2108,6 +2375,23 @@ function formatAmsterdamDateTime(value: string): string {
   return `${map.year}-${map.month}-${map.day} ${map.hour}:${map.minute}`;
 }
 
+function formatRelativeAge(value: string, nowMs: number = Date.now()): string {
+  const timestampMs = new Date(value).getTime();
+  if (Number.isNaN(timestampMs)) {
+    return "onbekend";
+  }
+  const ageSeconds = Math.max(0, Math.floor((nowMs - timestampMs) / 1000));
+  if (ageSeconds < 60) {
+    return `${ageSeconds} sec geleden`;
+  }
+  const ageMinutes = Math.floor(ageSeconds / 60);
+  if (ageMinutes < 60) {
+    return `${ageMinutes} min geleden`;
+  }
+  const ageHours = Math.floor(ageMinutes / 60);
+  return `${ageHours} uur geleden`;
+}
+
 function toDatetimeLocalInputValue(value: string | null): string {
   if (!value) {
     return "";
@@ -2218,6 +2502,171 @@ function AboutPage({
             </section>
           ))}
         </div>
+      </article>
+    </section>
+  );
+}
+
+function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
+  const schedulerQuery = useQuery({
+    queryKey: ["scheduler-overview"],
+    queryFn: getSchedulerOverview,
+    enabled: currentUser?.is_admin === true,
+    refetchInterval: 30000
+  });
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  if (!currentUser?.is_admin) {
+    return (
+      <section className="panel">
+        <h1>Scheduler</h1>
+        <p>Je hebt geen toegang tot deze pagina.</p>
+      </section>
+    );
+  }
+
+  if (schedulerQuery.isLoading) {
+    return (
+      <section className="panel">
+        <h1>Scheduler</h1>
+        <p>Laden...</p>
+      </section>
+    );
+  }
+
+  if (schedulerQuery.isError || !schedulerQuery.data) {
+    return (
+      <section className="panel">
+        <h1>Scheduler</h1>
+        <p>Scheduler-overzicht kon niet worden geladen.</p>
+      </section>
+    );
+  }
+
+  const data: SchedulerOverview = schedulerQuery.data;
+  const refreshAgeLabel = formatRelativeAge(data.generated_at, nowMs);
+
+  return (
+    <section className="panel scheduler-page">
+      <h1>Scheduler</h1>
+      <p className="muted">
+        Laatste update: {formatAmsterdamDateTime(data.generated_at)} ({refreshAgeLabel})
+      </p>
+      <p className="muted">Ververs automatisch elke 30 sec.</p>
+
+      <section className="scheduler-grid">
+        <article className="panel">
+          <h2>Recent gedraaid</h2>
+          {data.recent_runs.length === 0 ? (
+            <p className="muted">Nog geen scheduler-runs gevonden.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Taak</th>
+                    <th>Status</th>
+                    <th>Gepland voor</th>
+                    <th>Laatst bijgewerkt</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.recent_runs.map((run) => (
+                    <tr key={run.schedule_id}>
+                      <td>{run.topic_subject}</td>
+                      <td>
+                        <span className={`status-pill status-${schedulerStatusTone(run.status)}`}>
+                          {run.status}
+                        </span>
+                      </td>
+                      <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
+                      <td>{formatAmsterdamDateTime(run.updated_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+
+        <article className="panel">
+          <h2>Komende planning</h2>
+          {data.upcoming_runs.length === 0 ? (
+            <p className="muted">Er staan geen taken gepland.</p>
+          ) : (
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Taak</th>
+                    <th>Status</th>
+                    <th>Volgende run</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.upcoming_runs.map((run) => (
+                    <tr key={run.schedule_id}>
+                      <td>{run.topic_subject}</td>
+                      <td>
+                        <span className={`status-pill status-${schedulerStatusTone(run.status)}`}>
+                          {run.status}
+                        </span>
+                      </td>
+                      <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      </section>
+
+      <article className="panel">
+        <h2>Retry-queue</h2>
+        {data.retry_jobs.length === 0 ? (
+          <p className="muted">Geen retrytaken in de queue.</p>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Taak</th>
+                  <th>Flow</th>
+                  <th>Status</th>
+                  <th>Poging</th>
+                  <th>Volgende run</th>
+                  <th>Laatste fout</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.retry_jobs.map((job) => (
+                  <tr key={job.id}>
+                    <td>{job.topic_subject}</td>
+                    <td>{job.flow_name}</td>
+                    <td>
+                      <span className={`status-pill status-${schedulerStatusTone(job.status)}`}>
+                        {job.status}
+                      </span>
+                    </td>
+                    <td>
+                      {job.attempt}/{job.max_attempts}
+                    </td>
+                    <td>{formatAmsterdamDateTime(job.next_run_at)}</td>
+                    <td>{job.error_message || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
     </section>
   );

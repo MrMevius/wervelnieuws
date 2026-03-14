@@ -120,3 +120,42 @@ class RetryJobResponse(BaseModel):
     next_run_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SchedulerRecentRunResponse(BaseModel):
+    schedule_id: str
+    topic_id: str
+    topic_subject: str
+    content_version_id: str
+    scheduled_for: datetime
+    status: str
+    updated_at: datetime
+
+
+class SchedulerUpcomingRunResponse(BaseModel):
+    schedule_id: str
+    topic_id: str
+    topic_subject: str
+    content_version_id: str
+    scheduled_for: datetime
+    status: str
+
+
+class SchedulerRetryJobResponse(BaseModel):
+    id: str
+    topic_id: str
+    topic_subject: str
+    flow_name: str
+    status: str
+    attempt: int
+    max_attempts: int
+    next_run_at: datetime
+    error_type: str
+    error_message: str
+
+
+class SchedulerOverviewResponse(BaseModel):
+    generated_at: datetime
+    recent_runs: list[SchedulerRecentRunResponse]
+    upcoming_runs: list[SchedulerUpcomingRunResponse]
+    retry_jobs: list[SchedulerRetryJobResponse]

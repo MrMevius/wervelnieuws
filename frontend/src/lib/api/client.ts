@@ -138,6 +138,45 @@ export type RetryJob = {
   next_run_at: string;
 };
 
+export type SchedulerRecentRun = {
+  schedule_id: string;
+  topic_id: string;
+  topic_subject: string;
+  content_version_id: string;
+  scheduled_for: string;
+  status: string;
+  updated_at: string;
+};
+
+export type SchedulerUpcomingRun = {
+  schedule_id: string;
+  topic_id: string;
+  topic_subject: string;
+  content_version_id: string;
+  scheduled_for: string;
+  status: string;
+};
+
+export type SchedulerRetryJob = {
+  id: string;
+  topic_id: string;
+  topic_subject: string;
+  flow_name: string;
+  status: string;
+  attempt: number;
+  max_attempts: number;
+  next_run_at: string;
+  error_type: string;
+  error_message: string;
+};
+
+export type SchedulerOverview = {
+  generated_at: string;
+  recent_runs: SchedulerRecentRun[];
+  upcoming_runs: SchedulerUpcomingRun[];
+  retry_jobs: SchedulerRetryJob[];
+};
+
 export type CurrentUser = {
   id: string;
   username: string;
@@ -615,6 +654,10 @@ export function listRetryJobs() {
 
 export function requeueRetryJob(jobId: string) {
   return request<{ status: string }>(`/content/retry-jobs/${jobId}/requeue`, { method: "POST" });
+}
+
+export function getSchedulerOverview() {
+  return request<SchedulerOverview>("/content/scheduler/overview");
 }
 
 export function listAuditEvents(topicId: string) {

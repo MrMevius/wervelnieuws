@@ -311,6 +311,44 @@ const mockApi = vi.hoisted(() => ({
     }
   ]),
   getCurrentSchedule: vi.fn().mockRejectedValue(new Error("No publication schedule")),
+  getSchedulerOverview: vi.fn().mockResolvedValue({
+    generated_at: "2026-03-14T10:30:00Z",
+    recent_runs: [
+      {
+        schedule_id: "s-recent-1",
+        topic_id: "abc12345-1111",
+        topic_subject: "Onderwerp test",
+        content_version_id: "v1",
+        scheduled_for: "2026-03-14T08:00:00Z",
+        status: "published",
+        updated_at: "2026-03-14T08:01:00Z"
+      }
+    ],
+    upcoming_runs: [
+      {
+        schedule_id: "s-upcoming-1",
+        topic_id: "abc12345-1111",
+        topic_subject: "Onderwerp test",
+        content_version_id: "v1",
+        scheduled_for: "2026-03-15T08:00:00Z",
+        status: "scheduled"
+      }
+    ],
+    retry_jobs: [
+      {
+        id: "r1",
+        topic_id: "abc12345-1111",
+        topic_subject: "Onderwerp test",
+        flow_name: "publish_schedule",
+        status: "queued",
+        attempt: 1,
+        max_attempts: 5,
+        next_run_at: "2026-03-14T10:45:00Z",
+        error_type: "RuntimeError",
+        error_message: "temporary"
+      }
+    ]
+  }),
   scheduleTopic: vi.fn().mockResolvedValue({ schedule_id: "s1" }),
   updateVariant: vi.fn().mockResolvedValue({ status: "ok" }),
   approveVariant: vi.fn().mockResolvedValue({ status: "ok" }),
@@ -836,10 +874,39 @@ describe("App", () => {
       expect(screen.getByText(/AI generatie gepland:/)).toBeInTheDocument();
       expect(screen.getByText(/Geplande publicatiedatum:/)).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Opmerkingen" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Website" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Facebook" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Nieuwsbrief" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Kanaalredactie" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Website/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Facebook/i })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: /Nieuwsbrief/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Gefocuste preview" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Alle previews" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Artikelen opnieuw genereren" })).toBeInTheDocument();
+    });
+  });
+
+  it("switches to all previews mode on planning detail", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Alle previews" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Preview Facebook" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Preview Nieuwsbrief" })).toBeInTheDocument();
     });
   });
 
@@ -860,6 +927,76 @@ describe("App", () => {
         screen.getByText(/Database - Windpark de Boldijk - database-bron.txt, chunk 1/)
       ).toBeInTheDocument();
       expect(mockApi.listVersions).toHaveBeenCalledWith("abc12345-1111");
+    });
+  });
+
+  it("shows readable preview when channel content arrives as json", async () => {
+    mockApi.listCurrentVariants.mockResolvedValueOnce([
+      {
+        id: "cv-json-1",
+        content_version_id: "v1",
+        topic_id: "abc12345-1111",
+        channel: "website",
+        title: "Ruwe varianttitel",
+        article_body:
+          '```json\n{"title":"Stormprotocol uitgelegd","article_body":"<p>Het protocol is getest met drie controles.</p>","summary":"<p>Protocol werkt naar verwachting.</p>"}\n```',
+        summary: "",
+        generated_image_id: null,
+        generated_image_path: null,
+        approval_state: "pending",
+        approved_by_user_id: null,
+        approved_at: null,
+        created_at: "2026-03-12T11:00:00Z",
+        updated_at: "2026-03-12T11:00:00Z"
+      },
+      {
+        id: "cv-json-2",
+        content_version_id: "v1",
+        topic_id: "abc12345-1111",
+        channel: "facebook",
+        title: "Facebook titel",
+        article_body: "<p>Facebook artikel</p>",
+        summary: "<p>Facebook samenvatting</p>",
+        generated_image_id: null,
+        generated_image_path: null,
+        approval_state: "pending",
+        approved_by_user_id: null,
+        approved_at: null,
+        created_at: "2026-03-12T11:00:00Z",
+        updated_at: "2026-03-12T11:00:00Z"
+      },
+      {
+        id: "cv-json-3",
+        content_version_id: "v1",
+        topic_id: "abc12345-1111",
+        channel: "newsletter",
+        title: "Nieuwsbrief titel",
+        article_body: "<p>Nieuwsbrief artikel</p>",
+        summary: "<p>Nieuwsbrief samenvatting</p>",
+        generated_image_id: null,
+        generated_image_path: null,
+        approval_state: "pending",
+        approved_by_user_id: null,
+        approved_at: null,
+        created_at: "2026-03-12T11:00:00Z",
+        updated_at: "2026-03-12T11:00:00Z"
+      }
+    ]);
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
+      expect(screen.getByText("Stormprotocol uitgelegd")).toBeInTheDocument();
+      expect(screen.getAllByText("Het protocol is getest met drie controles.").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Protocol werkt naar verwachting.").length).toBeGreaterThan(0);
     });
   });
 
@@ -1098,6 +1235,31 @@ describe("App", () => {
         })
       );
       expect(screen.getByText("GenAI-config opgeslagen.")).toBeInTheDocument();
+    });
+  });
+
+  it("opens scheduler page from admin menu", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Scheduler" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Scheduler" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Recent gedraaid" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Komende planning" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Retry-queue" })).toBeInTheDocument();
+      expect(screen.getByText(/Laatste update:/)).toBeInTheDocument();
+      expect(screen.getByText(/Ververs automatisch elke 30 sec\./)).toBeInTheDocument();
+      expect(screen.getByRole("columnheader", { name: "Laatste fout" })).toBeInTheDocument();
+      expect(screen.getByText("temporary")).toBeInTheDocument();
+      expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
+      expect(mockApi.getSchedulerOverview).toHaveBeenCalled();
     });
   });
 

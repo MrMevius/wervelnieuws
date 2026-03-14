@@ -146,6 +146,26 @@ def _default_about() -> AboutResponse:
                     "De indeling is opgeschoond zodat het dashboard compacter leest en geen leeg wit vlak meer toont.",
                 ],
             },
+            {
+                "iteration": "13",
+                "date": "2026-03-14",
+                "title": "Admin Scheduler-overzicht met recente runs en planning",
+                "highlights": [
+                    "In het admin-menu staat nu een aparte Scheduler-pagina voor snelle controle van de achtergrondtaken.",
+                    "Je ziet nu per taak wanneer deze recent is gedraaid en welke taken nog op de planning staan.",
+                    "Ook retrytaken zijn zichtbaar, inclusief volgende runmoment en pogingnummer.",
+                ],
+            },
+            {
+                "iteration": "14",
+                "date": "2026-03-14",
+                "title": "Planning detail met kanaalpreviews en rustigere werkindeling",
+                "highlights": [
+                    "De detailpagina is opnieuw ingedeeld met een duidelijke bovenkant voor planning en een aparte kanaalwerkruimte.",
+                    "Per medium zie je nu direct een leesbare preview naast de editor, zodat review sneller en betrouwbaarder gaat.",
+                    "Ook als content als JSON binnenkomt, wordt die nu automatisch netjes getoond als titel, artikel en samenvatting.",
+                ],
+            },
         ],
     )
 
