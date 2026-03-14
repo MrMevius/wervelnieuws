@@ -2440,6 +2440,13 @@ function formatRelativeAge(value: string, nowMs: number = Date.now()): string {
   return `${ageHours} uur geleden`;
 }
 
+function truncateText(value: string, maxLength: number): string {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`;
+}
+
 function toDatetimeLocalInputValue(value: string | null): string {
   if (!value) {
     return "";
@@ -3154,7 +3161,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         <button type="button" role="tab" aria-selected={activeAdminTab === "themes"} onClick={() => setActiveAdminTab("themes")}>Thema&apos;s</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "ai"} onClick={() => setActiveAdminTab("ai")}>AI</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "scheduler"} onClick={() => setActiveAdminTab("scheduler")}>Scheduler</button>
-        <button type="button" role="tab" aria-selected={activeAdminTab === "activity"} onClick={() => setActiveAdminTab("activity")}>Activiteit</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "activity"} onClick={() => setActiveAdminTab("activity")}>Admin log</button>
       </div>
       {feedback && (
         <p
@@ -3746,7 +3753,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       </div>
 
       <div hidden={activeAdminTab !== "activity"}>
-        <h2>Admin-activiteit</h2>
+        <h2>Admin log</h2>
         <p className="muted">Recente beheeracties en systeemevents (automatisch elke 30 sec ververst).</p>
         <div className="table-wrap">
           <table>
@@ -3759,14 +3766,19 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
               </tr>
             </thead>
             <tbody>
-              {(adminActivityQuery.data ?? []).map((item) => (
-                <tr key={item.id}>
-                  <td>{formatAmsterdamDateTime(item.created_at)}</td>
-                  <td>{item.actor_username}</td>
-                  <td>{item.event_type}</td>
-                  <td>{item.topic_id ?? "-"}</td>
-                </tr>
-              ))}
+              {(adminActivityQuery.data ?? []).map((item) => {
+                const topicSubject = item.topic_subject?.trim() ?? "";
+                return (
+                  <tr key={item.id}>
+                    <td>{formatAmsterdamDateTime(item.created_at)}</td>
+                    <td>{item.actor_username}</td>
+                    <td>{item.event_type}</td>
+                    <td title={topicSubject || undefined}>
+                      {topicSubject ? truncateText(topicSubject, 60) : "-"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

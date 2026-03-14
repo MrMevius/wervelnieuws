@@ -108,6 +108,7 @@ const mockApi = vi.hoisted(() => ({
       id: "a1",
       event_type: "topic.created",
       topic_id: "abc12345-1111",
+      topic_subject: "Onderwerp test",
       actor_user_id: "u1",
       actor_username: "admin",
       created_at: "2026-03-14T10:00:00Z"
@@ -1312,6 +1313,30 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Komende planning" })).toBeInTheDocument();
       expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
       expect(mockApi.getSchedulerOverview).toHaveBeenCalled();
+    });
+  });
+
+  it("shows admin log tab with topic subject", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Admin log" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Admin log" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin log" })).toBeInTheDocument();
+      expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
+      expect(mockApi.listAdminActivity).toHaveBeenCalled();
     });
   });
 

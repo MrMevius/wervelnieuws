@@ -176,6 +176,16 @@ def _default_about() -> AboutResponse:
                     "Ook als content als JSON binnenkomt, wordt die nu automatisch netjes getoond als titel, artikel en samenvatting.",
                 ],
             },
+            {
+                "iteration": "15",
+                "date": "2026-03-14",
+                "title": "Admin log toont nu onderwerpregels in plaats van technische IDs",
+                "highlights": [
+                    "In Admin heet het tabblad nu Admin log, zodat direct duidelijk is waar je beheeracties terugvindt.",
+                    "Bij logregels zie je nu de onderwerpregel van het topic in plaats van een lastig leesbare topic-ID.",
+                    "Lange onderwerpregels worden automatisch kort getoond, met de volledige tekst beschikbaar op hover.",
+                ],
+            },
         ],
     )
 

@@ -226,6 +226,7 @@ export type AdminActivity = {
   id: string;
   event_type: string;
   topic_id: string | null;
+  topic_subject: string | null;
   actor_user_id: string | null;
   actor_username: string;
   created_at: string;

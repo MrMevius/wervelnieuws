@@ -444,4 +444,7 @@ def test_admin_can_view_schedule_templates_and_activity(client):
 
     activity = client.get("/api/admin/activity", headers=admin_headers)
     assert activity.status_code == 200
-    assert isinstance(activity.json(), list)
+    payload = activity.json()
+    assert isinstance(payload, list)
+    if payload:
+        assert "topic_subject" in payload[0]

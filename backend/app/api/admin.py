@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_admin
 from app.core.db import get_db
 from app.core.security import hash_password
-from app.models.entities import AuditEvent, Project, SystemSetting, User
+from app.models.entities import AuditEvent, Project, SystemSetting, Topic, User
 from app.repositories.database_repository import DatabaseRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.admin import (
@@ -284,8 +284,9 @@ def list_admin_activity(
 ) -> list[AdminActivityResponse]:
     del current
     rows = (
-        db.query(AuditEvent, User.username)
+        db.query(AuditEvent, User.username, Topic.subject)
         .outerjoin(User, User.id == AuditEvent.actor_user_id)
+        .outerjoin(Topic, Topic.id == AuditEvent.topic_id)
         .order_by(desc(AuditEvent.created_at))
         .limit(40)
         .all()
@@ -295,11 +296,12 @@ def list_admin_activity(
             id=event.id,
             event_type=event.event_type,
             topic_id=event.topic_id,
+            topic_subject=subject,
             actor_user_id=event.actor_user_id,
             actor_username=username or "Systeem",
             created_at=event.created_at.isoformat(),
         )
-        for event, username in rows
+        for event, username, subject in rows
     ]
 
 

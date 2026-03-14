@@ -72,6 +72,7 @@ class AdminActivityResponse(BaseModel):
     id: str
     event_type: str
     topic_id: str | None
+    topic_subject: str | None
     actor_user_id: str | None
     actor_username: str
     created_at: str
