@@ -250,6 +250,65 @@ button:disabled {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.main-dashboard {
+  display: grid;
+  gap: 16px;
+}
+
+.main-hero {
+  background: linear-gradient(132deg, #e7f4ec 0%, #f2f8ff 55%, #f8fcfa 100%);
+  border-color: #cfe0d5;
+  gap: 12px;
+}
+
+.main-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.main-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  font-weight: 600;
+  background: var(--brand);
+  color: #ffffff;
+}
+
+.main-action-link.is-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+
+.main-stats-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.main-stat-card {
+  gap: 8px;
+  min-height: 148px;
+}
+
+.main-stat-card strong {
+  font-size: clamp(1.7rem, 3vw, 2.2rem);
+  line-height: 1;
+}
+
+.main-content-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -842,6 +901,8 @@ thead th {
   }
 
   .panel-grid,
+  .main-stats-grid,
+  .main-content-grid,
   .about-grid,
   .settings-grid {
     grid-template-columns: 1fr;

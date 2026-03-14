@@ -241,7 +241,17 @@ export function App() {
       <main className="page-content">
         <Routes>
           <Route path="/" element={<Navigate to="/main" replace />} />
-          <Route path="/main" element={<MainPage username={displayName} />} />
+          <Route
+            path="/main"
+            element={
+              <MainPage
+                username={displayName}
+                topics={topicsQuery.data ?? []}
+                isLoading={topicsQuery.isLoading}
+                hasError={topicsQuery.isError}
+              />
+            }
+          />
           <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
           <Route
             path="/planning/:topicId"
@@ -287,49 +297,159 @@ function handleLogin(
   });
 }
 
-function MainPage({ username }: { username: string }) {
+function MainPage({
+  username,
+  topics,
+  isLoading,
+  hasError
+}: {
+  username: string;
+  topics: Topic[];
+  isLoading: boolean;
+  hasError: boolean;
+}) {
+  const totalTopics = topics.length;
+  const plannedTopics = topics.filter((topic) => Boolean(topic.planning_at)).length;
+  const readyTopics = topics.filter(
+    (topic) => topic.workflow_state === "approved" || topic.workflow_state === "scheduled"
+  ).length;
+  const publishedTopics = topics.filter((topic) => topic.workflow_state === "published").length;
+  const reviewTopics = topics.filter((topic) => topic.workflow_state === "review").length;
+
+  const nextPlannedTopic =
+    [...topics]
+      .filter((topic) => Boolean(topic.planning_at))
+      .sort((left, right) => {
+        const leftTime = left.planning_at ? new Date(left.planning_at).getTime() : Number.MAX_SAFE_INTEGER;
+        const rightTime = right.planning_at ? new Date(right.planning_at).getTime() : Number.MAX_SAFE_INTEGER;
+        return leftTime - rightTime;
+      })[0] ?? null;
+
+  const topThemes = Object.entries(
+    topics.reduce<Record<string, number>>((acc, topic) => {
+      const key = topic.theme.trim() || "Onbekend thema";
+      acc[key] = (acc[key] ?? 0) + 1;
+      return acc;
+    }, {})
+  )
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 3);
+
   return (
-    <section className="panel-grid">
-      <article className="panel highlight">
+    <section className="main-dashboard">
+      <article className="panel main-hero">
         <h1>Welkom, {username}</h1>
-        <p>Bekijk hier je planning en ga naar Database om bronbestanden te uploaden.</p>
+        <p>
+          Hier zie je in een oogopslag hoe de communicatieplanning ervoor staat. Van nieuwe onderwerpen
+          tot publicatieklare berichten: dit is je startpunt voor de dag.
+        </p>
+        <div className="main-hero-actions">
+          <NavLink to="/planning" className="main-action-link">
+            Naar planning
+          </NavLink>
+          <NavLink to="/database" className="main-action-link is-secondary">
+            Bronbestanden beheren
+          </NavLink>
+        </div>
       </article>
 
-      <article className="panel">
-        <h2>Succesvolle plaatsingen per platform</h2>
-        <ul className="stats-list">
-          <li>
-            <span>Website</span>
-            <strong>24</strong>
-          </li>
-          <li>
-            <span>Facebook</span>
-            <strong>19</strong>
-          </li>
-          <li>
-            <span>Nieuwsbrief</span>
-            <strong>17</strong>
-          </li>
-        </ul>
-      </article>
+      {isLoading && (
+        <article className="panel">
+          <h2>Dashboard laden</h2>
+          <p className="muted">De actuele statistieken worden opgehaald.</p>
+        </article>
+      )}
 
-      <article className="panel">
-        <h2>Volgende geplande bericht per platform</h2>
-        <ul className="next-list">
-          <li>
-            <span>Website</span>
-            <strong>13-03-2026 09:00</strong>
-          </li>
-          <li>
-            <span>Facebook</span>
-            <strong>13-03-2026 09:15</strong>
-          </li>
-          <li>
-            <span>Nieuwsbrief</span>
-            <strong>14-03-2026 07:30</strong>
-          </li>
-        </ul>
-      </article>
+      {hasError && !isLoading && (
+        <article className="panel">
+          <h2>Statistieken niet beschikbaar</h2>
+          <p className="error">De planning kon niet worden geladen. Vernieuw de pagina of probeer het later opnieuw.</p>
+        </article>
+      )}
+
+      {!isLoading && !hasError && (
+        <>
+          <section className="main-stats-grid" aria-label="Main statistieken">
+            <article className="panel main-stat-card">
+              <p className="eyebrow">Totaal onderwerpen</p>
+              <strong>{totalTopics}</strong>
+              <span className="muted">Alle onderwerpen in het systeem.</span>
+            </article>
+            <article className="panel main-stat-card">
+              <p className="eyebrow">Met planningdatum</p>
+              <strong>{plannedTopics}</strong>
+              <span className="muted">Onderwerpen met een ingeplande genereerdatum.</span>
+            </article>
+            <article className="panel main-stat-card">
+              <p className="eyebrow">Klaar voor publicatie</p>
+              <strong>{readyTopics}</strong>
+              <span className="muted">Onderwerpen in akkoord of publicatieplanning.</span>
+            </article>
+            <article className="panel main-stat-card">
+              <p className="eyebrow">Gepubliceerd</p>
+              <strong>{publishedTopics}</strong>
+              <span className="muted">Onderwerpen die al live staan.</span>
+            </article>
+          </section>
+
+          {topics.length === 0 ? (
+            <article className="panel">
+              <h2>Nog geen onderwerpen</h2>
+              <p className="muted">
+                Voeg je eerste planningsregel toe in Planning. Upload daarna bronbestanden in Database voor
+                betere AI-onderbouwing.
+              </p>
+            </article>
+          ) : (
+            <section className="main-content-grid">
+              <article className="panel">
+                <h2>Workflow overzicht</h2>
+                <ul className="next-list">
+                  <li>
+                    <span>In review</span>
+                    <strong>{reviewTopics}</strong>
+                  </li>
+                  <li>
+                    <span>Klaar voor publicatie</span>
+                    <strong>{readyTopics}</strong>
+                  </li>
+                  <li>
+                    <span>Nog op te starten</span>
+                    <strong>{Math.max(totalTopics - plannedTopics, 0)}</strong>
+                  </li>
+                </ul>
+              </article>
+
+              <article className="panel">
+                <h2>Komende planning</h2>
+                {nextPlannedTopic ? (
+                  <>
+                    <p>
+                      <strong>{nextPlannedTopic.subject}</strong>
+                    </p>
+                    <p className="muted">
+                      {nextPlannedTopic.project_name} - {nextPlannedTopic.planning_at ? formatAmsterdamDateTime(nextPlannedTopic.planning_at) : "-"}
+                    </p>
+                  </>
+                ) : (
+                  <p className="muted">Er staat nog geen planningdatum ingevuld.</p>
+                )}
+
+                <h3>Topthema's</h3>
+                <ul className="stats-list">
+                  {topThemes.length === 0 && <li>Geen themagegevens beschikbaar.</li>}
+                  {topThemes.map(([theme, count]) => (
+                    <li key={theme}>
+                      <span>{theme}</span>
+                      <strong>{count}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            </section>
+          )}
+        </>
+      )}
     </section>
   );
 }

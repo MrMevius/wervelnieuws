@@ -136,6 +136,16 @@ def _default_about() -> AboutResponse:
                     "Hierdoor is de storing sneller op te lossen zonder onduidelijke serverfouten in Planning.",
                 ],
             },
+            {
+                "iteration": "12",
+                "date": "2026-03-14",
+                "title": "Main-pagina met live dashboard en duidelijkere start",
+                "highlights": [
+                    "Bovenaan Main staat nu een korte inleiding, zodat direct duidelijk is waar je vandaag op stuurt.",
+                    "De cijfers op Main zijn nu live gebaseerd op planningdata, zoals totaal onderwerpen en publicatiestatus.",
+                    "De indeling is opgeschoond zodat het dashboard compacter leest en geen leeg wit vlak meer toont.",
+                ],
+            },
         ],
     )
 

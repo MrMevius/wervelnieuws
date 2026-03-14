@@ -917,7 +917,9 @@ describe("App", () => {
     });
 
     expect(screen.queryByLabelText("Bestand uploaden")).not.toBeInTheDocument();
-    expect(screen.getByText(/ga naar Database om bronbestanden te uploaden/i)).toBeInTheDocument();
+    expect(screen.getByText(/dit is je startpunt voor de dag/i)).toBeInTheDocument();
+    expect(screen.getByText("Totaal onderwerpen")).toBeInTheDocument();
+    expect(screen.getByText("Bronbestanden beheren")).toBeInTheDocument();
   });
 
   it("uploads a file from database page with project selection", async () => {
