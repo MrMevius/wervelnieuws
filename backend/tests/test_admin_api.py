@@ -399,6 +399,42 @@ def test_genai_model_options_endpoint_requires_admin_role(client):
     assert response.json()["detail"] == "Admin access required"
 
 
+def test_admin_can_get_and_update_ui_settings(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    initial = client.get("/api/admin/ui-settings", headers=admin_headers)
+    assert initial.status_code == 200
+    assert "wind_theme_enabled" in initial.json()
+
+    updated = client.patch(
+        "/api/admin/ui-settings",
+        headers=admin_headers,
+        json={"wind_theme_enabled": False},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["wind_theme_enabled"] is False
+
+    follow_up = client.get("/api/admin/ui-settings", headers=admin_headers)
+    assert follow_up.status_code == 200
+    assert follow_up.json()["wind_theme_enabled"] is False
+
+
+def test_admin_ui_settings_endpoints_require_admin_role(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+
+    get_response = client.get("/api/admin/ui-settings", headers=editor_headers)
+    assert get_response.status_code == 403
+    assert get_response.json()["detail"] == "Admin access required"
+
+    patch_response = client.patch(
+        "/api/admin/ui-settings",
+        headers=editor_headers,
+        json={"wind_theme_enabled": False},
+    )
+    assert patch_response.status_code == 403
+    assert patch_response.json()["detail"] == "Admin access required"
+
+
 def test_admin_can_manage_themes(client):
     admin_headers = _login_as(client, "admin", "admin12345")
 

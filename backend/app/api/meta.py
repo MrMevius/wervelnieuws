@@ -8,11 +8,13 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user
 from app.core.db import get_db
 from app.models.entities import SystemSetting, User
-from app.schemas.meta import AboutResponse
+from app.schemas.meta import AboutResponse, UiSettingsResponse
 
 router = APIRouter(prefix="/meta", tags=["meta"])
 
 ABOUT_SETTING_KEY = "about_page_content"
+UI_SETTINGS_KEY = "admin_ui_settings_v1"
+DEFAULT_UI_SETTINGS = {"wind_theme_enabled": True}
 
 
 def _default_about() -> AboutResponse:
@@ -196,8 +198,56 @@ def _default_about() -> AboutResponse:
                     "Op Main staat nu een compact blok met recente logregels plus een concrete feature-suggestie.",
                 ],
             },
+            {
+                "iteration": "17",
+                "date": "2026-03-15",
+                "title": "n8n-meldingen zichtbaar en centraal afgehandeld",
+                "highlights": [
+                    "Succes- en foutmeldingen voor generatie en publicatie lopen nu via een n8n-koppeling.",
+                    "Op Main en Log zie je deze meldingen direct terug, inclusief status en onderwerp.",
+                    "Dubbele meldingen worden voorkomen, zodat admins geen herhaalde Telegram-meldingen krijgen.",
+                ],
+            },
+            {
+                "iteration": "18",
+                "date": "2026-03-15",
+                "title": "Subtiel wind-thema met centrale adminschakelaar",
+                "highlights": [
+                    "De interface gebruikt nu subtiele windturbine-accenten die passen bij het projectthema.",
+                    "In Admin kan het team het wind-thema centraal aan- of uitzetten voor alle gebruikers.",
+                    "De instelling wordt direct toegepast in de hele omgeving, zonder extra handmatige stappen.",
+                ],
+            },
         ],
     )
+
+
+def _ui_settings(db: Session) -> UiSettingsResponse:
+    setting = db.scalar(
+        select(SystemSetting).where(SystemSetting.key == UI_SETTINGS_KEY)
+    )
+    if not setting:
+        setting = SystemSetting(
+            key=UI_SETTINGS_KEY, value=json.dumps(DEFAULT_UI_SETTINGS)
+        )
+        db.add(setting)
+        db.commit()
+        return UiSettingsResponse(**DEFAULT_UI_SETTINGS)
+    try:
+        parsed = json.loads(setting.value)
+    except json.JSONDecodeError:
+        parsed = DEFAULT_UI_SETTINGS
+    enabled = (
+        bool(parsed.get("wind_theme_enabled", True))
+        if isinstance(parsed, dict)
+        else True
+    )
+    normalized = {"wind_theme_enabled": enabled}
+    if setting.value != json.dumps(normalized):
+        setting.value = json.dumps(normalized)
+        db.add(setting)
+        db.commit()
+    return UiSettingsResponse(**normalized)
 
 
 @router.get("/about", response_model=AboutResponse)
@@ -217,3 +267,12 @@ def about(
         return AboutResponse.model_validate(parsed)
     except (json.JSONDecodeError, ValidationError):
         return _default_about()
+
+
+@router.get("/ui-settings", response_model=UiSettingsResponse)
+def ui_settings(
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UiSettingsResponse:
+    del current
+    return _ui_settings(db)

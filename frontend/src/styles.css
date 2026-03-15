@@ -11,6 +11,10 @@
   --brand-soft: #e1f0e7;
   --danger: #a11f2f;
   --shadow: 0 10px 28px rgba(24, 39, 31, 0.08);
+  --wind-overlay-stem: rgba(58, 92, 74, 0.14);
+  --wind-overlay-blade: rgba(95, 126, 109, 0.12);
+  --wind-hero-line: rgba(60, 94, 78, 0.18);
+  --wind-topbar-line: rgba(75, 109, 91, 0.22);
 }
 
 :root[data-theme="dark"] {
@@ -24,6 +28,17 @@
   --brand-soft: #284034;
   --danger: #ff8f9c;
   --shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+  --wind-overlay-stem: rgba(188, 219, 201, 0.16);
+  --wind-overlay-blade: rgba(164, 208, 188, 0.14);
+  --wind-hero-line: rgba(172, 214, 194, 0.2);
+  --wind-topbar-line: rgba(152, 198, 176, 0.24);
+}
+
+:root[data-wind-theme="off"] {
+  --wind-overlay-stem: transparent;
+  --wind-overlay-blade: transparent;
+  --wind-hero-line: transparent;
+  --wind-topbar-line: transparent;
 }
 
 * {
@@ -35,6 +50,13 @@ body {
   font-family: var(--font-sans);
   color: var(--text);
   background:
+    linear-gradient(22deg, transparent 49.2%, var(--wind-overlay-blade) 50%, transparent 50.8%) 86% 24% / 220px
+      220px no-repeat,
+    linear-gradient(-26deg, transparent 49.2%, var(--wind-overlay-blade) 50%, transparent 50.8%) 84% 25% / 220px
+      220px no-repeat,
+    linear-gradient(180deg, transparent 0 53%, var(--wind-overlay-stem) 53% 98%, transparent 98%) 85.2% 42% / 2px 210px
+      no-repeat,
+    radial-gradient(circle at 85.2% 31%, var(--wind-overlay-stem) 0 3px, transparent 4px),
     radial-gradient(circle at 80% -10%, #dceadd 0%, transparent 50%),
     radial-gradient(circle at -10% 100%, #dce8f4 0%, transparent 45%),
     var(--bg);
@@ -137,7 +159,9 @@ button:disabled {
   top: 0;
   z-index: 20;
   border-bottom: 1px solid var(--line);
-  background: var(--surface-muted);
+  background:
+    linear-gradient(145deg, transparent 0 85%, var(--wind-topbar-line) 85% 85.7%, transparent 85.7%),
+    var(--surface-muted);
   backdrop-filter: blur(8px);
   padding: 14px clamp(20px, 2.6vw, 52px);
   display: grid;
@@ -259,6 +283,22 @@ button:disabled {
   background: linear-gradient(132deg, #e7f4ec 0%, #f2f8ff 55%, #f8fcfa 100%);
   border-color: #cfe0d5;
   gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.main-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(18deg, transparent 49.3%, var(--wind-hero-line) 50%, transparent 50.7%) 84% 30% / 180px 180px
+      no-repeat,
+    linear-gradient(-28deg, transparent 49.3%, var(--wind-hero-line) 50%, transparent 50.7%) 83% 31% / 180px
+      180px no-repeat,
+    linear-gradient(180deg, transparent 0 49%, var(--wind-hero-line) 49% 100%) 83.8% 54% / 2px 130px no-repeat,
+    radial-gradient(circle at 83.8% 40%, var(--wind-hero-line) 0 2px, transparent 3px);
 }
 
 .main-hero-actions {
@@ -349,8 +389,31 @@ button:disabled {
 .log-filter-form {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   align-items: end;
+}
+
+.notification-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border: 1px solid var(--line);
+}
+
+.notification-success {
+  background: #e8f6ec;
+  color: #1f6b37;
+  border-color: #b8ddc4;
+}
+
+.notification-error {
+  background: #fdebec;
+  color: #99233a;
+  border-color: #f1c3cb;
 }
 
 .log-filter-form label {

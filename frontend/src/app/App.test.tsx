@@ -103,6 +103,12 @@ const mockApi = vi.hoisted(() => ({
     name: "Planning aangepast",
     is_active: false
   }),
+  getAdminUiSettings: vi.fn().mockResolvedValue({
+    wind_theme_enabled: true
+  }),
+  updateAdminUiSettings: vi.fn().mockResolvedValue({
+    wind_theme_enabled: false
+  }),
   listAdminActivity: vi.fn().mockResolvedValue([
     {
       id: "a1",
@@ -403,6 +409,21 @@ const mockApi = vi.hoisted(() => ({
       created_at: "2026-03-14T10:20:00Z"
     }
   ]),
+  listNotificationFeed: vi.fn().mockResolvedValue([
+    {
+      id: "n1",
+      event_type: "content.generation",
+      status: "success",
+      topic_id: "abc12345-1111",
+      topic_subject: "Onderwerp test",
+      message: "Generatie geslaagd",
+      payload_json: "{}",
+      delivery_attempts: 1,
+      delivered_at: "2026-03-14T10:20:02Z",
+      last_error: "",
+      created_at: "2026-03-14T10:20:01Z"
+    }
+  ]),
   scheduleTopic: vi.fn().mockResolvedValue({ schedule_id: "s1" }),
   updateVariant: vi.fn().mockResolvedValue({ status: "ok" }),
   approveVariant: vi.fn().mockResolvedValue({ status: "ok" }),
@@ -421,6 +442,9 @@ const mockApi = vi.hoisted(() => ({
         highlights: ["Tabnavigatie", "About API"]
       }
     ]
+  }),
+  getUiSettings: vi.fn().mockResolvedValue({
+    wind_theme_enabled: true
   })
 }));
 
@@ -1111,10 +1135,11 @@ describe("App", () => {
     expect(screen.getByText(/dit is je startpunt voor de dag/i)).toBeInTheDocument();
     expect(screen.getByText("Totaal onderwerpen")).toBeInTheDocument();
     expect(screen.getByText("Bronbestanden beheren")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Recente logregels" })).toBeInTheDocument();
-    expect(screen.getAllByText("Content gegenereerd").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Recente meldingen" })).toBeInTheDocument();
+    expect(screen.getAllByText("Generatie").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Feature suggestie #1" })).toBeInTheDocument();
     expect(mockApi.listActivityFeed).toHaveBeenCalledWith({ period: "7d", limit: 5 });
+    expect(mockApi.listNotificationFeed).toHaveBeenCalledWith({ period: "7d", limit: 5 });
   });
 
   it("renders log page with filters and activity rows", async () => {
@@ -1126,10 +1151,12 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Log" })).toBeInTheDocument();
       expect(screen.getByLabelText("Actie")).toBeInTheDocument();
+      expect(screen.getByLabelText("Status")).toBeInTheDocument();
       expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
       expect(screen.getByLabelText("Periode")).toBeInTheDocument();
-      expect(screen.getByText("Onderwerp test")).toBeInTheDocument();
+      expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
       expect(screen.getAllByText("Content gegenereerd").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("Generatie").length).toBeGreaterThan(0);
     });
 
     fireEvent.change(screen.getByLabelText("Onderwerp"), {
@@ -1143,6 +1170,13 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.listActivityFeed).toHaveBeenLastCalledWith({
         event_type: undefined,
+        topic: "test",
+        period: "30d",
+        limit: 120
+      });
+      expect(mockApi.listNotificationFeed).toHaveBeenLastCalledWith({
+        event_type: undefined,
+        status: undefined,
         topic: "test",
         period: "30d",
         limit: 120
@@ -1336,6 +1370,38 @@ describe("App", () => {
         })
       );
       expect(screen.getByText("GenAI-config opgeslagen.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to toggle global wind theme", async () => {
+    mockApi.updateAdminUiSettings.mockClear();
+    mockApi.updateAdminUiSettings.mockResolvedValueOnce({ wind_theme_enabled: false });
+
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Thema's" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Thema's" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Wind-thema actief")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByLabelText("Wind-thema actief"));
+
+    await waitFor(() => {
+      expect(mockApi.updateAdminUiSettings).toHaveBeenCalledWith({ wind_theme_enabled: false });
+      expect(screen.getByText("Wind-thema uitgeschakeld.")).toBeInTheDocument();
     });
   });
 

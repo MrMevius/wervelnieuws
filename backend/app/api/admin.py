@@ -14,9 +14,11 @@ from app.schemas.admin import (
     AdminActivityResponse,
     AdminScheduleTemplateResponse,
     AdminThemeResponse,
+    AdminUiSettingsResponse,
     AdminUserResponse,
     CreateAdminThemeRequest,
     CreateAdminUserRequest,
+    UpdateAdminUiSettingsRequest,
     UpdateAdminThemeRequest,
     UpdateAdminUserActiveRequest,
     UpdateAdminUserPasswordRequest,
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 THEMES_SETTING_KEY = "admin_topic_themes_v1"
 SCHEDULE_TEMPLATES_SETTING_KEY = "admin_schedule_templates_v1"
+UI_SETTINGS_KEY = "admin_ui_settings_v1"
 
 DEFAULT_ADMIN_THEMES = [
     {"id": "algemeen", "name": "Algemeen", "is_active": True},
@@ -75,6 +78,8 @@ DEFAULT_SCHEDULE_TEMPLATES = [
     },
 ]
 
+DEFAULT_UI_SETTINGS = {"wind_theme_enabled": True}
+
 
 def _slugify_theme_id(name: str) -> str:
     normalized = []
@@ -106,6 +111,32 @@ def _load_json_setting(db: Session, key: str, default_value: list[dict]) -> list
 
 
 def _save_json_setting(db: Session, key: str, value: list[dict]) -> None:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting:
+        setting = SystemSetting(key=key, value=json.dumps(value))
+    else:
+        setting.value = json.dumps(value)
+    db.add(setting)
+    db.commit()
+
+
+def _load_object_setting(db: Session, key: str, default_value: dict) -> dict:
+    setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
+    if not setting:
+        setting = SystemSetting(key=key, value=json.dumps(default_value))
+        db.add(setting)
+        db.commit()
+        return default_value
+    try:
+        parsed = json.loads(setting.value)
+    except json.JSONDecodeError:
+        parsed = default_value
+    if not isinstance(parsed, dict):
+        parsed = default_value
+    return parsed
+
+
+def _save_object_setting(db: Session, key: str, value: dict) -> None:
     setting = db.scalar(select(SystemSetting).where(SystemSetting.key == key))
     if not setting:
         setting = SystemSetting(key=key, value=json.dumps(value))
@@ -174,6 +205,15 @@ def _read_schedule_templates(db: Session) -> list[dict]:
     return normalized
 
 
+def _read_ui_settings(db: Session) -> dict:
+    raw = _load_object_setting(db, UI_SETTINGS_KEY, DEFAULT_UI_SETTINGS)
+    normalized = {
+        "wind_theme_enabled": bool(raw.get("wind_theme_enabled", True)),
+    }
+    _save_object_setting(db, UI_SETTINGS_KEY, normalized)
+    return normalized
+
+
 @router.get("/genai-config", response_model=GenAIConfigResponse)
 def get_genai_config(
     current: User = Depends(require_admin),
@@ -200,6 +240,28 @@ def get_genai_model_options(
 ) -> GenAIModelOptionsResponse:
     del current
     return GenAIConfigService(db).get_model_options()
+
+
+@router.get("/ui-settings", response_model=AdminUiSettingsResponse)
+def get_ui_settings(
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminUiSettingsResponse:
+    del current
+    settings = _read_ui_settings(db)
+    return AdminUiSettingsResponse.model_validate(settings)
+
+
+@router.patch("/ui-settings", response_model=AdminUiSettingsResponse)
+def update_ui_settings(
+    payload: UpdateAdminUiSettingsRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminUiSettingsResponse:
+    del current
+    updated = {"wind_theme_enabled": payload.wind_theme_enabled}
+    _save_object_setting(db, UI_SETTINGS_KEY, updated)
+    return AdminUiSettingsResponse.model_validate(updated)
 
 
 @router.get("/themes", response_model=list[AdminThemeResponse])

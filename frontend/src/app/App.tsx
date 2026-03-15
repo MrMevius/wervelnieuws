@@ -12,6 +12,8 @@ import {
   DatabaseDocument,
   GenAIConfig,
   GenAIModelOptions,
+  NotificationFeedItem,
+  UiSettings,
   Project,
   SourceTraceHit,
   SchedulerOverview,
@@ -30,15 +32,18 @@ import {
   deleteAdminUser,
   getCurrentUserAvatarBlob,
   getAboutContent,
+  getAdminUiSettings,
   getCurrentUser,
   importTopicsCsv,
   listAdminUsers,
   listAdminActivity,
   listAdminThemes,
   getCurrentSchedule,
+  getUiSettings,
   getAdminGenAIConfig,
   getAdminGenAIModelOptions,
   listActivityFeed,
+  listNotificationFeed,
   listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
@@ -58,6 +63,7 @@ import {
   updateVariant,
   updateAdminUserActive,
   updateAdminGenAIConfig,
+  updateAdminUiSettings,
   updateAdminProject,
   updateAdminTheme,
   updateAdminUser,
@@ -155,6 +161,17 @@ export function App() {
     };
   }, [authenticated, currentUserQuery.data?.has_avatar, avatarVersion]);
 
+  const uiSettingsQuery = useQuery({
+    queryKey: ["ui-settings"],
+    queryFn: getUiSettings,
+    enabled: authenticated
+  });
+
+  useEffect(() => {
+    const enabled = uiSettingsQuery.data?.wind_theme_enabled ?? true;
+    document.documentElement.setAttribute("data-wind-theme", enabled ? "on" : "off");
+  }, [uiSettingsQuery.data?.wind_theme_enabled]);
+
   const topicsQuery = useQuery({
     queryKey: ["topics"],
     queryFn: listTopics,
@@ -174,6 +191,13 @@ export function App() {
     refetchInterval: 30000
   });
 
+  const mainNotificationQuery = useQuery({
+    queryKey: ["notification-feed", "main"],
+    queryFn: () => listNotificationFeed({ period: "7d", limit: 5 }),
+    enabled: authenticated,
+    refetchInterval: 30000
+  });
+
   function logout() {
     setToken("");
     setAuthenticated(false);
@@ -182,6 +206,7 @@ export function App() {
     setThemePreference("system");
     setAvatarUrl(null);
     setAvatarVersion(0);
+    document.documentElement.setAttribute("data-wind-theme", "on");
     queryClient.clear();
   }
 
@@ -271,6 +296,9 @@ export function App() {
                 recentActivity={mainActivityQuery.data ?? []}
                 logIsLoading={mainActivityQuery.isLoading}
                 logHasError={mainActivityQuery.isError}
+                recentNotifications={mainNotificationQuery.data ?? []}
+                notificationIsLoading={mainNotificationQuery.isLoading}
+                notificationHasError={mainNotificationQuery.isError}
               />
             }
           />
@@ -330,7 +358,10 @@ function MainPage({
   hasError,
   recentActivity,
   logIsLoading,
-  logHasError
+  logHasError,
+  recentNotifications,
+  notificationIsLoading,
+  notificationHasError
 }: {
   username: string;
   topics: Topic[];
@@ -339,6 +370,9 @@ function MainPage({
   recentActivity: ActivityFeedItem[];
   logIsLoading: boolean;
   logHasError: boolean;
+  recentNotifications: NotificationFeedItem[];
+  notificationIsLoading: boolean;
+  notificationHasError: boolean;
 }) {
   const totalTopics = topics.length;
   const plannedTopics = topics.filter((topic) => Boolean(topic.planning_at)).length;
@@ -478,29 +512,35 @@ function MainPage({
             </article>
 
               <article className="panel">
-                <h2>Recente logregels</h2>
-                <p className="muted">Laatste activiteiten uit het systeem (afgelopen 7 dagen).</p>
-                {logIsLoading && <p className="muted">Logregels laden...</p>}
-                {logHasError && !logIsLoading && (
-                  <p className="error">Logregels konden niet worden geladen.</p>
+                <h2>Recente meldingen</h2>
+                <p className="muted">Succes- en foutmeldingen richting n8n (afgelopen 7 dagen).</p>
+                {notificationIsLoading && <p className="muted">Meldingen laden...</p>}
+                {notificationHasError && !notificationIsLoading && (
+                  <p className="error">Meldingen konden niet worden geladen.</p>
                 )}
-                {!logIsLoading && !logHasError && recentActivity.length === 0 && (
-                  <p className="muted">Nog geen logregels beschikbaar.</p>
+                {!notificationIsLoading && !notificationHasError && recentNotifications.length === 0 && (
+                  <p className="muted">Nog geen meldingen beschikbaar.</p>
                 )}
-                {!logIsLoading && !logHasError && recentActivity.length > 0 && (
+                {!notificationIsLoading && !notificationHasError && recentNotifications.length > 0 && (
                   <ul className="main-log-list">
-                    {recentActivity.map((item) => (
+                    {recentNotifications.map((item) => (
                       <li key={item.id}>
                         <div>
-                          <strong>{activityEventLabel(item.event_type)}</strong>
+                          <strong>{notificationEventLabel(item.event_type)}</strong>
                           <span className="muted">{item.topic_subject?.trim() || "Zonder onderwerp"}</span>
                         </div>
+                        <span className={`notification-pill notification-${item.status}`}>
+                          {item.status === "success" ? "Succes" : "Fout"}
+                        </span>
                         <span className="muted">
-                          {formatAmsterdamDateTime(item.created_at)} - {item.actor_username}
+                          {formatAmsterdamDateTime(item.created_at)} - {item.message}
                         </span>
                       </li>
                     ))}
                   </ul>
+                )}
+                {!notificationIsLoading && !notificationHasError && recentNotifications.length === 0 && !logHasError && !logIsLoading && recentActivity.length > 0 && (
+                  <p className="muted">Er zijn wel activiteiten, maar nog geen notificatiemeldingen.</p>
                 )}
                 <NavLink to="/log" className="main-inline-link">
                   Bekijk volledig logboek
@@ -2622,6 +2662,7 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
     enabled: currentUser?.is_admin === true,
     refetchInterval: 30000
   });
+
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -2782,19 +2823,34 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
 
 function LogPage() {
   const [eventTypeDraft, setEventTypeDraft] = useState("");
+  const [statusDraft, setStatusDraft] = useState<"" | "success" | "error">("");
   const [topicDraft, setTopicDraft] = useState("");
   const [periodDraft, setPeriodDraft] = useState<"24h" | "7d" | "30d" | "all">("7d");
   const [filters, setFilters] = useState<{
     eventType: string;
+    status: "" | "success" | "error";
     topic: string;
     period: "24h" | "7d" | "30d" | "all";
-  }>({ eventType: "", topic: "", period: "7d" });
+  }>({ eventType: "", status: "", topic: "", period: "7d" });
 
   const activityQuery = useQuery({
     queryKey: ["activity-feed", "log", filters.eventType, filters.topic, filters.period],
     queryFn: () =>
       listActivityFeed({
         event_type: filters.eventType || undefined,
+        topic: filters.topic || undefined,
+        period: filters.period,
+        limit: 120
+      }),
+    refetchInterval: 30000
+  });
+
+  const notificationQuery = useQuery({
+    queryKey: ["notification-feed", "log", filters.eventType, filters.status, filters.topic, filters.period],
+    queryFn: () =>
+      listNotificationFeed({
+        event_type: filters.eventType || undefined,
+        status: filters.status || undefined,
         topic: filters.topic || undefined,
         period: filters.period,
         limit: 120
@@ -2834,6 +2890,7 @@ function LogPage() {
           event.preventDefault();
           setFilters({
             eventType: eventTypeDraft,
+            status: statusDraft,
             topic: topicDraft.trim(),
             period: periodDraft
           });
@@ -2847,6 +2904,17 @@ function LogPage() {
                 {option.label}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          Status
+          <select
+            value={statusDraft}
+            onChange={(event) => setStatusDraft(event.target.value as "" | "success" | "error")}
+          >
+            <option value="">Alle statussen</option>
+            <option value="success">Succes</option>
+            <option value="error">Fout</option>
           </select>
         </label>
         <label>
@@ -2875,9 +2943,10 @@ function LogPage() {
             type="button"
             onClick={() => {
               setEventTypeDraft("");
+              setStatusDraft("");
               setTopicDraft("");
               setPeriodDraft("7d");
-              setFilters({ eventType: "", topic: "", period: "7d" });
+              setFilters({ eventType: "", status: "", topic: "", period: "7d" });
             }}
           >
             Reset
@@ -2887,6 +2956,48 @@ function LogPage() {
 
       {activityQuery.isLoading && <p className="muted">Logregels laden...</p>}
       {activityQuery.isError && <p className="error">Logregels konden niet worden geladen.</p>}
+
+      <h2>Notificatiemeldingen</h2>
+      <p className="muted">Meldingen die naar n8n worden gepusht (succes/fout).</p>
+      {notificationQuery.isLoading && <p className="muted">Meldingen laden...</p>}
+      {notificationQuery.isError && <p className="error">Meldingen konden niet worden geladen.</p>}
+
+      {!notificationQuery.isLoading && !notificationQuery.isError && (notificationQuery.data ?? []).length === 0 && (
+        <p className="muted">Geen meldingen gevonden voor deze filters.</p>
+      )}
+
+      {!notificationQuery.isLoading && !notificationQuery.isError && (notificationQuery.data ?? []).length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tijd</th>
+                <th>Status</th>
+                <th>Event</th>
+                <th>Onderwerp</th>
+                <th>Melding</th>
+                <th>Delivery</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(notificationQuery.data ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{formatAmsterdamDateTime(item.created_at)}</td>
+                  <td>
+                    <span className={`notification-pill notification-${item.status}`}>
+                      {item.status === "success" ? "Succes" : "Fout"}
+                    </span>
+                  </td>
+                  <td>{notificationEventLabel(item.event_type)}</td>
+                  <td title={item.topic_subject ?? undefined}>{item.topic_subject || "-"}</td>
+                  <td>{item.message}</td>
+                  <td>{item.delivered_at ? "Afgeleverd" : `Nog niet (${item.delivery_attempts} pogingen)`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {!activityQuery.isLoading && !activityQuery.isError && (activityQuery.data ?? []).length === 0 && (
         <p className="muted">Geen logregels gevonden voor deze filters.</p>
@@ -2935,6 +3046,17 @@ const LOG_EVENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "content.variant.rejected", label: "Kanaalvariant afgekeurd" },
   { value: "database.document.uploaded", label: "Databasebestand geupload" }
 ];
+
+function notificationEventLabel(eventType: string): string {
+  const mapping: Record<string, string> = {
+    "content.publication": "Publicatie",
+    "content.generation": "Generatie"
+  };
+  if (mapping[eventType]) {
+    return mapping[eventType];
+  }
+  return eventType.replaceAll(".", " / ");
+}
 
 function activityEventLabel(eventType: string): string {
   const mapping: Record<string, string> = {
@@ -3041,6 +3163,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     queryFn: getSchedulerOverview,
     enabled: currentUser?.is_admin === true,
     refetchInterval: 30000
+  });
+
+  const adminUiSettingsQuery = useQuery({
+    queryKey: ["admin-ui-settings"],
+    queryFn: getAdminUiSettings,
+    enabled: currentUser?.is_admin === true
   });
 
   const genAIConfigQuery = useQuery({
@@ -3299,6 +3427,18 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const updateUiSettingsMutation = useMutation({
+    mutationFn: (payload: UiSettings) => updateAdminUiSettings(payload),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<UiSettings | undefined>(["admin-ui-settings"], updated);
+      queryClient.setQueryData<UiSettings | undefined>(["ui-settings"], updated);
+      setFeedback(updated.wind_theme_enabled ? "Wind-thema ingeschakeld." : "Wind-thema uitgeschakeld.");
+    },
+    onError: () => {
+      setFeedback("Wind-thema bijwerken is mislukt.");
+    }
+  });
+
   const passwordMutation = useMutation({
     mutationFn: ({ userId, password }: { userId: string; password: string }) =>
       changeAdminUserPassword(userId, password),
@@ -3375,7 +3515,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     usersQuery.isLoading ||
     projectsQuery.isLoading ||
     themesQuery.isLoading ||
-    genAIConfigQuery.isLoading
+    genAIConfigQuery.isLoading ||
+    adminUiSettingsQuery.isLoading
   ) {
     return (
       <section className="panel">
@@ -3389,7 +3530,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     usersQuery.isError ||
     projectsQuery.isError ||
     themesQuery.isError ||
-    genAIConfigQuery.isError
+    genAIConfigQuery.isError ||
+    adminUiSettingsQuery.isError
   ) {
     return (
       <section className="panel">
@@ -3717,6 +3859,23 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       <div hidden={activeAdminTab !== "themes"}>
         <h2>Thema&apos;s</h2>
         <p className="muted">Beheer hier de themalijst die gebruikt wordt in Planning en AI-context.</p>
+        <article className="panel">
+          <h3>Wind-thema</h3>
+          <p className="muted">Zet subtiele windturbine-accenten in de interface centraal aan of uit.</p>
+          <label className="admin-checkbox-field">
+            <input
+              type="checkbox"
+              aria-label="Wind-thema actief"
+              checked={adminUiSettingsQuery.data?.wind_theme_enabled ?? true}
+              onChange={(event) => {
+                setFeedback(null);
+                updateUiSettingsMutation.mutate({ wind_theme_enabled: event.target.checked });
+              }}
+              disabled={updateUiSettingsMutation.isPending}
+            />
+            Windthema actief
+          </label>
+        </article>
         <form
           className="admin-create-user"
           onSubmit={(event) => {

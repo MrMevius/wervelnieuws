@@ -107,6 +107,16 @@ def test_about_returns_read_only_payload(client):
     assert len(payload["changelog"]) >= 1
 
 
+def test_meta_ui_settings_returns_global_wind_theme_state(client):
+    headers = _login(client)
+
+    response = client.get("/api/meta/ui-settings", headers=headers)
+    assert response.status_code == 200
+    payload = response.json()
+    assert "wind_theme_enabled" in payload
+    assert payload["wind_theme_enabled"] in {True, False}
+
+
 def test_auth_me_can_change_password(client):
     headers = _login(client)
 

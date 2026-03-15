@@ -76,3 +76,11 @@ class AdminActivityResponse(BaseModel):
     actor_user_id: str | None
     actor_username: str
     created_at: str
+
+
+class AdminUiSettingsResponse(BaseModel):
+    wind_theme_enabled: bool
+
+
+class UpdateAdminUiSettingsRequest(BaseModel):
+    wind_theme_enabled: bool

@@ -13,3 +13,7 @@ class AboutResponse(BaseModel):
     disclaimer: str
     developed_by: str
     changelog: list[ChangelogEntry] = Field(default_factory=list)
+
+
+class UiSettingsResponse(BaseModel):
+    wind_theme_enabled: bool = True
