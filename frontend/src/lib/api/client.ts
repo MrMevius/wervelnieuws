@@ -232,6 +232,24 @@ export type AdminActivity = {
   created_at: string;
 };
 
+export type ActivityFeedItem = {
+  id: string;
+  event_type: string;
+  topic_id: string | null;
+  topic_subject: string | null;
+  actor_user_id: string | null;
+  actor_username: string;
+  details_json: string;
+  created_at: string;
+};
+
+export type ActivityFeedFilters = {
+  event_type?: string;
+  topic?: string;
+  period?: "24h" | "7d" | "30d" | "all";
+  limit?: number;
+};
+
 export type GenAIConfig = {
   system_prompt: string;
   website_prompt: string;
@@ -696,6 +714,24 @@ export function requeueRetryJob(jobId: string) {
 
 export function getSchedulerOverview() {
   return request<SchedulerOverview>("/content/scheduler/overview");
+}
+
+export function listActivityFeed(filters: ActivityFeedFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.event_type?.trim()) {
+    params.set("event_type", filters.event_type.trim());
+  }
+  if (filters.topic?.trim()) {
+    params.set("topic", filters.topic.trim());
+  }
+  if (filters.period) {
+    params.set("period", filters.period);
+  }
+  if (typeof filters.limit === "number") {
+    params.set("limit", String(filters.limit));
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  return request<ActivityFeedItem[]>(`/content/activity${suffix}`);
 }
 
 export function listAdminThemes() {

@@ -391,6 +391,18 @@ const mockApi = vi.hoisted(() => ({
       }
     ]
   }),
+  listActivityFeed: vi.fn().mockResolvedValue([
+    {
+      id: "l1",
+      event_type: "content.generated",
+      topic_id: "abc12345-1111",
+      topic_subject: "Onderwerp test",
+      actor_user_id: "u1",
+      actor_username: "admin",
+      details_json: "{}",
+      created_at: "2026-03-14T10:20:00Z"
+    }
+  ]),
   scheduleTopic: vi.fn().mockResolvedValue({ schedule_id: "s1" }),
   updateVariant: vi.fn().mockResolvedValue({ status: "ok" }),
   approveVariant: vi.fn().mockResolvedValue({ status: "ok" }),
@@ -1099,6 +1111,43 @@ describe("App", () => {
     expect(screen.getByText(/dit is je startpunt voor de dag/i)).toBeInTheDocument();
     expect(screen.getByText("Totaal onderwerpen")).toBeInTheDocument();
     expect(screen.getByText("Bronbestanden beheren")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recente logregels" })).toBeInTheDocument();
+    expect(screen.getAllByText("Content gegenereerd").length).toBeGreaterThan(0);
+    expect(screen.getByRole("heading", { name: "Feature suggestie #1" })).toBeInTheDocument();
+    expect(mockApi.listActivityFeed).toHaveBeenCalledWith({ period: "7d", limit: 5 });
+  });
+
+  it("renders log page with filters and activity rows", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Log" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Log" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Actie")).toBeInTheDocument();
+      expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
+      expect(screen.getByLabelText("Periode")).toBeInTheDocument();
+      expect(screen.getByText("Onderwerp test")).toBeInTheDocument();
+      expect(screen.getAllByText("Content gegenereerd").length).toBeGreaterThan(0);
+    });
+
+    fireEvent.change(screen.getByLabelText("Onderwerp"), {
+      target: { value: "test" }
+    });
+    fireEvent.change(screen.getByLabelText("Periode"), {
+      target: { value: "30d" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Filter toepassen" }));
+
+    await waitFor(() => {
+      expect(mockApi.listActivityFeed).toHaveBeenLastCalledWith({
+        event_type: undefined,
+        topic: "test",
+        period: "30d",
+        limit: 120
+      });
+    });
   });
 
   it("uploads a file from database page with project selection", async () => {

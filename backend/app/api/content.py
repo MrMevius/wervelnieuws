@@ -1,16 +1,17 @@
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy import desc
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.entities import (
+    AuditEvent,
     ContentChannelVariant,
     ChannelPublicationState,
     ContentVersion,
@@ -29,6 +30,7 @@ from app.models.enums import (
 )
 from app.repositories.topic_repository import ContentVersionRepository, TopicRepository
 from app.schemas.versioning import (
+    ActivityFeedItemResponse,
     ChannelStatusResponse,
     ContentChannelVariantResponse,
     ContentVersionResponse,
@@ -51,6 +53,7 @@ router = APIRouter(prefix="/content", tags=["content"])
 SCHEDULER_RECENT_LIMIT = 25
 SCHEDULER_UPCOMING_LIMIT = 25
 SCHEDULER_RETRY_LIMIT = 25
+ACTIVITY_FEED_LIMIT_MAX = 200
 
 MIGRATION_REQUIRED_DETAIL = (
     "Database mist schema voor kanaalvarianten. "
@@ -417,6 +420,58 @@ def current_version(
     if not version:
         raise HTTPException(status_code=404, detail="No current version")
     return version
+
+
+@router.get("/activity", response_model=list[ActivityFeedItemResponse])
+def list_activity_feed(
+    event_type: str | None = Query(default=None),
+    topic: str | None = Query(default=None),
+    period: str = Query(default="7d"),
+    limit: int = Query(default=50, ge=1, le=ACTIVITY_FEED_LIMIT_MAX),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[ActivityFeedItemResponse]:
+    del current
+    normalized_period = period.strip().lower()
+    period_days = {"24h": 1, "7d": 7, "30d": 30, "all": 0}
+    if normalized_period not in period_days:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid period. Use one of: 24h, 7d, 30d, all",
+        )
+
+    query = (
+        db.query(AuditEvent, User.username, Topic.subject)
+        .outerjoin(User, User.id == AuditEvent.actor_user_id)
+        .outerjoin(Topic, Topic.id == AuditEvent.topic_id)
+    )
+
+    normalized_event_type = (event_type or "").strip()
+    if normalized_event_type:
+        query = query.filter(AuditEvent.event_type == normalized_event_type)
+
+    normalized_topic = (topic or "").strip()
+    if normalized_topic:
+        query = query.filter(Topic.subject.ilike(f"%{normalized_topic}%"))
+
+    if normalized_period != "all":
+        since = datetime.now(UTC) - timedelta(days=period_days[normalized_period])
+        query = query.filter(AuditEvent.created_at >= since)
+
+    rows = query.order_by(desc(AuditEvent.created_at)).limit(limit).all()
+    return [
+        ActivityFeedItemResponse(
+            id=event.id,
+            event_type=event.event_type,
+            topic_id=event.topic_id,
+            topic_subject=subject,
+            actor_user_id=event.actor_user_id,
+            actor_username=username or "Systeem",
+            details_json=event.details_json,
+            created_at=event.created_at,
+        )
+        for event, username, subject in rows
+    ]
 
 
 @router.get("/scheduler/overview", response_model=SchedulerOverviewResponse)

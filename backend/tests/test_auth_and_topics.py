@@ -86,3 +86,85 @@ def test_topic_creation_rejects_inactive_theme(client):
     )
     assert create_topic.status_code == 400
     assert create_topic.json()["detail"] == "Theme is not active"
+
+
+def test_activity_feed_is_available_for_authenticated_user(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+
+    create = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "Log test onderwerp",
+            "subject": "Log test onderwerp",
+            "theme": "Planning",
+            "project_id": project_id,
+            "editorial_notes": "",
+            "planning_at": None,
+            "target_channels": ["website"],
+        },
+    )
+    assert create.status_code == 200
+
+    activity = client.get("/api/content/activity", headers=headers)
+    assert activity.status_code == 200
+    payload = activity.json()
+    assert isinstance(payload, list)
+    assert any(item["event_type"] == "topic.created" for item in payload)
+    assert all("details_json" in item for item in payload)
+
+
+def test_activity_feed_supports_event_topic_and_period_filters(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+
+    create = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "Filterbaar onderwerp",
+            "subject": "Filterbaar onderwerp",
+            "theme": "Planning",
+            "project_id": project_id,
+            "editorial_notes": "",
+            "planning_at": None,
+            "target_channels": ["website"],
+        },
+    )
+    assert create.status_code == 200
+    topic_id = create.json()["id"]
+
+    update = client.patch(
+        f"/api/topics/{topic_id}",
+        headers=headers,
+        json={"subject": "Filterbaar onderwerp aangepast"},
+    )
+    assert update.status_code == 200
+
+    filtered = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={
+            "event_type": "topic.updated",
+            "topic": "aangepast",
+            "period": "all",
+            "limit": 20,
+        },
+    )
+    assert filtered.status_code == 200
+    items = filtered.json()
+    assert len(items) >= 1
+    assert all(item["event_type"] == "topic.updated" for item in items)
+    assert all(
+        (item.get("topic_subject") or "").lower().find("aangepast") >= 0
+        for item in items
+    )
+
+    invalid_period = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={"period": "2d"},
+    )
+    assert invalid_period.status_code == 400
+    assert "Invalid period" in invalid_period.json()["detail"]

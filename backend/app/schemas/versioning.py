@@ -159,3 +159,14 @@ class SchedulerOverviewResponse(BaseModel):
     recent_runs: list[SchedulerRecentRunResponse]
     upcoming_runs: list[SchedulerUpcomingRunResponse]
     retry_jobs: list[SchedulerRetryJobResponse]
+
+
+class ActivityFeedItemResponse(BaseModel):
+    id: str
+    event_type: str
+    topic_id: str | None
+    topic_subject: str | None
+    actor_user_id: str | None
+    actor_username: str
+    details_json: str
+    created_at: datetime

@@ -4,6 +4,7 @@ import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-
 import {
   AdminTheme,
   AdminUser,
+  ActivityFeedItem,
   AboutContent,
   ContentChannelVariant,
   ContentVersion,
@@ -37,6 +38,7 @@ import {
   getCurrentSchedule,
   getAdminGenAIConfig,
   getAdminGenAIModelOptions,
+  listActivityFeed,
   listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
@@ -165,6 +167,13 @@ export function App() {
     enabled: authenticated
   });
 
+  const mainActivityQuery = useQuery({
+    queryKey: ["activity-feed", "main"],
+    queryFn: () => listActivityFeed({ period: "7d", limit: 5 }),
+    enabled: authenticated,
+    refetchInterval: 30000
+  });
+
   function logout() {
     setToken("");
     setAuthenticated(false);
@@ -259,6 +268,9 @@ export function App() {
                 topics={topicsQuery.data ?? []}
                 isLoading={topicsQuery.isLoading}
                 hasError={topicsQuery.isError}
+                recentActivity={mainActivityQuery.data ?? []}
+                logIsLoading={mainActivityQuery.isLoading}
+                logHasError={mainActivityQuery.isError}
               />
             }
           />
@@ -268,7 +280,7 @@ export function App() {
             element={<PlanningRuleDetailPage topics={topicsQuery.data ?? []} />}
           />
           <Route path="/database" element={<DatabasePage currentUser={currentUserQuery.data} />} />
-          <Route path="/log" element={<DummyPage title="Log" text="Logweergave volgt in een volgende iteratie." />} />
+          <Route path="/log" element={<LogPage />} />
           <Route
             path="/settings"
             element={
@@ -315,12 +327,18 @@ function MainPage({
   username,
   topics,
   isLoading,
-  hasError
+  hasError,
+  recentActivity,
+  logIsLoading,
+  logHasError
 }: {
   username: string;
   topics: Topic[];
   isLoading: boolean;
   hasError: boolean;
+  recentActivity: ActivityFeedItem[];
+  logIsLoading: boolean;
+  logHasError: boolean;
 }) {
   const totalTopics = topics.length;
   const plannedTopics = topics.filter((topic) => Boolean(topic.planning_at)).length;
@@ -406,18 +424,15 @@ function MainPage({
             </article>
           </section>
 
-          {topics.length === 0 ? (
+          <section className="main-content-grid">
             <article className="panel">
-              <h2>Nog geen onderwerpen</h2>
-              <p className="muted">
-                Voeg je eerste planningsregel toe in Planning. Upload daarna bronbestanden in Database voor
-                betere AI-onderbouwing.
-              </p>
-            </article>
-          ) : (
-            <section className="main-content-grid">
-              <article className="panel">
-                <h2>Workflow overzicht</h2>
+              <h2>Workflow overzicht</h2>
+              {topics.length === 0 ? (
+                <p className="muted">
+                  Voeg je eerste planningsregel toe in Planning. Upload daarna bronbestanden in Database voor
+                  betere AI-onderbouwing.
+                </p>
+              ) : (
                 <ul className="next-list">
                   <li>
                     <span>In review</span>
@@ -432,36 +447,74 @@ function MainPage({
                     <strong>{Math.max(totalTopics - plannedTopics, 0)}</strong>
                   </li>
                 </ul>
-              </article>
+              )}
+            </article>
+
+            <article className="panel">
+              <h2>Komende planning</h2>
+              {nextPlannedTopic ? (
+                <>
+                  <p>
+                    <strong>{nextPlannedTopic.subject}</strong>
+                  </p>
+                  <p className="muted">
+                    {nextPlannedTopic.project_name} - {nextPlannedTopic.planning_at ? formatAmsterdamDateTime(nextPlannedTopic.planning_at) : "-"}
+                  </p>
+                </>
+              ) : (
+                <p className="muted">Er staat nog geen planningdatum ingevuld.</p>
+              )}
+
+              <h3>Topthema's</h3>
+              <ul className="stats-list">
+                {topThemes.length === 0 && <li>Geen themagegevens beschikbaar.</li>}
+                {topThemes.map(([theme, count]) => (
+                  <li key={theme}>
+                    <span>{theme}</span>
+                    <strong>{count}</strong>
+                  </li>
+                ))}
+              </ul>
+            </article>
 
               <article className="panel">
-                <h2>Komende planning</h2>
-                {nextPlannedTopic ? (
-                  <>
-                    <p>
-                      <strong>{nextPlannedTopic.subject}</strong>
-                    </p>
-                    <p className="muted">
-                      {nextPlannedTopic.project_name} - {nextPlannedTopic.planning_at ? formatAmsterdamDateTime(nextPlannedTopic.planning_at) : "-"}
-                    </p>
-                  </>
-                ) : (
-                  <p className="muted">Er staat nog geen planningdatum ingevuld.</p>
+                <h2>Recente logregels</h2>
+                <p className="muted">Laatste activiteiten uit het systeem (afgelopen 7 dagen).</p>
+                {logIsLoading && <p className="muted">Logregels laden...</p>}
+                {logHasError && !logIsLoading && (
+                  <p className="error">Logregels konden niet worden geladen.</p>
                 )}
-
-                <h3>Topthema's</h3>
-                <ul className="stats-list">
-                  {topThemes.length === 0 && <li>Geen themagegevens beschikbaar.</li>}
-                  {topThemes.map(([theme, count]) => (
-                    <li key={theme}>
-                      <span>{theme}</span>
-                      <strong>{count}</strong>
-                    </li>
-                  ))}
-                </ul>
+                {!logIsLoading && !logHasError && recentActivity.length === 0 && (
+                  <p className="muted">Nog geen logregels beschikbaar.</p>
+                )}
+                {!logIsLoading && !logHasError && recentActivity.length > 0 && (
+                  <ul className="main-log-list">
+                    {recentActivity.map((item) => (
+                      <li key={item.id}>
+                        <div>
+                          <strong>{activityEventLabel(item.event_type)}</strong>
+                          <span className="muted">{item.topic_subject?.trim() || "Zonder onderwerp"}</span>
+                        </div>
+                        <span className="muted">
+                          {formatAmsterdamDateTime(item.created_at)} - {item.actor_username}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <NavLink to="/log" className="main-inline-link">
+                  Bekijk volledig logboek
+                </NavLink>
               </article>
-            </section>
-          )}
+
+            <article className="panel feature-suggestion-panel">
+              <h2>Feature suggestie #1</h2>
+              <p>
+                Voeg op de Log-pagina een exportknop toe om gefilterde logregels als CSV te downloaden voor
+                intern overleg en maandrapportages.
+              </p>
+            </article>
+          </section>
         </>
       )}
     </section>
@@ -2727,13 +2780,207 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
   );
 }
 
-function DummyPage({ title, text }: { title: string; text: string }) {
+function LogPage() {
+  const [eventTypeDraft, setEventTypeDraft] = useState("");
+  const [topicDraft, setTopicDraft] = useState("");
+  const [periodDraft, setPeriodDraft] = useState<"24h" | "7d" | "30d" | "all">("7d");
+  const [filters, setFilters] = useState<{
+    eventType: string;
+    topic: string;
+    period: "24h" | "7d" | "30d" | "all";
+  }>({ eventType: "", topic: "", period: "7d" });
+
+  const activityQuery = useQuery({
+    queryKey: ["activity-feed", "log", filters.eventType, filters.topic, filters.period],
+    queryFn: () =>
+      listActivityFeed({
+        event_type: filters.eventType || undefined,
+        topic: filters.topic || undefined,
+        period: filters.period,
+        limit: 120
+      }),
+    refetchInterval: 30000
+  });
+
+  const knownEventTypes = useMemo(() => {
+    const seen = new Set(LOG_EVENT_TYPE_OPTIONS.map((option) => option.value));
+    const dynamic = (activityQuery.data ?? [])
+      .map((item) => item.event_type)
+      .filter((value) => {
+        if (seen.has(value)) {
+          return false;
+        }
+        seen.add(value);
+        return true;
+      })
+      .sort((left, right) => left.localeCompare(right));
+
+    return [
+      ...LOG_EVENT_TYPE_OPTIONS,
+      ...dynamic.map((value) => ({ value, label: activityEventLabel(value) }))
+    ];
+  }, [activityQuery.data]);
+
   return (
-    <section className="panel">
-      <h1>{title}</h1>
-      <p>{text}</p>
+    <section className="panel log-page">
+      <h1>Log</h1>
+      <p className="muted">
+        Bekijk recente systeemacties en filter op onderwerp, actietype en periode.
+      </p>
+
+      <form
+        className="log-filter-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setFilters({
+            eventType: eventTypeDraft,
+            topic: topicDraft.trim(),
+            period: periodDraft
+          });
+        }}
+      >
+        <label>
+          Actie
+          <select value={eventTypeDraft} onChange={(event) => setEventTypeDraft(event.target.value)}>
+            {knownEventTypes.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Onderwerp
+          <input
+            value={topicDraft}
+            onChange={(event) => setTopicDraft(event.target.value)}
+            placeholder="Zoek op onderwerp"
+          />
+        </label>
+        <label>
+          Periode
+          <select
+            value={periodDraft}
+            onChange={(event) => setPeriodDraft(event.target.value as "24h" | "7d" | "30d" | "all")}
+          >
+            <option value="24h">Afgelopen 24 uur</option>
+            <option value="7d">Afgelopen 7 dagen</option>
+            <option value="30d">Afgelopen 30 dagen</option>
+            <option value="all">Alles</option>
+          </select>
+        </label>
+        <div className="log-filter-actions">
+          <button type="submit">Filter toepassen</button>
+          <button
+            type="button"
+            onClick={() => {
+              setEventTypeDraft("");
+              setTopicDraft("");
+              setPeriodDraft("7d");
+              setFilters({ eventType: "", topic: "", period: "7d" });
+            }}
+          >
+            Reset
+          </button>
+        </div>
+      </form>
+
+      {activityQuery.isLoading && <p className="muted">Logregels laden...</p>}
+      {activityQuery.isError && <p className="error">Logregels konden niet worden geladen.</p>}
+
+      {!activityQuery.isLoading && !activityQuery.isError && (activityQuery.data ?? []).length === 0 && (
+        <p className="muted">Geen logregels gevonden voor deze filters.</p>
+      )}
+
+      {!activityQuery.isLoading && !activityQuery.isError && (activityQuery.data ?? []).length > 0 && (
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Tijd</th>
+                <th>Gebruiker</th>
+                <th>Actie</th>
+                <th>Onderwerp</th>
+                <th>Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(activityQuery.data ?? []).map((item) => (
+                <tr key={item.id}>
+                  <td>{formatAmsterdamDateTime(item.created_at)}</td>
+                  <td>{item.actor_username}</td>
+                  <td>{activityEventLabel(item.event_type)}</td>
+                  <td title={item.topic_subject ?? undefined}>{item.topic_subject || "-"}</td>
+                  <td>{activityDetailsLabel(item.details_json)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
+}
+
+const LOG_EVENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: "", label: "Alle acties" },
+  { value: "topic.created", label: "Onderwerp aangemaakt" },
+  { value: "topic.updated", label: "Onderwerp bijgewerkt" },
+  { value: "content.generated", label: "Content gegenereerd" },
+  { value: "content.regenerated", label: "Content opnieuw gegenereerd" },
+  { value: "content.approved", label: "Onderwerp op akkoord" },
+  { value: "content.scheduled", label: "Publicatie ingepland" },
+  { value: "content.variant.updated", label: "Kanaalvariant bijgewerkt" },
+  { value: "content.variant.approved", label: "Kanaalvariant goedgekeurd" },
+  { value: "content.variant.rejected", label: "Kanaalvariant afgekeurd" },
+  { value: "database.document.uploaded", label: "Databasebestand geupload" }
+];
+
+function activityEventLabel(eventType: string): string {
+  const mapping: Record<string, string> = {
+    "topic.created": "Onderwerp aangemaakt",
+    "topic.updated": "Onderwerp bijgewerkt",
+    "topic.deleted": "Onderwerp verwijderd",
+    "topic.document.uploaded": "Topicbron geupload",
+    "content.generated": "Content gegenereerd",
+    "content.regenerated": "Content opnieuw gegenereerd",
+    "content.manual_edited": "Content handmatig bijgewerkt",
+    "content.approved": "Onderwerp op akkoord",
+    "content.rejected": "Onderwerp afgekeurd",
+    "content.scheduled": "Publicatie ingepland",
+    "content.variant.updated": "Kanaalvariant bijgewerkt",
+    "content.variant.approved": "Kanaalvariant goedgekeurd",
+    "content.variant.rejected": "Kanaalvariant afgekeurd",
+    "database.document.uploaded": "Databasebestand geupload",
+    "database.document.deleted": "Databasebestand verwijderd",
+    "database.document.bulk_deleted": "Databasebestanden bulk verwijderd",
+    "database.document.bulk_moved": "Databasebestanden verplaatst",
+    "database.document.bulk_copied": "Databasebestanden gekopieerd",
+    "retry.requeued": "Retryjob opnieuw in wachtrij"
+  };
+  if (mapping[eventType]) {
+    return mapping[eventType];
+  }
+  return eventType.replaceAll(".", " / ");
+}
+
+function activityDetailsLabel(detailsJson: string): string {
+  const trimmed = detailsJson.trim();
+  if (!trimmed || trimmed === "{}") {
+    return "-";
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as { channels?: unknown; channel?: unknown };
+    if (Array.isArray(parsed.channels) && parsed.channels.length > 0) {
+      return `Kanalen: ${parsed.channels.join(", ")}`;
+    }
+    if (typeof parsed.channel === "string" && parsed.channel.trim()) {
+      return `Kanaal: ${parsed.channel.trim()}`;
+    }
+  } catch {
+    return trimmed;
+  }
+  return "-";
 }
 
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {

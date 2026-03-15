@@ -21,7 +21,7 @@ def test_review_support_endpoints(client):
         json={
             "title": "Planning update",
             "subject": "Planning",
-            "theme": "Werkfase",
+            "theme": "Planning",
             "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
@@ -54,7 +54,7 @@ def test_current_schedule_endpoint_returns_latest_schedule(client):
         json={
             "title": "Planning update",
             "subject": "Planning",
-            "theme": "Werkfase",
+            "theme": "Planning",
             "project_id": project_id,
             "editorial_notes": "",
             "planning_at": "2026-03-20T09:00:00Z",

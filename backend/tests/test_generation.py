@@ -125,7 +125,7 @@ def test_generation_includes_websearch_trace_when_enabled(client):
         json={
             "title": "Buurtupdate",
             "subject": "Buurtupdate",
-            "theme": "Communicatie",
+            "theme": "Planning",
             "project_id": project_id,
             "editorial_notes": "Gebruik lokale bronnen en wees helder.",
             "planning_at": None,

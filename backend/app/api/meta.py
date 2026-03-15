@@ -186,6 +186,16 @@ def _default_about() -> AboutResponse:
                     "Lange onderwerpregels worden automatisch kort getoond, met de volledige tekst beschikbaar op hover.",
                 ],
             },
+            {
+                "iteration": "16",
+                "date": "2026-03-15",
+                "title": "Logpagina live met filters en dagstart op Main",
+                "highlights": [
+                    "De Log-pagina toont nu echte systeemacties met duidelijke labels in gewone taal.",
+                    "Je kunt logregels filteren op periode, onderwerp en type actie zodat je sneller vindt wat je zoekt.",
+                    "Op Main staat nu een compact blok met recente logregels plus een concrete feature-suggestie.",
+                ],
+            },
         ],
     )
 

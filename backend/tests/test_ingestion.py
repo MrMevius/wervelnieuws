@@ -24,7 +24,7 @@ def test_upload_txt_document_ingests(client):
         json={
             "title": "Geluid meting",
             "subject": "Meetwaarden",
-            "theme": "Milieu",
+            "theme": "Omgeving",
             "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
@@ -55,7 +55,7 @@ def test_upload_rejects_empty_document(client):
         json={
             "title": "Lege bron",
             "subject": "Controle",
-            "theme": "Validatie",
+            "theme": "Planning",
             "project_id": project_id,
             "editorial_notes": "",
             "planning_at": None,
