@@ -16,6 +16,7 @@ from app.models.entities import (
     ChannelPublicationState,
     ContentVersion,
     GeneratedImage,
+    NotificationEvent,
     PublicationRecord,
     PublicationSchedule,
     RetryJob,
@@ -36,6 +37,7 @@ from app.schemas.versioning import (
     ContentVersionResponse,
     CurrentScheduleResponse,
     ManualEditRequest,
+    NotificationFeedItemResponse,
     RegenerateRequest,
     RetryJobResponse,
     SchedulerOverviewResponse,
@@ -47,6 +49,7 @@ from app.schemas.versioning import (
 )
 from app.services.audit_service import AuditService
 from app.services.generation_service import GenerationService, slugify
+from app.services.notification_service import NotificationService
 
 router = APIRouter(prefix="/content", tags=["content"])
 
@@ -54,6 +57,7 @@ SCHEDULER_RECENT_LIMIT = 25
 SCHEDULER_UPCOMING_LIMIT = 25
 SCHEDULER_RETRY_LIMIT = 25
 ACTIVITY_FEED_LIMIT_MAX = 200
+NOTIFICATION_FEED_LIMIT_MAX = 200
 
 MIGRATION_REQUIRED_DETAIL = (
     "Database mist schema voor kanaalvarianten. "
@@ -136,9 +140,38 @@ def generate(
         version_id = GenerationService(db).generate_for_topic(topic)
     except DBAPIError as exc:
         _raise_if_missing_variants_schema(exc)
+        NotificationService(db).record(
+            event_type="content.generation",
+            status="error",
+            message="Generatie mislukt",
+            topic_id=topic_id,
+            topic_subject=topic.subject,
+            details={"error_type": type(exc).__name__, "error_message": str(exc)},
+            dedupe_key=f"content.generation:error:{topic_id}:{type(exc).__name__}:{str(exc)}",
+        )
+        raise
+    except Exception as exc:
+        NotificationService(db).record(
+            event_type="content.generation",
+            status="error",
+            message="Generatie mislukt",
+            topic_id=topic_id,
+            topic_subject=topic.subject,
+            details={"error_type": type(exc).__name__, "error_message": str(exc)},
+            dedupe_key=f"content.generation:error:{topic_id}:{type(exc).__name__}:{str(exc)}",
+        )
         raise
     AuditService(db).log(
         "content.generated", topic_id=topic_id, actor_user_id=current.id
+    )
+    NotificationService(db).record(
+        event_type="content.generation",
+        status="success",
+        message="Generatie geslaagd",
+        topic_id=topic_id,
+        topic_subject=topic.subject,
+        details={"version_id": version_id, "operation": "generate"},
+        dedupe_key=f"content.generation:success:{topic_id}:{version_id}:generate",
     )
     return {"version_id": version_id}
 
@@ -173,6 +206,34 @@ def regenerate(
         )
     except DBAPIError as exc:
         _raise_if_missing_variants_schema(exc)
+        NotificationService(db).record(
+            event_type="content.generation",
+            status="error",
+            message="Opnieuw genereren mislukt",
+            topic_id=topic_id,
+            topic_subject=topic.subject,
+            details={
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "operation": "regenerate",
+            },
+            dedupe_key=f"content.generation:error:{topic_id}:{type(exc).__name__}:{str(exc)}:regenerate",
+        )
+        raise
+    except Exception as exc:
+        NotificationService(db).record(
+            event_type="content.generation",
+            status="error",
+            message="Opnieuw genereren mislukt",
+            topic_id=topic_id,
+            topic_subject=topic.subject,
+            details={
+                "error_type": type(exc).__name__,
+                "error_message": str(exc),
+                "operation": "regenerate",
+            },
+            dedupe_key=f"content.generation:error:{topic_id}:{type(exc).__name__}:{str(exc)}:regenerate",
+        )
         raise
     AuditService(db).log(
         "content.regenerated",
@@ -185,6 +246,21 @@ def regenerate(
                 else [channel.value for channel in topic.target_channels]
             }
         ),
+    )
+    NotificationService(db).record(
+        event_type="content.generation",
+        status="success",
+        message="Opnieuw genereren geslaagd",
+        topic_id=topic_id,
+        topic_subject=topic.subject,
+        details={
+            "version_id": version_id,
+            "operation": "regenerate",
+            "channels": [channel.value for channel in requested_channels]
+            if requested_channels
+            else [channel.value for channel in topic.target_channels],
+        },
+        dedupe_key=f"content.generation:success:{topic_id}:{version_id}:regenerate",
     )
     return {"version_id": version_id}
 
@@ -471,6 +547,68 @@ def list_activity_feed(
             created_at=event.created_at,
         )
         for event, username, subject in rows
+    ]
+
+
+@router.get("/notifications", response_model=list[NotificationFeedItemResponse])
+def list_notification_feed(
+    event_type: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    topic: str | None = Query(default=None),
+    period: str = Query(default="7d"),
+    limit: int = Query(default=50, ge=1, le=NOTIFICATION_FEED_LIMIT_MAX),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[NotificationFeedItemResponse]:
+    del current
+    normalized_period = period.strip().lower()
+    period_days = {"24h": 1, "7d": 7, "30d": 30, "all": 0}
+    if normalized_period not in period_days:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid period. Use one of: 24h, 7d, 30d, all",
+        )
+
+    query = db.query(NotificationEvent, Topic.subject).outerjoin(
+        Topic, Topic.id == NotificationEvent.topic_id
+    )
+
+    normalized_event_type = (event_type or "").strip()
+    if normalized_event_type:
+        query = query.filter(NotificationEvent.event_type == normalized_event_type)
+
+    normalized_status = (status_filter or "").strip().lower()
+    if normalized_status:
+        if normalized_status not in {"success", "error"}:
+            raise HTTPException(
+                status_code=400, detail="Invalid status. Use success or error"
+            )
+        query = query.filter(NotificationEvent.status == normalized_status)
+
+    normalized_topic = (topic or "").strip()
+    if normalized_topic:
+        query = query.filter(Topic.subject.ilike(f"%{normalized_topic}%"))
+
+    if normalized_period != "all":
+        since = datetime.now(UTC) - timedelta(days=period_days[normalized_period])
+        query = query.filter(NotificationEvent.created_at >= since)
+
+    rows = query.order_by(desc(NotificationEvent.created_at)).limit(limit).all()
+    return [
+        NotificationFeedItemResponse(
+            id=event.id,
+            event_type=event.event_type,
+            status=event.status,
+            topic_id=event.topic_id,
+            topic_subject=subject,
+            message=event.message,
+            payload_json=event.payload_json,
+            delivery_attempts=event.delivery_attempts,
+            delivered_at=event.delivered_at,
+            last_error=event.last_error,
+            created_at=event.created_at,
+        )
+        for event, subject in rows
     ]
 
 

@@ -408,8 +408,17 @@ class NotificationEvent(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     topic_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     channel: Mapped[str] = mapped_column(String(50), nullable=False)
+    event_type: Mapped[str] = mapped_column(String(100), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="success", nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     success: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    payload_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    delivery_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )

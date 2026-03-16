@@ -170,3 +170,17 @@ class ActivityFeedItemResponse(BaseModel):
     actor_username: str
     details_json: str
     created_at: datetime
+
+
+class NotificationFeedItemResponse(BaseModel):
+    id: str
+    event_type: str
+    status: str
+    topic_id: str | None
+    topic_subject: str | None
+    message: str
+    payload_json: str
+    delivery_attempts: int
+    delivered_at: datetime | None
+    last_error: str
+    created_at: datetime

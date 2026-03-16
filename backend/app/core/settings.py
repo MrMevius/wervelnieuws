@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
 
+    n8n_webhook_url: str = ""
+    n8n_webhook_timeout_seconds: int = 10
+
     scheduler_poll_seconds: int = 30
     max_retry_attempts: int = 5
     upload_max_bytes: int = MIN_DATABASE_UPLOAD_BYTES

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.services.notification_service import NotificationService
 from app.services.retry_service import RetryService
 from app.workflows.publishing_workflow import PublishingWorkflow
 
@@ -16,6 +17,12 @@ def run_worker_cycle(db: Session) -> None:
                 handled = workflow.retry_publish_for_topic(job.topic_id)
                 if not handled:
                     raise RuntimeError("No retryable schedule found")
+                retry_service.mark_resolved(job)
+            elif job.flow_name.startswith("notification_delivery:"):
+                notification_id = job.flow_name.split(":", 1)[1]
+                delivered = NotificationService(db).deliver_or_queue(notification_id)
+                if not delivered:
+                    raise RuntimeError("Notification delivery failed")
                 retry_service.mark_resolved(job)
             else:
                 raise RuntimeError(f"Unknown retry flow: {job.flow_name}")

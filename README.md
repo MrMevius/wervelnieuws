@@ -120,7 +120,7 @@ npm test
 5. Review/edit content and approve.
 6. Schedule publication time.
 7. Worker publishes to website, Facebook, and Mailgun at scheduled time.
-8. Telegram sends success/error notifications.
+8. n8n receives success/error notifications and can forward to Telegram.
 9. Publication records, per-channel state, retries, and audit trail are persisted.
 
 ## Environment variables
@@ -173,6 +173,14 @@ See `.env.example` for all required values (deploy path: `/mnt/wervelwind/databa
 - `POST /api/content/{topic_id}/approve`
 - `POST /api/content/{topic_id}/reject`
 - `POST /api/content/{topic_id}/schedule`
+- `GET /api/content/notifications`
+
+## n8n notification integration
+
+- Configure `N8N_WEBHOOK_URL` and `N8N_WEBHOOK_TIMEOUT_SECONDS` in `.env`.
+- Backend stores notification events with dedupe and delivery state in `notification_events`.
+- Worker retries failed notification delivery with exponential backoff.
+- See `docs/n8n-notifications.md` for payload details and operations.
 
 ## Known limitations and future v2 options
 

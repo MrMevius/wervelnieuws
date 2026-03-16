@@ -43,7 +43,6 @@ def _mock_publishers(workflow: PublishingWorkflow) -> None:
     workflow.website.publish = lambda payload: "website-1"  # type: ignore[assignment]
     workflow.facebook.publish = lambda message: "facebook-1"  # type: ignore[assignment]
     workflow.mailgun.publish_newsletter = lambda subject, html: "mailgun-1"  # type: ignore[assignment]
-    workflow.telegram.send = lambda message: None  # type: ignore[assignment]
 
 
 def test_publish_due_claims_once_and_avoids_duplicates():
@@ -274,7 +273,6 @@ def test_publish_respects_topic_target_channels():
     workflow.website.publish = _website_publish  # type: ignore[assignment]
     workflow.facebook.publish = _facebook_publish  # type: ignore[assignment]
     workflow.mailgun.publish_newsletter = _newsletter_publish  # type: ignore[assignment]
-    workflow.telegram.send = lambda message: None  # type: ignore[assignment]
 
     published = workflow.publish_due()
     assert published == 1

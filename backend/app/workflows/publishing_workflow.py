@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from app.integrations.publishers import (
     FacebookPublisher,
     MailgunPublisher,
-    TelegramNotifier,
     WebsitePublisher,
 )
 from app.models.entities import (
@@ -23,6 +22,7 @@ from app.models.enums import (
     RetryStatus,
     WorkflowState,
 )
+from app.services.notification_service import NotificationService
 
 
 class PublishingWorkflow:
@@ -31,7 +31,7 @@ class PublishingWorkflow:
         self.website = WebsitePublisher()
         self.facebook = FacebookPublisher()
         self.mailgun = MailgunPublisher()
-        self.telegram = TelegramNotifier()
+        self.notifications = NotificationService(db)
 
     def publish_due(self) -> int:
         now = datetime.now(UTC)
@@ -165,8 +165,18 @@ class PublishingWorkflow:
                 ]
             )
             self.db.commit()
-            self.telegram.send(
-                f"Publicatie geslaagd voor topic {topic.id}: {version.title}"
+            self.notifications.record(
+                event_type="content.publication",
+                status="success",
+                message="Publicatie geslaagd",
+                topic_id=topic.id,
+                topic_subject=topic.subject,
+                details={
+                    "schedule_id": schedule.id,
+                    "content_version_id": version.id,
+                    "title": version.title,
+                },
+                dedupe_key=f"content.publication:success:{schedule.id}:{version.id}",
             )
         except Exception as exc:
             schedule.status = WorkflowState.error
@@ -186,16 +196,20 @@ class PublishingWorkflow:
                 )
             )
             self.db.commit()
-            self.telegram.send(
-                "\n".join(
-                    [
-                        "Publicatie fout",
-                        f"topic: {topic.id}",
-                        f"title: {version.title}",
-                        f"error: {type(exc).__name__}",
-                        f"message: {str(exc)}",
-                    ]
-                )
+            self.notifications.record(
+                event_type="content.publication",
+                status="error",
+                message="Publicatie mislukt",
+                topic_id=topic.id,
+                topic_subject=topic.subject,
+                details={
+                    "schedule_id": schedule.id,
+                    "content_version_id": version.id,
+                    "title": version.title,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                },
+                dedupe_key=f"content.publication:error:{schedule.id}:{type(exc).__name__}:{str(exc)}",
             )
 
     def retry_publish_for_topic(self, topic_id: str) -> bool:

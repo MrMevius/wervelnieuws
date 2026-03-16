@@ -38,7 +38,6 @@ def _mock_publishers(workflow: PublishingWorkflow) -> None:
     workflow.website.publish = lambda payload: "website-1"  # type: ignore[assignment]
     workflow.facebook.publish = lambda message: "facebook-1"  # type: ignore[assignment]
     workflow.mailgun.publish_newsletter = lambda subject, html: "mailgun-1"  # type: ignore[assignment]
-    workflow.telegram.send = lambda message: None  # type: ignore[assignment]
 
 
 def test_worker_cycle_resolves_publish_retry_job(monkeypatch):

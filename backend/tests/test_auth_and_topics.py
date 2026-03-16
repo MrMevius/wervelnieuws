@@ -168,3 +168,17 @@ def test_activity_feed_supports_event_topic_and_period_filters(client):
     )
     assert invalid_period.status_code == 400
     assert "Invalid period" in invalid_period.json()["detail"]
+
+
+def test_notification_feed_is_available_and_validates_filters(client):
+    headers = _login(client)
+
+    feed = client.get("/api/content/notifications", headers=headers)
+    assert feed.status_code == 200
+    assert isinstance(feed.json(), list)
+
+    invalid_status = client.get(
+        "/api/content/notifications", headers=headers, params={"status": "warning"}
+    )
+    assert invalid_status.status_code == 400
+    assert "Invalid status" in invalid_status.json()["detail"]
