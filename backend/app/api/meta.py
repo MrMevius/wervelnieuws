@@ -258,6 +258,26 @@ def _default_about() -> AboutResponse:
                     "Bestaande routes blijven bruikbaar via automatische doorverwijzing naar de nieuwe suite-structuur.",
                 ],
             },
+            {
+                "iteration": "23",
+                "date": "2026-03-24",
+                "title": "Main opgeschoond en bronbestanden standaard projectoverstijgend",
+                "highlights": [
+                    "De bovenste welkomkaart op Main is verwijderd, waardoor het dashboard direct met kerninformatie start.",
+                    "In het Wervelnieuws submenu heet Database nu Bronbestanden voor duidelijker taalgebruik.",
+                    "Op de databasepagina zie je nu standaard bestanden van alle projecten, met behoud van projectfilter en upload per gekozen project.",
+                ],
+            },
+            {
+                "iteration": "24",
+                "date": "2026-03-24",
+                "title": "Nieuwe Trello-placeholder in de Windwilly-suite",
+                "highlights": [
+                    "In de hoofdnavigatie staat nu een extra Trello-tab naast Urenverantwoording.",
+                    "De nieuwe Trello-pagina is als duidelijke placeholder toegevoegd voor een komende interne projectboardmodule.",
+                    "De pagina heeft nu alvast een herkenbare board-achtergrond, zodat de toekomstige richting direct zichtbaar is.",
+                ],
+            },
         ],
     )
 

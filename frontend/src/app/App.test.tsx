@@ -469,7 +469,7 @@ function renderApp(initialEntries: string[] = ["/"]) {
 async function loginIntoApp() {
   fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
   await waitFor(() => {
-    expect(screen.getByRole("heading", { name: /Welkom, /i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
   });
 }
 
@@ -508,8 +508,22 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "WindWilly" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Trello" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: /Welkom, admin/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
+    });
+  });
+
+  it("opens trello placeholder page from top navigation", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Trello" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Trello" })).toBeInTheDocument();
+      expect(screen.getByText(/placeholder voor onze eigen trello-achtige module/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Trello" }).closest("section")).toHaveClass("trello-placeholder-page");
     });
   });
 
@@ -548,7 +562,7 @@ describe("App", () => {
     await loginIntoApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /Welkom, admin/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
     });
   });
 
@@ -1219,13 +1233,11 @@ describe("App", () => {
     await loginIntoApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Welkom, admin" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
     });
 
     expect(screen.queryByLabelText("Bestand uploaden")).not.toBeInTheDocument();
-    expect(screen.getByText(/dit is je startpunt voor de dag/i)).toBeInTheDocument();
     expect(screen.getByText("Totaal onderwerpen")).toBeInTheDocument();
-    expect(screen.getByText("Bronbestanden beheren")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Recente meldingen" })).toBeInTheDocument();
     expect(screen.getAllByText("Generatie").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Feature suggestie #1" })).toBeInTheDocument();
@@ -1279,7 +1291,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    clickWervelSubmenu("Database");
+    clickWervelSubmenu("Bronbestanden");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
@@ -1337,7 +1349,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    clickWervelSubmenu("Database");
+    clickWervelSubmenu("Bronbestanden");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
@@ -1350,11 +1362,12 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    clickWervelSubmenu("Database");
+    clickWervelSubmenu("Bronbestanden");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
-      expect(screen.getByLabelText("Project")).toHaveValue("p1");
+      expect(screen.getByLabelText("Filter project")).toHaveValue("all");
+      expect(screen.getByLabelText("Upload project")).toHaveValue("p1");
     });
 
     const fileA = new File(["inhoud-a"], "a.txt", { type: "text/plain" });

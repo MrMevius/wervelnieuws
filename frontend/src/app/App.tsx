@@ -357,11 +357,12 @@ export function App() {
             >
               <NavLink to={WERVEL_PATHS.main}>Main</NavLink>
               <NavLink to={WERVEL_PATHS.planning}>Planning</NavLink>
-              <NavLink to={WERVEL_PATHS.database}>Database</NavLink>
+              <NavLink to={WERVEL_PATHS.database}>Bronbestanden</NavLink>
               <NavLink to={WERVEL_PATHS.log}>Log</NavLink>
               <NavLink to={WERVEL_PATHS.about}>About</NavLink>
             </nav>
           </div>
+          <NavLink to="/trello">Trello</NavLink>
           <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
@@ -403,7 +404,6 @@ export function App() {
             path={WERVEL_PATHS.main}
             element={
               <MainPage
-                username={displayName}
                 topics={topicsQuery.data ?? []}
                 isLoading={topicsQuery.isLoading}
                 hasError={topicsQuery.isError}
@@ -449,6 +449,7 @@ export function App() {
           <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
 
           <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
+          <Route path="/trello" element={<TrelloPlaceholderPage />} />
           <Route path="/participatiemomenten" element={<SuitePlaceholderPage title="Participatiemomenten" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
 
           <Route path="/main" element={<Navigate to={WERVEL_PATHS.main} replace />} />
@@ -506,6 +507,10 @@ function WindwillyLandingPage() {
           <p className="muted">Placeholder voor urenregistratie en teaminzicht per projectfase.</p>
         </article>
         <article className="panel feature-card">
+          <h2>Trello</h2>
+          <p className="muted">Placeholder voor een intern projectboard dat we in komende iteraties gaan nabouwen.</p>
+        </article>
+        <article className="panel feature-card">
           <h2>Participatiemomenten</h2>
           <p className="muted">Placeholder voor planning en verslaglegging van bewonersmomenten.</p>
         </article>
@@ -522,6 +527,36 @@ function WindwillyModulePlaceholder() {
         Placeholder voor de WindWilly hoofddienst. In een volgende iteratie komt hier een
         chat-ervaring vergelijkbaar met ChatGPT voor windprojectgerelateerde vragen.
       </p>
+    </section>
+  );
+}
+
+function TrelloPlaceholderPage() {
+  return (
+    <section className="panel trello-placeholder-page">
+      <header>
+        <p className="eyebrow">Binnenkort</p>
+        <h1>Trello</h1>
+        <p className="muted">
+          Placeholder voor onze eigen Trello-achtige module voor projectwerk. In een volgende iteratie
+          bouwen we hier kolommen, kaarten en voortgangsbeheer.
+        </p>
+      </header>
+      <div className="trello-board-preview" aria-hidden="true">
+        <div className="trello-lane">
+          <strong>Te doen</strong>
+          <span className="trello-card">Kick-off voorbereiden</span>
+          <span className="trello-card">Bronnen verzamelen</span>
+        </div>
+        <div className="trello-lane">
+          <strong>Bezig</strong>
+          <span className="trello-card">Planning reviewen</span>
+        </div>
+        <div className="trello-lane">
+          <strong>Klaar</strong>
+          <span className="trello-card">Scope afgestemd</span>
+        </div>
+      </div>
     </section>
   );
 }
@@ -544,7 +579,6 @@ function LegacyPlanningDetailRedirect() {
 }
 
 function MainPage({
-  username,
   topics,
   isLoading,
   hasError,
@@ -555,7 +589,6 @@ function MainPage({
   notificationIsLoading,
   notificationHasError
 }: {
-  username: string;
   topics: Topic[];
   isLoading: boolean;
   hasError: boolean;
@@ -595,22 +628,6 @@ function MainPage({
 
   return (
     <section className="main-dashboard">
-      <article className="panel main-hero">
-        <h1>Welkom, {username}</h1>
-        <p>
-          Hier zie je in een oogopslag hoe de communicatieplanning ervoor staat. Van nieuwe onderwerpen
-          tot publicatieklare berichten: dit is je startpunt voor de dag.
-        </p>
-        <div className="main-hero-actions">
-          <NavLink to={WERVEL_PATHS.planning} className="main-action-link">
-            Naar planning
-          </NavLink>
-          <NavLink to={WERVEL_PATHS.database} className="main-action-link is-secondary">
-            Bronbestanden beheren
-          </NavLink>
-        </div>
-      </article>
-
       {isLoading && (
         <article className="panel">
           <h2>Dashboard laden</h2>
@@ -2400,7 +2417,8 @@ function parseSourceTraceScoreValue(value: unknown): number | null {
 
 function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const queryClient = useQueryClient();
-  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [filterProjectId, setFilterProjectId] = useState("all");
+  const [uploadProjectId, setUploadProjectId] = useState("");
   const [uploadFeedback, setUploadFeedback] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isDragActive, setIsDragActive] = useState(false);
@@ -2416,14 +2434,14 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
   });
 
   useEffect(() => {
-    if (selectedProjectId) {
+    if (uploadProjectId) {
       return;
     }
     const first = projectsQuery.data?.[0];
     if (first) {
-      setSelectedProjectId(first.id);
+      setUploadProjectId(first.id);
     }
-  }, [projectsQuery.data, selectedProjectId]);
+  }, [projectsQuery.data, uploadProjectId]);
 
   useEffect(() => {
     if (bulkTargetProjectId) {
@@ -2436,8 +2454,11 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
   }, [projectsQuery.data, bulkTargetProjectId]);
 
   const documentsQuery = useQuery({
-    queryKey: ["database-documents", selectedProjectId],
-    queryFn: () => listDatabaseDocuments(selectedProjectId || undefined)
+    queryKey: ["database-documents", filterProjectId],
+    queryFn: () =>
+      listDatabaseDocuments(
+        filterProjectId && filterProjectId !== "all" ? filterProjectId : undefined
+      )
   });
 
   const uploadMutation = useMutation({
@@ -2448,10 +2469,10 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
       file: File;
       onProgress: (progress: number) => void;
     }) => {
-      if (!selectedProjectId) {
+      if (!uploadProjectId) {
         throw new Error("Kies eerst een project");
       }
-      return uploadDatabaseDocumentWithProgress(selectedProjectId, file, onProgress);
+      return uploadDatabaseDocumentWithProgress(uploadProjectId, file, onProgress);
     }
   });
 
@@ -2619,11 +2640,26 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
       <h1>Database</h1>
       <div className="database-upload-controls">
         <label>
-          Project
+          Filter project
           <select
-            aria-label="Project"
-            value={selectedProjectId}
-            onChange={(event) => setSelectedProjectId(event.target.value)}
+            aria-label="Filter project"
+            value={filterProjectId}
+            onChange={(event) => setFilterProjectId(event.target.value)}
+          >
+            <option value="all">Alle projecten</option>
+            {(projectsQuery.data ?? []).map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Upload project
+          <select
+            aria-label="Upload project"
+            value={uploadProjectId}
+            onChange={(event) => setUploadProjectId(event.target.value)}
           >
             {(projectsQuery.data ?? []).map((project) => (
               <option key={project.id} value={project.id}>
@@ -2655,7 +2691,7 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
           aria-label="Database bestand uploaden"
           multiple
           onChange={(event) => void onFilesSelected(Array.from(event.target.files ?? []))}
-          disabled={uploadMutation.isPending || !selectedProjectId}
+          disabled={uploadMutation.isPending || !uploadProjectId}
         />
         <strong>Sleep bestanden hierheen of klik om te kiezen</strong>
         <span>Ondersteund: PDF, DOCX, XLSX, TXT, Markdown - max 100 MB per bestand</span>
@@ -2773,7 +2809,11 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
             )}
             {!documentsQuery.isLoading && !documentsQuery.isError && sortedDocuments.length === 0 && (
               <tr>
-                <td colSpan={9}>Nog geen bestanden voor dit project.</td>
+                <td colSpan={9}>
+                  {filterProjectId === "all"
+                    ? "Nog geen bestanden gevonden."
+                    : "Nog geen bestanden voor dit project."}
+                </td>
               </tr>
             )}
             {sortedDocuments.map((document) => (
