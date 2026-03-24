@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -131,6 +132,8 @@ class Topic(Base, TimestampMixin):
         String(36), ForeignKey("projects.id"), nullable=False
     )
     editorial_notes: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    text_feedback: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    image_feedback: Mapped[str] = mapped_column(Text, default="", nullable=False)
     planning_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -313,6 +316,12 @@ class ContentChannelVariant(Base, TimestampMixin):
     approval_state: Mapped[ContentApprovalState] = mapped_column(
         Enum(ContentApprovalState), default=ContentApprovalState.pending, nullable=False
     )
+    text_approval_state: Mapped[ContentApprovalState] = mapped_column(
+        Enum(ContentApprovalState), default=ContentApprovalState.pending, nullable=False
+    )
+    image_approval_state: Mapped[ContentApprovalState] = mapped_column(
+        Enum(ContentApprovalState), default=ContentApprovalState.pending, nullable=False
+    )
     approved_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
@@ -449,4 +458,32 @@ class RetryJob(Base, TimestampMixin):
     )
     next_run_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+
+
+class RateLimitEvent(Base):
+    __tablename__ = "rate_limit_events"
+    __table_args__ = (
+        Index("ix_rate_limit_events_rate_key_created_at", "rate_key", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rate_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    actor_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    route_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+
+class WorkerLease(Base):
+    __tablename__ = "worker_leases"
+
+    lock_key: Mapped[str] = mapped_column(String(100), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(120), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )

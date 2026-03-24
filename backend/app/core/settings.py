@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+    allowed_origins: str = "*"
 
     database_url: str = "sqlite:///./data/app.db"
 
@@ -46,9 +47,11 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     n8n_webhook_url: str = ""
+    n8n_reject_webhook_url: str = ""
     n8n_webhook_timeout_seconds: int = 10
 
     scheduler_poll_seconds: int = 30
+    worker_lease_seconds: int = 90
     max_retry_attempts: int = 5
     upload_max_bytes: int = MIN_DATABASE_UPLOAD_BYTES
     avatar_max_bytes: int = 5 * 1024 * 1024
@@ -71,3 +74,28 @@ def get_settings() -> Settings:
     (settings.storage_root / settings.generated_dir).mkdir(parents=True, exist_ok=True)
     (settings.storage_root / settings.exports_dir).mkdir(parents=True, exist_ok=True)
     return settings
+
+
+def parse_allowed_origins(raw: str) -> list[str]:
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    if not values:
+        return ["*"]
+    return values
+
+
+def validate_runtime_security(settings: Settings) -> None:
+    env = settings.env.lower().strip()
+    if env != "production":
+        return
+
+    insecure_secret_values = {"", "change-me", "change-this-secret-key"}
+    if settings.secret_key.strip() in insecure_secret_values:
+        raise RuntimeError(
+            "Unsafe SECRET_KEY for production. Set a strong, unique SECRET_KEY."
+        )
+
+    origins = parse_allowed_origins(settings.allowed_origins)
+    if "*" in origins:
+        raise RuntimeError(
+            "Unsafe ALLOWED_ORIGINS for production. Use explicit origins only."
+        )

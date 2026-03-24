@@ -10,10 +10,15 @@ from app.models.entities import (
     PublicationSchedule,
     RetryJob,
     Topic,
+    WorkerLease,
 )
 from app.models.enums import RetryStatus, WorkflowState
 from app.workflows.publishing_workflow import PublishingWorkflow
-from app.workflows.worker_cycle import run_worker_cycle
+from app.workflows.worker_cycle import (
+    WORKER_CYCLE_LOCK_KEY,
+    run_worker_cycle,
+    run_worker_cycle_guarded,
+)
 
 
 def _session() -> Session:
@@ -108,3 +113,46 @@ def test_worker_cycle_resolves_publish_retry_job(monkeypatch):
     refreshed = db.get(RetryJob, retry_job.id)
     assert refreshed is not None
     assert refreshed.status == RetryStatus.resolved
+
+
+def test_worker_cycle_guarded_skips_when_lock_owned_by_other_worker():
+    db = _session()
+    db.add(
+        WorkerLease(
+            lock_key=WORKER_CYCLE_LOCK_KEY,
+            owner_id="worker-a",
+            lease_expires_at=datetime.now(UTC) + timedelta(minutes=1),
+            updated_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+    executed = run_worker_cycle_guarded(db, owner_id="worker-b", lease_seconds=30)
+    assert executed is False
+
+
+def test_worker_cycle_guarded_takes_expired_lock_and_releases(monkeypatch):
+    db = _session()
+    db.add(
+        WorkerLease(
+            lock_key=WORKER_CYCLE_LOCK_KEY,
+            owner_id="worker-a",
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=1),
+            updated_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+    called = {"count": 0}
+
+    def fake_run(session: Session) -> None:
+        del session
+        called["count"] += 1
+
+    monkeypatch.setattr("app.workflows.worker_cycle.run_worker_cycle", fake_run)
+
+    executed = run_worker_cycle_guarded(db, owner_id="worker-b", lease_seconds=30)
+
+    assert executed is True
+    assert called["count"] == 1
+    assert db.get(WorkerLease, WORKER_CYCLE_LOCK_KEY) is None

@@ -278,6 +278,16 @@ def _default_about() -> AboutResponse:
                     "De pagina heeft nu alvast een herkenbare board-achtergrond, zodat de toekomstige richting direct zichtbaar is.",
                 ],
             },
+            {
+                "iteration": "25",
+                "date": "2026-03-24",
+                "title": "Technische upgrade: stabielere basis, veiligere configuratie en betrouwbaardere achtergrondtaken",
+                "highlights": [
+                    "De applicatie is intern opgeschoond met een modulaire frontend-opzet, waardoor doorontwikkeling en onderhoud sneller en overzichtelijker worden.",
+                    "Beveiligingsinstellingen zijn aangescherpt: productie draait nu alleen met expliciete CORS-origins en een veilige geheime sleutel.",
+                    "Rate limiting en worker-afhandeling zijn robuuster gemaakt, zodat piekverkeer en parallelle workers betrouwbaarder en consistenter worden verwerkt.",
+                ],
+            },
         ],
     )
 
