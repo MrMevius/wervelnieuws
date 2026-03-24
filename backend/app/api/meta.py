@@ -218,6 +218,46 @@ def _default_about() -> AboutResponse:
                     "De instelling wordt direct toegepast in de hele omgeving, zonder extra handmatige stappen.",
                 ],
             },
+            {
+                "iteration": "19",
+                "date": "2026-03-16",
+                "title": "Planning detail nu rustiger, leesbaarder en met vaste 3-media preview",
+                "highlights": [
+                    "De detailpagina toont nu standaard Facebook, Nieuwsbrief en Website naast elkaar op desktop en onder elkaar op mobiel.",
+                    "Statusbadges en kaartkleuren zijn aangescherpt voor betere leesbaarheid en duidelijker semantisch kleurgebruik.",
+                    "Bronpassages staan nu in een compacte accordion met bron, chunk en scorebadge zodat review sneller gaat.",
+                ],
+            },
+            {
+                "iteration": "20",
+                "date": "2026-03-16",
+                "title": "Planning detail met aparte tekst/afbeelding-goedkeuring en directe afwijs-webhook",
+                "highlights": [
+                    "Per kanaal kun je nu tekst en afbeelding apart op akkoord zetten of afwijzen, met duidelijke onderdeelstatussen.",
+                    "Er zijn nu aparte opmerkingenvelden voor tekst en afbeelding, zodat feedback gerichter kan worden meegegeven.",
+                    "Bij afwijzen stuurt de backend direct een stille n8n-webhook en previews tonen AI-afbeeldingen nu echt als beeld.",
+                ],
+            },
+            {
+                "iteration": "21",
+                "date": "2026-03-16",
+                "title": "Planning detail opnieuw uitgelijnd met strakke rasteropbouw",
+                "highlights": [
+                    "De hele detailpagina gebruikt nu een consistente 12-koloms opbouw, waardoor secties niet meer schots en scheef staan.",
+                    "Bovenaan staan Opmerkingen en Planningvoortgang nu strak naast elkaar in een duidelijke 8/4 verdeling.",
+                    "De drie kanaalpreviews hebben nu gelijke kaartopbouw en stabielere hoogte, met compacte actiebalken per sectie.",
+                ],
+            },
+            {
+                "iteration": "22",
+                "date": "2026-03-24",
+                "title": "Windwilly-suite start met Wervelnieuws als subdienst",
+                "highlights": [
+                    "De omgeving heeft nu een Windwilly-suite navigatie met modules voor Chatbot, Wervelnieuws en twee nieuwe placeholders.",
+                    "Wervelnieuws draait nu als subdienst onder /wervelnieuws, zodat de suite klaar is voor verdere uitbreiding.",
+                    "Bestaande routes blijven bruikbaar via automatische doorverwijzing naar de nieuwe suite-structuur.",
+                ],
+            },
         ],
     )
 

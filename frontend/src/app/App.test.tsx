@@ -282,6 +282,7 @@ const mockApi = vi.hoisted(() => ({
           source_type: "topic",
           chunk_id: "c1",
           chunk_index: "0",
+          relevance_score: 72,
           text: "Topic bronpassage over onderhoud.",
           document_id: "doc-topic-1",
           document_name: "topic-bron.txt",
@@ -294,6 +295,7 @@ const mockApi = vi.hoisted(() => ({
           source_type: "database",
           chunk_id: "c2",
           chunk_index: "1",
+          relevance_score: 91,
           text: "Database bronpassage over veiligheidsinspectie.",
           document_id: "doc-db-1",
           document_name: "database-bron.txt",
@@ -427,9 +429,12 @@ const mockApi = vi.hoisted(() => ({
   scheduleTopic: vi.fn().mockResolvedValue({ schedule_id: "s1" }),
   updateVariant: vi.fn().mockResolvedValue({ status: "ok" }),
   approveVariant: vi.fn().mockResolvedValue({ status: "ok" }),
+  approveVariantPart: vi.fn().mockResolvedValue({ status: "ok" }),
   rejectVariant: vi.fn().mockResolvedValue({ status: "ok" }),
+  rejectVariantPart: vi.fn().mockResolvedValue({ status: "ok" }),
   regenerateContent: vi.fn().mockResolvedValue({ version_id: "v2" }),
   approveTopic: vi.fn().mockResolvedValue({ status: "approved" }),
+  getGeneratedImageBlob: vi.fn().mockResolvedValue(new Blob(["img"], { type: "image/png" })),
   getAboutContent: vi.fn().mockResolvedValue({
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
@@ -464,8 +469,18 @@ function renderApp(initialEntries: string[] = ["/"]) {
 async function loginIntoApp() {
   fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
   await waitFor(() => {
-    expect(screen.getByRole("link", { name: "Main" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Welkom, /i })).toBeInTheDocument();
   });
+}
+
+function openWervelnieuwsDropdown() {
+  const wervelLink = screen.getByRole("link", { name: "Wervelnieuws" });
+  fireEvent.mouseEnter(wervelLink.parentElement as HTMLElement);
+}
+
+function clickWervelSubmenu(label: string) {
+  openWervelnieuwsDropdown();
+  fireEvent.click(screen.getByRole("link", { name: label }));
 }
 
 describe("App", () => {
@@ -482,6 +497,58 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("Ongeldige gebruikersnaam of wachtwoord.");
+    });
+  });
+
+  it("shows Windwilly suite modules after login", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "WindWilly" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Wervelnieuws" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /Welkom, admin/i })).toBeInTheDocument();
+    });
+  });
+
+  it("opens general landing page when clicking Windwilly logo", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Windwilly landing" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Welkom bij Windwilly" })).toBeInTheDocument();
+      expect(screen.getByText(/bundelt meerdere interne diensten/i)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows Wervelnieuws subtabs on hover", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Urenverantwoording" }));
+
+    expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
+
+    const wervelLink = screen.getByRole("link", { name: "Wervelnieuws" });
+    fireEvent.mouseEnter(wervelLink.parentElement as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: "Main" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Planning" })).toBeInTheDocument();
+    });
+  });
+
+  it("redirects legacy /main to /wervelnieuws/main", async () => {
+    renderApp(["/main"]);
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Welkom, admin/i })).toBeInTheDocument();
     });
   });
 
@@ -828,7 +895,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByRole("columnheader", { name: "Onderwerp" })).toBeInTheDocument();
@@ -850,7 +917,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByText("Nieuw")).toBeInTheDocument();
@@ -871,7 +938,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
@@ -910,7 +977,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByLabelText("CSV planning import")).toBeInTheDocument();
@@ -934,7 +1001,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
@@ -956,30 +1023,24 @@ describe("App", () => {
       expect(screen.getByRole("tab", { name: /Website/i })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: /Facebook/i })).toBeInTheDocument();
       expect(screen.getByRole("tab", { name: /Nieuwsbrief/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Gefocuste preview" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Alle previews" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Preview Facebook" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Preview Nieuwsbrief" })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Artikelen opnieuw genereren" })).toBeInTheDocument();
     });
   });
 
-  it("switches to all previews mode on planning detail", async () => {
+  it("shows all three previews on planning detail by default", async () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Alle previews" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
@@ -992,7 +1053,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
     });
@@ -1000,11 +1061,41 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Bronpassages" })).toBeInTheDocument();
-      expect(screen.getByText(/Topic - topic-bron.txt, chunk 0/)).toBeInTheDocument();
-      expect(
-        screen.getByText(/Database - Windpark de Boldijk - database-bron.txt, chunk 1/)
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Bron: Topic - topic-bron.txt - chunk 0/)).toBeInTheDocument();
+      expect(screen.getByText(/Bron: Database - database-bron.txt - chunk 1/)).toBeInTheDocument();
+      expect(screen.getByText("Score 91")).toBeInTheDocument();
+      expect(screen.getByText("Score 72")).toBeInTheDocument();
       expect(mockApi.listVersions).toHaveBeenCalledWith("abc12345-1111");
+    });
+  });
+
+  it("rejects text part with global text note", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Planning");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Opmerkingen tekst")).toBeInTheDocument();
+      expect(screen.getAllByRole("button", { name: "Tekst afwijzen" }).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.change(screen.getByLabelText("Opmerkingen tekst"), {
+      target: { value: "Herschrijf rustiger" }
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "Tekst afwijzen" })[0]);
+
+    await waitFor(() => {
+      expect(mockApi.rejectVariantPart).toHaveBeenCalledWith(
+        "abc12345-1111",
+        "facebook",
+        "text",
+        "Herschrijf rustiger"
+      );
     });
   });
 
@@ -1064,7 +1155,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
     });
@@ -1088,7 +1179,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Planning" }));
+    clickWervelSubmenu("Planning");
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
     });
@@ -1146,7 +1237,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Log" }));
+    clickWervelSubmenu("Log");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Log" })).toBeInTheDocument();
@@ -1188,7 +1279,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+    clickWervelSubmenu("Database");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
@@ -1246,7 +1337,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+    clickWervelSubmenu("Database");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
@@ -1259,7 +1350,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Database" }));
+    clickWervelSubmenu("Database");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Database" })).toBeInTheDocument();
@@ -1459,7 +1550,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "About" }));
+    clickWervelSubmenu("About");
 
     await waitFor(() => {
       expect(screen.getByText("Wervelnieuws helpt het communicatieteam.")).toBeInTheDocument();

@@ -27,7 +27,7 @@ import {
   bulkDeleteDatabaseDocuments,
   bulkMoveDatabaseDocuments,
   approveTopic,
-  approveVariant,
+  approveVariantPart,
   createTopic,
   deleteAdminUser,
   getCurrentUserAvatarBlob,
@@ -39,6 +39,7 @@ import {
   listAdminActivity,
   listAdminThemes,
   getCurrentSchedule,
+  getGeneratedImageBlob,
   getUiSettings,
   getAdminGenAIConfig,
   getAdminGenAIModelOptions,
@@ -56,7 +57,7 @@ import {
   triggerGeneration,
   regenerateContent,
   getSchedulerOverview,
-  rejectVariant,
+  rejectVariantPart,
   scheduleTopic,
   setToken,
   updateTopic,
@@ -74,15 +75,65 @@ import {
 
 type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
+type SourceTraceDisplayHit = SourceTraceHit & { display_score: number };
+
+const WERVEL_PATHS = {
+  base: "/wervelnieuws",
+  main: "/wervelnieuws/main",
+  planning: "/wervelnieuws/planning",
+  database: "/wervelnieuws/database",
+  log: "/wervelnieuws/log",
+  about: "/wervelnieuws/about",
+  settings: "/wervelnieuws/settings",
+  admin: "/wervelnieuws/admin",
+  adminScheduler: "/wervelnieuws/admin/scheduler"
+} as const;
+
+const WINDWILLY_PATHS = {
+  landing: "/",
+  module: "/windwilly"
+} as const;
 
 export function App() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(0);
+  const [topbarHidden, setTopbarHidden] = useState(false);
+  const [wervelDropdownOpen, setWervelDropdownOpen] = useState(false);
+  const lastScrollYRef = useRef(0);
+  const wervelDropdownCloseTimeoutRef = useRef<number | null>(null);
+  const showWervelDropdown = wervelDropdownOpen;
+
+  function openWervelDropdown() {
+    if (wervelDropdownCloseTimeoutRef.current !== null) {
+      window.clearTimeout(wervelDropdownCloseTimeoutRef.current);
+      wervelDropdownCloseTimeoutRef.current = null;
+    }
+    setWervelDropdownOpen(true);
+  }
+
+  function scheduleWervelDropdownClose() {
+    if (wervelDropdownCloseTimeoutRef.current !== null) {
+      window.clearTimeout(wervelDropdownCloseTimeoutRef.current);
+    }
+    wervelDropdownCloseTimeoutRef.current = window.setTimeout(() => {
+      setWervelDropdownOpen(false);
+      wervelDropdownCloseTimeoutRef.current = null;
+    }, 120);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (wervelDropdownCloseTimeoutRef.current !== null) {
+        window.clearTimeout(wervelDropdownCloseTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const loginMutation = useMutation({
     mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
@@ -90,6 +141,7 @@ export function App() {
     onSuccess: () => {
       setAuthenticated(true);
       setLoginError(null);
+      navigate(WERVEL_PATHS.main, { replace: true });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -198,6 +250,32 @@ export function App() {
     refetchInterval: 30000
   });
 
+  useEffect(() => {
+    if (!authenticated) {
+      setTopbarHidden(false);
+      return undefined;
+    }
+
+    const onScroll = () => {
+      const current = window.scrollY;
+      const previous = lastScrollYRef.current;
+
+      if (current <= 24) {
+        setTopbarHidden(false);
+      } else if (current > previous + 8) {
+        setTopbarHidden(true);
+      } else if (current < previous - 8) {
+        setTopbarHidden(false);
+      }
+
+      lastScrollYRef.current = current;
+    };
+
+    lastScrollYRef.current = window.scrollY;
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [authenticated]);
+
   function logout() {
     setToken("");
     setAuthenticated(false);
@@ -214,8 +292,8 @@ export function App() {
     return (
       <main className="login-shell">
         <section className="login-card">
-          <p className="eyebrow">Wervelnieuws</p>
-          <h1>Communicatie Dashboard</h1>
+          <p className="eyebrow">Windwilly</p>
+          <h1>Suite Dashboard</h1>
           <p>Log in om de planning, publicaties en changelog te bekijken.</p>
           <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
             <input name="username" placeholder="Gebruikersnaam" defaultValue="admin" required />
@@ -244,14 +322,48 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">Wervelnieuws</div>
-        <nav className="tabs" aria-label="Hoofdnavigatie">
-          <NavLink to="/main">Main</NavLink>
-          <NavLink to="/planning">Planning</NavLink>
-          <NavLink to="/database">Database</NavLink>
-          <NavLink to="/log">Log</NavLink>
-          <NavLink to="/about">About</NavLink>
+      <header className={`topbar ${topbarHidden ? "is-hidden" : ""}`}>
+        <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="Windwilly landing">
+          <svg className="windmill-logo" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+            <circle cx="32" cy="24" r="4" />
+            <line x1="32" y1="28" x2="32" y2="54" />
+            <line x1="32" y1="24" x2="50" y2="14" />
+            <line x1="32" y1="24" x2="53" y2="27" />
+            <line x1="32" y1="24" x2="21" y2="9" />
+          </svg>
+          <span className="sr-only">Windwilly</span>
+        </NavLink>
+        <nav className="tabs suite-tabs" aria-label="Hoofdnavigatie">
+          <NavLink to={WINDWILLY_PATHS.module}>WindWilly</NavLink>
+          <div
+            className={`suite-group ${showWervelDropdown ? "is-open" : ""}`}
+            aria-label="Wervelnieuws module"
+            onMouseEnter={openWervelDropdown}
+            onMouseLeave={scheduleWervelDropdownClose}
+            onFocus={openWervelDropdown}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                scheduleWervelDropdownClose();
+              }
+            }}
+          >
+            <NavLink to={WERVEL_PATHS.base}>
+              Wervelnieuws
+            </NavLink>
+            <nav
+              className={`wervel-dropdown ${showWervelDropdown ? "is-open" : ""}`}
+              aria-label="Wervelnieuws navigatie"
+              aria-hidden={!showWervelDropdown}
+            >
+              <NavLink to={WERVEL_PATHS.main}>Main</NavLink>
+              <NavLink to={WERVEL_PATHS.planning}>Planning</NavLink>
+              <NavLink to={WERVEL_PATHS.database}>Database</NavLink>
+              <NavLink to={WERVEL_PATHS.log}>Log</NavLink>
+              <NavLink to={WERVEL_PATHS.about}>About</NavLink>
+            </nav>
+          </div>
+          <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
+          <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
         <div className="user-menu-wrap">
           <button className="user-trigger" onClick={() => setMenuOpen((open) => !open)}>
@@ -266,11 +378,11 @@ export function App() {
           </button>
           {menuOpen && (
             <div className="user-menu" role="menu">
-              <NavLink to="/settings" role="menuitem" onClick={() => setMenuOpen(false)}>
+              <NavLink to={WERVEL_PATHS.settings} role="menuitem" onClick={() => setMenuOpen(false)}>
                 Settings
               </NavLink>
               {currentUserQuery.data?.is_admin && (
-                <NavLink to="/admin" role="menuitem" onClick={() => setMenuOpen(false)}>
+                <NavLink to={WERVEL_PATHS.admin} role="menuitem" onClick={() => setMenuOpen(false)}>
                   Admin
                 </NavLink>
               )}
@@ -280,13 +392,15 @@ export function App() {
             </div>
           )}
         </div>
+
       </header>
 
       <main className="page-content">
         <Routes>
-          <Route path="/" element={<Navigate to="/main" replace />} />
+          <Route path={WINDWILLY_PATHS.landing} element={<WindwillyLandingPage />} />
+          <Route path={WINDWILLY_PATHS.module} element={<WindwillyModulePlaceholder />} />
           <Route
-            path="/main"
+            path={WERVEL_PATHS.main}
             element={
               <MainPage
                 username={displayName}
@@ -302,15 +416,16 @@ export function App() {
               />
             }
           />
-          <Route path="/planning" element={<PlanningPage topics={topicsQuery.data ?? []} />} />
+          <Route path={WERVEL_PATHS.base} element={<Navigate to={WERVEL_PATHS.main} replace />} />
+          <Route path={WERVEL_PATHS.planning} element={<PlanningPage topics={topicsQuery.data ?? []} />} />
           <Route
-            path="/planning/:topicId"
+            path={`${WERVEL_PATHS.planning}/:topicId`}
             element={<PlanningRuleDetailPage topics={topicsQuery.data ?? []} />}
           />
-          <Route path="/database" element={<DatabasePage currentUser={currentUserQuery.data} />} />
-          <Route path="/log" element={<LogPage />} />
+          <Route path={WERVEL_PATHS.database} element={<DatabasePage currentUser={currentUserQuery.data} />} />
+          <Route path={WERVEL_PATHS.log} element={<LogPage />} />
           <Route
-            path="/settings"
+            path={WERVEL_PATHS.settings}
             element={
               <SettingsPage
                 user={currentUserQuery.data}
@@ -324,15 +439,29 @@ export function App() {
             }
           />
           <Route
-            path="/admin"
+            path={WERVEL_PATHS.admin}
             element={<AdminPage currentUser={currentUserQuery.data} />}
           />
           <Route
-            path="/admin/scheduler"
+            path={WERVEL_PATHS.adminScheduler}
             element={<AdminSchedulerPage currentUser={currentUserQuery.data} />}
           />
-          <Route path="/about" element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
-          <Route path="*" element={<Navigate to="/main" replace />} />
+          <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
+
+          <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
+          <Route path="/participatiemomenten" element={<SuitePlaceholderPage title="Participatiemomenten" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
+
+          <Route path="/main" element={<Navigate to={WERVEL_PATHS.main} replace />} />
+          <Route path="/planning" element={<Navigate to={WERVEL_PATHS.planning} replace />} />
+          <Route path="/planning/:topicId" element={<LegacyPlanningDetailRedirect />} />
+          <Route path="/database" element={<Navigate to={WERVEL_PATHS.database} replace />} />
+          <Route path="/log" element={<Navigate to={WERVEL_PATHS.log} replace />} />
+          <Route path="/settings" element={<Navigate to={WERVEL_PATHS.settings} replace />} />
+          <Route path="/admin" element={<Navigate to={WERVEL_PATHS.admin} replace />} />
+          <Route path="/admin/scheduler" element={<Navigate to={WERVEL_PATHS.adminScheduler} replace />} />
+          <Route path="/about" element={<Navigate to={WERVEL_PATHS.about} replace />} />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
     </div>
@@ -349,6 +478,69 @@ function handleLogin(
     username: String(data.get("username") ?? ""),
     password: String(data.get("password") ?? "")
   });
+}
+
+function WindwillyLandingPage() {
+  return (
+    <section className="panel main-dashboard">
+      <header className="main-hero">
+        <p className="eyebrow">Suite-overzicht</p>
+        <h1>Welkom bij Windwilly</h1>
+        <p>
+          Windwilly bundelt meerdere interne diensten in één rustige werkomgeving: contentbeheer,
+          communicatieplanning en straks ook een projectchat-assistent.
+        </p>
+      </header>
+
+      <div className="panel-grid">
+        <article className="panel feature-card">
+          <h2>WindWilly</h2>
+          <p className="muted">Komende chatbotmodule voor snelle beantwoording van projectvragen.</p>
+        </article>
+        <article className="panel feature-card">
+          <h2>Wervelnieuws</h2>
+          <p className="muted">Volledige redactie- en publicatieflow voor lokale windparkcommunicatie.</p>
+        </article>
+        <article className="panel feature-card">
+          <h2>Urenverantwoording</h2>
+          <p className="muted">Placeholder voor urenregistratie en teaminzicht per projectfase.</p>
+        </article>
+        <article className="panel feature-card">
+          <h2>Participatiemomenten</h2>
+          <p className="muted">Placeholder voor planning en verslaglegging van bewonersmomenten.</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function WindwillyModulePlaceholder() {
+  return (
+    <section className="panel">
+      <h1>WindWilly</h1>
+      <p className="muted">
+        Placeholder voor de WindWilly hoofddienst. In een volgende iteratie komt hier een
+        chat-ervaring vergelijkbaar met ChatGPT voor windprojectgerelateerde vragen.
+      </p>
+    </section>
+  );
+}
+
+function SuitePlaceholderPage({ title, description }: { title: string; description: string }) {
+  return (
+    <section className="panel">
+      <h1>{title}</h1>
+      <p className="muted">{description}</p>
+    </section>
+  );
+}
+
+function LegacyPlanningDetailRedirect() {
+  const params = useParams<{ topicId: string }>();
+  if (!params.topicId) {
+    return <Navigate to={WERVEL_PATHS.planning} replace />;
+  }
+  return <Navigate to={`${WERVEL_PATHS.planning}/${params.topicId}`} replace />;
 }
 
 function MainPage({
@@ -410,10 +602,10 @@ function MainPage({
           tot publicatieklare berichten: dit is je startpunt voor de dag.
         </p>
         <div className="main-hero-actions">
-          <NavLink to="/planning" className="main-action-link">
+          <NavLink to={WERVEL_PATHS.planning} className="main-action-link">
             Naar planning
           </NavLink>
-          <NavLink to="/database" className="main-action-link is-secondary">
+          <NavLink to={WERVEL_PATHS.database} className="main-action-link is-secondary">
             Bronbestanden beheren
           </NavLink>
         </div>
@@ -542,7 +734,7 @@ function MainPage({
                 {!notificationIsLoading && !notificationHasError && recentNotifications.length === 0 && !logHasError && !logIsLoading && recentActivity.length > 0 && (
                   <p className="muted">Er zijn wel activiteiten, maar nog geen notificatiemeldingen.</p>
                 )}
-                <NavLink to="/log" className="main-inline-link">
+                <NavLink to={WERVEL_PATHS.log} className="main-inline-link">
                   Bekijk volledig logboek
                 </NavLink>
               </article>
@@ -1055,7 +1247,7 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
                 <td>
                   <button
                     type="button"
-                    onClick={() => navigate(`/planning/${topic.id}`)}
+                    onClick={() => navigate(`${WERVEL_PATHS.planning}/${topic.id}`)}
                     aria-label={`Open planningsregel ${topic.subject}`}
                   >
                     Open
@@ -1078,11 +1270,12 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const topic = topics.find((item) => item.id === topicId) ?? null;
   const [feedback, setFeedback] = useState<string | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
+  const [textFeedbackDraft, setTextFeedbackDraft] = useState("");
+  const [imageFeedbackDraft, setImageFeedbackDraft] = useState("");
   const [generationAtDraft, setGenerationAtDraft] = useState("");
   const [publicationAtDraft, setPublicationAtDraft] = useState("");
   const [variantDrafts, setVariantDrafts] = useState<Record<string, VariantDraft>>({});
   const [activeChannel, setActiveChannel] = useState<ContentChannelVariant["channel"] | null>(null);
-  const [previewMode, setPreviewMode] = useState<"focused" | "all">("focused");
 
   const versionsQuery = useQuery({
     queryKey: ["topic-versions", topicId],
@@ -1110,6 +1303,16 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
       queryClient.invalidateQueries({ queryKey: ["topics"] });
     },
     onError: () => setFeedback("Opslaan van opmerkingen is mislukt.")
+  });
+
+  const updatePartFeedbackMutation = useMutation({
+    mutationFn: ({ textFeedback, imageFeedback }: { textFeedback: string; imageFeedback: string }) =>
+      updateTopic(topicId, { text_feedback: textFeedback, image_feedback: imageFeedback }),
+    onSuccess: () => {
+      setFeedback("Opmerkingen voor tekst en afbeelding opgeslagen.");
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+    onError: () => setFeedback("Opslaan van tekst/afbeelding opmerkingen is mislukt.")
   });
 
   const updateGenerationDateMutation = useMutation({
@@ -1198,22 +1401,31 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     onError: () => setFeedback("Opslaan van variant is mislukt.")
   });
 
-  const approveVariantMutation = useMutation({
-    mutationFn: (channel: ContentChannelVariant["channel"]) => approveVariant(topicId, channel),
+  const approveVariantPartMutation = useMutation({
+    mutationFn: ({ channel, part }: { channel: ContentChannelVariant["channel"]; part: "text" | "image" }) =>
+      approveVariantPart(topicId, channel, part),
     onSuccess: () => {
-      setFeedback("Kanaal goedgekeurd.");
+      setFeedback("Onderdeel goedgekeurd.");
       queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
     },
-    onError: () => setFeedback("Kanaal goedkeuren is mislukt.")
+    onError: () => setFeedback("Onderdeel goedkeuren is mislukt.")
   });
 
-  const rejectVariantMutation = useMutation({
-    mutationFn: (channel: ContentChannelVariant["channel"]) => rejectVariant(topicId, channel),
+  const rejectVariantPartMutation = useMutation({
+    mutationFn: ({
+      channel,
+      part,
+      note
+    }: {
+      channel: ContentChannelVariant["channel"];
+      part: "text" | "image";
+      note: string;
+    }) => rejectVariantPart(topicId, channel, part, note),
     onSuccess: () => {
-      setFeedback("Kanaal afgekeurd.");
+      setFeedback("Onderdeel afgewezen.");
       queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
     },
-    onError: () => setFeedback("Kanaal afkeuren is mislukt.")
+    onError: () => setFeedback("Onderdeel afwijzen is mislukt.")
   });
 
   const approveTopicMutation = useMutation({
@@ -1242,6 +1454,11 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   useEffect(() => {
     setNotesDraft(topic?.editorial_notes ?? "");
   }, [topic?.id, topic?.editorial_notes]);
+
+  useEffect(() => {
+    setTextFeedbackDraft(topic?.text_feedback ?? "");
+    setImageFeedbackDraft(topic?.image_feedback ?? "");
+  }, [topic?.id, topic?.text_feedback, topic?.image_feedback]);
 
   useEffect(() => {
     setGenerationAtDraft(toDatetimeLocalInputValue(topic?.planning_at ?? null));
@@ -1286,13 +1503,14 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   }, [topic?.id, topic?.target_channels]);
 
   const sourceTrace = extractSourceTrace(selectedVersion);
+  const sourceTraceDisplay = useMemo(() => rankSourceTraceByScore(sourceTrace), [sourceTrace]);
   if (!topic) {
     return (
       <section className="panel">
         <h1>Planningsregel niet gevonden</h1>
         <p className="muted">Deze planningsregel bestaat niet meer of is nog niet geladen.</p>
         <div className="detail-actions">
-          <button type="button" onClick={() => navigate("/planning")}>Terug naar planning</button>
+          <button type="button" onClick={() => navigate(WERVEL_PATHS.planning)}>Terug naar planning</button>
         </div>
       </section>
     );
@@ -1317,10 +1535,11 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const requiredChannels = topic.target_channels;
   const allApproved = requiredChannels.every((channel) => {
     const item = variants.find((variant) => variant.channel === channel);
-    return item?.approval_state === "approved";
+    return item?.text_approval_state === "approved" && item?.image_approval_state === "approved";
   });
 
   const availableChannels = topic.target_channels as ContentChannelVariant["channel"][];
+  const previewChannels: ContentChannelVariant["channel"][] = ["facebook", "newsletter", "website"];
   const selectedChannel =
     (activeChannel && availableChannels.includes(activeChannel) ? activeChannel : availableChannels[0]) ??
     "website";
@@ -1349,72 +1568,100 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   }
 
   return (
-    <section className="panel planning-detail-page">
-      <h1>Planningsregel detail</h1>
-      <p className="muted">
-        Werk per doelmedium aan artikel, samenvatting en goedkeuring. Pas daarna kun je de regel akkoord zetten.
-      </p>
+    <section className="panel planning-detail-page planning-detail-grid-12">
+      <header className="planning-detail-intro">
+        <h1>Planningsregel detail</h1>
+        <p className="muted">
+          Werk per doelmedium aan artikel, samenvatting en goedkeuring. Pas daarna kun je de regel akkoord zetten.
+        </p>
+      </header>
 
       <div className="planning-detail-top-grid">
         <section className="panel planning-notes-panel" aria-label="Opmerkingen">
           <h2>Opmerkingen</h2>
-          <p className="muted">Vrij invulbaar: deze input wordt meegenomen bij opnieuw genereren.</p>
+          <p className="muted">Bewaar apart opmerkingen voor generatie, tekstreview en afbeeldingsreview.</p>
           <textarea
             value={notesDraft}
             onChange={(event) => setNotesDraft(event.target.value)}
             rows={4}
-            aria-label="Opmerkingen"
+            aria-label="Opmerkingen generatie"
             placeholder="Bijvoorbeeld gewenste toon, lokale context of aandachtspunten"
           />
-          <div className="detail-dates-grid">
-            <label>
-              Generatiedatum
-              <input
-                type="datetime-local"
-                value={generationAtDraft}
-                onChange={(event) => setGenerationAtDraft(event.target.value)}
-                aria-label="Generatiedatum"
+          <div className="notes-feedback-grid">
+            <label className="notes-feedback-field">
+              Opmerkingen tekst
+              <textarea
+                value={textFeedbackDraft}
+                onChange={(event) => setTextFeedbackDraft(event.target.value)}
+                rows={3}
+                aria-label="Opmerkingen tekst"
+                placeholder="Optioneel: feedback voor tekstafwijzingen"
               />
             </label>
-            <button
-              type="button"
-              onClick={() => {
-                if (!generationAtDraft) {
-                  setFeedback("Kies eerst een generatiedatum.");
-                  return;
-                }
-                setFeedback(null);
-                updateGenerationDateMutation.mutate(new Date(generationAtDraft).toISOString());
-              }}
-              disabled={updateGenerationDateMutation.isPending}
-            >
-              Generatiedatum opslaan
-            </button>
-            <label>
-              Publicatiedatum
-              <input
-                type="datetime-local"
-                value={publicationAtDraft}
-                onChange={(event) => setPublicationAtDraft(event.target.value)}
-                aria-label="Publicatiedatum"
+            <label className="notes-feedback-field">
+              Opmerkingen afbeelding
+              <textarea
+                value={imageFeedbackDraft}
+                onChange={(event) => setImageFeedbackDraft(event.target.value)}
+                rows={3}
+                aria-label="Opmerkingen afbeelding"
+                placeholder="Optioneel: feedback voor afbeeldingafwijzingen"
               />
             </label>
-            <button
-              type="button"
-              onClick={() => {
-                if (!publicationAtDraft) {
-                  setFeedback("Kies eerst een publicatiedatum.");
-                  return;
-                }
-                setFeedback(null);
-                updatePublicationDateMutation.mutate(new Date(publicationAtDraft).toISOString());
-              }}
-              disabled={updatePublicationDateMutation.isPending}
-            >
-              Publicatiedatum opslaan
-            </button>
           </div>
-          <div className="detail-actions">
+          <div className="detail-dates-grid">
+            <div className="detail-date-row">
+              <label>
+                Generatiedatum
+                <input
+                  type="datetime-local"
+                  value={generationAtDraft}
+                  onChange={(event) => setGenerationAtDraft(event.target.value)}
+                  aria-label="Generatiedatum"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!generationAtDraft) {
+                    setFeedback("Kies eerst een generatiedatum.");
+                    return;
+                  }
+                  setFeedback(null);
+                  updateGenerationDateMutation.mutate(new Date(generationAtDraft).toISOString());
+                }}
+                disabled={updateGenerationDateMutation.isPending}
+              >
+                Generatiedatum opslaan
+              </button>
+            </div>
+            <div className="detail-date-row">
+              <label>
+                Publicatiedatum
+                <input
+                  type="datetime-local"
+                  value={publicationAtDraft}
+                  onChange={(event) => setPublicationAtDraft(event.target.value)}
+                  aria-label="Publicatiedatum"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!publicationAtDraft) {
+                    setFeedback("Kies eerst een publicatiedatum.");
+                    return;
+                  }
+                  setFeedback(null);
+                  updatePublicationDateMutation.mutate(new Date(publicationAtDraft).toISOString());
+                }}
+                disabled={updatePublicationDateMutation.isPending}
+              >
+                Publicatiedatum opslaan
+              </button>
+            </div>
+          </div>
+          <div className="detail-actions section-actions">
             <button
               type="button"
               onClick={() => {
@@ -1423,7 +1670,20 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
               }}
               disabled={updateNotesMutation.isPending}
             >
-              Opmerkingen opslaan
+              Generatie-opmerkingen opslaan
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setFeedback(null);
+                updatePartFeedbackMutation.mutate({
+                  textFeedback: textFeedbackDraft,
+                  imageFeedback: imageFeedbackDraft
+                });
+              }}
+              disabled={updatePartFeedbackMutation.isPending}
+            >
+              Tekst/afbeelding opmerkingen opslaan
             </button>
             <button
               type="button"
@@ -1471,25 +1731,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
       <section className="panel planning-channel-workspace" aria-label="Kanaalredactie">
         <div className="planning-channel-header">
           <h2>Kanaalredactie</h2>
-          <p className="muted">Kies een doelmedium en werk gericht in editor en live preview naast elkaar.</p>
-          <div className="preview-mode-toggle" role="group" aria-label="Previewmodus">
-            <button
-              type="button"
-              className={previewMode === "focused" ? "preview-mode-button active" : "preview-mode-button"}
-              aria-pressed={previewMode === "focused"}
-              onClick={() => setPreviewMode("focused")}
-            >
-              Gefocuste preview
-            </button>
-            <button
-              type="button"
-              className={previewMode === "all" ? "preview-mode-button active" : "preview-mode-button"}
-              aria-pressed={previewMode === "all"}
-              onClick={() => setPreviewMode("all")}
-            >
-              Alle previews
-            </button>
-          </div>
+          <p className="muted">Werk per kanaal in de editor; alle drie media-previews staan altijd naast elkaar.</p>
         </div>
 
         <div className="planning-channel-tabs" role="tablist" aria-label="Doelmedia">
@@ -1514,7 +1756,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
           })}
         </div>
 
-        <div className={previewMode === "all" ? "channel-workspace-grid all-mode" : "channel-workspace-grid"}>
+        <div className="channel-workspace-grid">
           <article className="channel-editor" aria-label={`Redactie ${channelLabel(selectedChannel)}`}>
             <h3>{channelLabel(selectedChannel)}</h3>
             <p className="muted channel-status-line">
@@ -1563,7 +1805,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
                   }
                   compact
                 />
-                <div className="detail-actions">
+                <div className="detail-actions section-actions">
                   <button
                     type="button"
                     onClick={() => {
@@ -1581,58 +1823,46 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
                   >
                     Opslaan
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFeedback(null);
-                      approveVariantMutation.mutate(selectedChannel);
-                    }}
-                    disabled={approveVariantMutation.isPending}
-                  >
-                    Akkoord
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setFeedback(null);
-                      rejectVariantMutation.mutate(selectedChannel);
-                    }}
-                    disabled={rejectVariantMutation.isPending}
-                  >
-                    Afwijzen
-                  </button>
                 </div>
               </>
             )}
           </article>
-
-          {previewMode === "focused" && (
-            <ChannelPreview
-              channel={selectedChannel}
-              draft={selectedDraft}
-              imagePath={selectedVariant?.generated_image_path ?? null}
-              approvalState={selectedApprovalState}
-            />
-          )}
         </div>
 
-        {previewMode === "all" && (
-          <div className="all-previews-grid" aria-label="Alle kanaalpreviews">
-            {availableChannels.map((channel) => {
-              const variant = variants.find((item) => item.channel === channel) ?? null;
-              const approvalState = variant?.approval_state ?? "pending";
-              return (
-                <ChannelPreview
-                  key={`all-preview-${channel}`}
-                  channel={channel}
-                  draft={getNormalizedDraftForChannel(channel)}
-                  imagePath={variant?.generated_image_path ?? null}
-                  approvalState={approvalState}
-                />
-              );
-            })}
-          </div>
-        )}
+        <div className="all-previews-grid" aria-label="Alle kanaalpreviews">
+          {previewChannels.map((channel) => {
+            const channelEnabled = availableChannels.includes(channel);
+            const variant = variants.find((item) => item.channel === channel) ?? null;
+            const approvalState = variant?.approval_state ?? "pending";
+            return (
+              <ChannelPreview
+                key={`all-preview-${channel}`}
+                channel={channel}
+                draft={getNormalizedDraftForChannel(channel)}
+                imageId={variant?.generated_image_id ?? null}
+                imagePath={variant?.generated_image_path ?? null}
+                approvalState={approvalState}
+                textApprovalState={variant?.text_approval_state ?? "pending"}
+                imageApprovalState={variant?.image_approval_state ?? "pending"}
+                onApprovePart={(part) => {
+                  setFeedback(null);
+                  approveVariantPartMutation.mutate({ channel, part });
+                }}
+                onRejectPart={(part) => {
+                  setFeedback(null);
+                  rejectVariantPartMutation.mutate({
+                    channel,
+                    part,
+                    note: part === "text" ? textFeedbackDraft : imageFeedbackDraft
+                  });
+                }}
+                actionsDisabled={
+                  !channelEnabled || approveVariantPartMutation.isPending || rejectVariantPartMutation.isPending
+                }
+              />
+            );
+          })}
+        </div>
       </section>
 
       {feedback && (
@@ -1642,7 +1872,8 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
             feedback.includes("mislukt") ||
             feedback.includes("niet") ||
             feedback.includes("fout") ||
-            feedback.includes("afgekeurd")
+            feedback.includes("afgekeurd") ||
+            feedback.includes("afgewezen")
               ? "error"
               : "success"
           }
@@ -1658,26 +1889,28 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
         {!versionsQuery.isLoading && !versionsQuery.isError && sourceTrace.length === 0 && (
           <p>Geen bronpassages gekoppeld.</p>
         )}
-        {sourceTrace.length > 0 && (
-          <div className="source-trace-list">
-            {sourceTrace.map((hit) => (
-              <article className="source-trace-item" key={`${hit.source_type}-${hit.chunk_id}`}>
-                <p className="source-label">
-                  {hit.source_type === "database"
-                    ? `Database - ${hit.project_name || "Onbekend project"} - ${
-                        hit.document_name || "Onbekend document"
-                      }`
-                    : `Topic - ${hit.document_name || "Onbekend document"}`}
-                  {`, chunk ${hit.chunk_index || "?"}`}
-                </p>
-                <p>{hit.text}</p>
-              </article>
+        {sourceTraceDisplay.length > 0 && (
+          <div className="source-trace-list" role="list" aria-label="Bronpassage accordion">
+            {sourceTraceDisplay.map((hit) => (
+              <details className="source-trace-item" key={`${hit.source_type}-${hit.chunk_id}`}>
+                <summary className="source-trace-summary">
+                  <span className="source-label">
+                    {`Bron: ${hit.source_type === "database" ? "Database" : "Topic"} - ${
+                      hit.document_name || "Onbekend document"
+                    } - chunk ${hit.chunk_index || "?"}`}
+                  </span>
+                  <span className="source-score-badge">Score {hit.display_score}</span>
+                </summary>
+                <div className="source-trace-content">
+                  <p>{hit.text}</p>
+                </div>
+              </details>
             ))}
           </div>
         )}
       </section>
 
-      <div className="detail-actions">
+      <div className="detail-actions section-actions detail-final-actions">
         <button
           type="button"
           onClick={() => {
@@ -1688,7 +1921,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
         >
           Zet planningsregel op akkoord
         </button>
-        <button type="button" onClick={() => navigate("/planning")}>Terug naar planning</button>
+        <button type="button" onClick={() => navigate(WERVEL_PATHS.planning)}>Terug naar planning</button>
       </div>
     </section>
   );
@@ -1712,9 +1945,9 @@ function approvalStateLabel(state: ContentChannelVariant["approval_state"]): str
     return "Akkoord";
   }
   if (state === "rejected") {
-    return "Afgekeurd";
+    return "Afgewezen";
   }
-  return "In review";
+  return "Concept";
 }
 
 function schedulerStatusTone(status: string): "approved" | "pending" | "rejected" {
@@ -1730,15 +1963,58 @@ function schedulerStatusTone(status: string): "approved" | "pending" | "rejected
 function ChannelPreview({
   channel,
   draft,
+  imageId,
   imagePath,
-  approvalState
+  approvalState,
+  textApprovalState,
+  imageApprovalState,
+  onApprovePart,
+  onRejectPart,
+  actionsDisabled
 }: {
   channel: ContentChannelVariant["channel"];
   draft: VariantDraft;
+  imageId: string | null;
   imagePath: string | null;
   approvalState: ContentChannelVariant["approval_state"];
+  textApprovalState: ContentChannelVariant["approval_state"];
+  imageApprovalState: ContentChannelVariant["approval_state"];
+  onApprovePart: (part: "text" | "image") => void;
+  onRejectPart: (part: "text" | "image") => void;
+  actionsDisabled: boolean;
 }) {
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!imageId) {
+      setImageUrl(null);
+      return;
+    }
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    getGeneratedImageBlob(imageId)
+      .then((blob) => {
+        if (cancelled) {
+          return;
+        }
+        objectUrl = URL.createObjectURL(blob);
+        setImageUrl(objectUrl);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImageUrl(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [imageId]);
+
   const approvalLabel = approvalStateLabel(approvalState);
+  const textApprovalLabel = approvalStateLabel(textApprovalState);
+  const imageApprovalLabel = approvalStateLabel(imageApprovalState);
   return (
     <aside className={`channel-preview preview-${channel}`} aria-label={`Preview ${channelLabel(channel)}`}>
       <h3>Preview {channelLabel(channel)}</h3>
@@ -1751,18 +2027,44 @@ function ChannelPreview({
         </p>
         <h4>{draft.title.trim() || "Zonder titel"}</h4>
         <section className="media-preview-section">
-          <p className="media-preview-label">Artikel</p>
+          <div className="media-preview-label-row">
+            <p className="media-preview-label">Tekst</p>
+            <span className={`status-pill status-${textApprovalState}`}>{textApprovalLabel}</span>
+          </div>
           <div className="media-preview-html" dangerouslySetInnerHTML={{ __html: toPreviewHtml(draft.article_body) }} />
+          <div className="detail-actions preview-part-actions">
+            <button type="button" onClick={() => onApprovePart("text")} disabled={actionsDisabled}>
+              Tekst akkoord
+            </button>
+            <button type="button" onClick={() => onRejectPart("text")} disabled={actionsDisabled}>
+              Tekst afwijzen
+            </button>
+          </div>
         </section>
         <section className="media-preview-section">
           <p className="media-preview-label">Samenvatting</p>
           <div className="media-preview-html" dangerouslySetInnerHTML={{ __html: toPreviewHtml(draft.summary) }} />
         </section>
-        {imagePath && (
-          <p className="media-preview-image">
-            Illustratiepad: <code>{imagePath}</code>
-          </p>
-        )}
+        <section className="media-preview-section">
+          <div className="media-preview-label-row">
+            <p className="media-preview-label">Afbeelding</p>
+            <span className={`status-pill status-${imageApprovalState}`}>{imageApprovalLabel}</span>
+          </div>
+          {imageUrl ? (
+            <img className="media-preview-image-render" src={imageUrl} alt={`Illustratie ${channelLabel(channel)}`} />
+          ) : (
+            <p className="media-preview-image">Geen afbeelding beschikbaar.</p>
+          )}
+          <div className="detail-actions preview-part-actions">
+            <button type="button" onClick={() => onApprovePart("image")} disabled={actionsDisabled}>
+              Afbeelding akkoord
+            </button>
+            <button type="button" onClick={() => onRejectPart("image")} disabled={actionsDisabled}>
+              Afbeelding afwijzen
+            </button>
+          </div>
+          {imagePath && <p className="media-preview-image">Bronpad: <code>{imagePath}</code></p>}
+        </section>
       </article>
     </aside>
   );
@@ -2027,7 +2329,9 @@ function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
     return version.source_trace;
   }
   try {
-    const parsed = JSON.parse(version.source_trace_json) as Partial<SourceTraceHit>[];
+    const parsed = JSON.parse(version.source_trace_json) as Array<
+      Partial<SourceTraceHit> & { score?: unknown; relevance_score?: unknown }
+    >;
     if (!Array.isArray(parsed)) {
       return [];
     }
@@ -2041,11 +2345,57 @@ function extractSourceTrace(version: ContentVersion | null): SourceTraceHit[] {
       document_name: item.document_name ?? "",
       topic_id: item.topic_id ?? "",
       project_id: item.project_id ?? "",
-      project_name: item.project_name ?? ""
+      project_name: item.project_name ?? "",
+      relevance_score: parseSourceTraceScoreValue(item.relevance_score ?? item.score ?? null)
     }));
   } catch {
     return [];
   }
+}
+
+function rankSourceTraceByScore(hits: SourceTraceHit[]): SourceTraceDisplayHit[] {
+  const total = hits.length;
+  return hits
+    .map((hit, index) => ({
+      ...hit,
+      display_score: resolveSourceTraceScore(hit, index, total)
+    }))
+    .sort((left, right) => right.display_score - left.display_score);
+}
+
+function resolveSourceTraceScore(hit: SourceTraceHit, index: number, total: number): number {
+  const parsed = parseSourceTraceScoreValue(hit.relevance_score ?? null);
+  if (parsed !== null) {
+    return parsed;
+  }
+  if (total <= 1) {
+    return 100;
+  }
+  const fallback = 100 - Math.round((index / Math.max(1, total - 1)) * 40);
+  return Math.max(0, Math.min(100, fallback));
+}
+
+function parseSourceTraceScoreValue(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    if (value <= 1) {
+      return Math.max(0, Math.min(100, Math.round(value * 100)));
+    }
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(",", ".");
+    if (!normalized) {
+      return null;
+    }
+    const numeric = Number(normalized);
+    if (Number.isFinite(numeric)) {
+      if (numeric <= 1) {
+        return Math.max(0, Math.min(100, Math.round(numeric * 100)));
+      }
+      return Math.max(0, Math.min(100, Math.round(numeric)));
+    }
+  }
+  return null;
 }
 
 function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined }) {
