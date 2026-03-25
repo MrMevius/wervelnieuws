@@ -527,6 +527,21 @@ describe("App", () => {
     });
   });
 
+  it("opens WindWilly chat placeholder page from top navigation", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "WindWilly" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "WindWilly Assistent" })).toBeInTheDocument();
+      expect(screen.getByText(/placeholder · nog niet live/i)).toBeInTheDocument();
+      expect(screen.getByText(/windpark de boldijk/i)).toBeInTheDocument();
+      expect(screen.getByLabelText("Vraag invoeren")).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Versturen" })).toBeDisabled();
+    });
+  });
+
   it("opens general landing page when clicking WindWilly logo", async () => {
     renderApp();
     await loginIntoApp();

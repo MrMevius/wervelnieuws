@@ -298,6 +298,16 @@ def _default_about() -> AboutResponse:
                     "Onderaan de omgeving staat nu een subtiele voettekst met copyright en makersvermelding.",
                 ],
             },
+            {
+                "iteration": "27",
+                "date": "2026-03-25",
+                "title": "WindWilly-chatpagina als gerichte placeholder voor windinformatie",
+                "highlights": [
+                    "De WindWilly-module heeft nu een chat-achtige opzet, zodat de toekomstige assistent direct herkenbaar is.",
+                    "De voorbeeldvragen en voorbeeldantwoorden zijn toegespitst op windprojectinformatie, planning en bewonerscommunicatie.",
+                    "Het is bewust nog een placeholder: de schermopbouw staat klaar, maar zonder live AI-gesprekken in deze iteratie.",
+                ],
+            },
         ],
     )
 

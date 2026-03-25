@@ -500,12 +500,65 @@ function WindWillyLandingPage() {
 
 function WindWillyModulePlaceholder() {
   return (
-    <section className="panel">
-      <h1>WindWilly</h1>
-      <p className="muted">
-        Placeholder voor de WindWilly hoofddienst. In een volgende iteratie komt hier een
-        chat-ervaring vergelijkbaar met ChatGPT voor windprojectgerelateerde vragen.
-      </p>
+    <section className="panel windwilly-chat-page">
+      <header className="windwilly-chat-header">
+        <p className="eyebrow">Placeholder · nog niet live</p>
+        <h1>WindWilly Assistent</h1>
+        <p className="muted">
+          Een chat-achtige omgeving voor vragen over windprojectinformatie, planning en
+          bewonerscommunicatie.
+        </p>
+      </header>
+
+      <div className="windwilly-chat-layout">
+        <aside className="windwilly-chat-sidebar" aria-label="Voorbeeldvragen">
+          <h2>Voorbeeldvragen</h2>
+          <ul>
+            <li>Wat is de huidige status van Windpark de Boldijk?</li>
+            <li>Welke participatiemomenten staan deze maand gepland?</li>
+            <li>Vat de belangrijkste omgevingsmaatregelen samen.</li>
+            <li>Welke bronnen ondersteunen deze projectupdate?</li>
+          </ul>
+        </aside>
+
+        <section className="windwilly-chat-window" aria-label="Chatvenster placeholder">
+          <article className="chat-bubble chat-bubble-user">
+            <p>Kun je een korte update geven voor bewoners over de planning van volgende week?</p>
+          </article>
+
+          <article className="chat-bubble chat-bubble-assistant">
+            <p>
+              Zeker. Voor volgende week staat vooral voorbereidende afstemming gepland. Er zijn
+              geen werkzaamheden met directe hinder voorzien. Ik kan dit ook herschrijven als
+              nieuwsbrieftekst, websitebericht of Facebookupdate.
+            </p>
+          </article>
+
+          <article className="chat-bubble chat-bubble-user">
+            <p>Welke punten moet ik extra duidelijk maken richting omwonenden?</p>
+          </article>
+
+          <article className="chat-bubble chat-bubble-assistant">
+            <p>
+              Leg vooral planning, verwachte impact en contactmogelijkheid helder uit. Verwijs naar
+              bronbestanden en noteer expliciet wat al bevestigd is en wat nog onder voorbehoud
+              staat.
+            </p>
+          </article>
+        </section>
+      </div>
+
+      <div className="windwilly-chat-input" aria-label="Prompt placeholder">
+        <input
+          type="text"
+          placeholder="Stel een vraag over windinformatie (placeholder)"
+          aria-label="Vraag invoeren"
+          disabled
+        />
+        <button type="button" disabled>
+          Versturen
+        </button>
+      </div>
     </section>
   );
 }
