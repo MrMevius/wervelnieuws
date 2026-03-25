@@ -251,9 +251,9 @@ def _default_about() -> AboutResponse:
             {
                 "iteration": "22",
                 "date": "2026-03-24",
-                "title": "Windwilly-suite start met Wervelnieuws als subdienst",
+                "title": "WindWilly-suite start met Wervelnieuws als subdienst",
                 "highlights": [
-                    "De omgeving heeft nu een Windwilly-suite navigatie met modules voor Chatbot, Wervelnieuws en twee nieuwe placeholders.",
+                    "De omgeving heeft nu een WindWilly-suite navigatie met modules voor Chatbot, Wervelnieuws en twee nieuwe placeholders.",
                     "Wervelnieuws draait nu als subdienst onder /wervelnieuws, zodat de suite klaar is voor verdere uitbreiding.",
                     "Bestaande routes blijven bruikbaar via automatische doorverwijzing naar de nieuwe suite-structuur.",
                 ],
@@ -271,7 +271,7 @@ def _default_about() -> AboutResponse:
             {
                 "iteration": "24",
                 "date": "2026-03-24",
-                "title": "Nieuwe Trello-placeholder in de Windwilly-suite",
+                "title": "Nieuwe Trello-placeholder in de WindWilly-suite",
                 "highlights": [
                     "In de hoofdnavigatie staat nu een extra Trello-tab naast Urenverantwoording.",
                     "De nieuwe Trello-pagina is als duidelijke placeholder toegevoegd voor een komende interne projectboardmodule.",
@@ -286,6 +286,16 @@ def _default_about() -> AboutResponse:
                     "De applicatie is intern opgeschoond met een modulaire frontend-opzet, waardoor doorontwikkeling en onderhoud sneller en overzichtelijker worden.",
                     "Beveiligingsinstellingen zijn aangescherpt: productie draait nu alleen met expliciete CORS-origins en een veilige geheime sleutel.",
                     "Rate limiting en worker-afhandeling zijn robuuster gemaakt, zodat piekverkeer en parallelle workers betrouwbaarder en consistenter worden verwerkt.",
+                ],
+            },
+            {
+                "iteration": "26",
+                "date": "2026-03-25",
+                "title": "Landingspagina rustiger met coöperatiecontext en vaste voettekst",
+                "highlights": [
+                    "De bovenste startsectie op de WindWilly-landing gebruikt nu themakleuren, zodat het storende witte vlak verdwijnt.",
+                    "Op de landing staat nu ook algemene informatie over Energiek Daarle, Duurzaam Daarlerveen en Noaber & Co.",
+                    "Onderaan de omgeving staat nu een subtiele voettekst met copyright en makersvermelding.",
                 ],
             },
         ],

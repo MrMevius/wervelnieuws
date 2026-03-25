@@ -1,12 +1,12 @@
 ## Title
-Iteratie 13 - Windwilly suite-shell met Wervelnieuws subdienst
+Iteratie 13 - WindWilly suite-shell met Wervelnieuws subdienst
 
 ## Context
-Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-app naar een Windwilly-suite. Windwilly wordt het hoofddomein met een chatbot-achtige hoofddienst op `/`, terwijl Wervelnieuws als subdienst onder `/wervelnieuws` blijft draaien. Daarnaast moeten placeholders beschikbaar komen voor `urenverantwoording` en `participatiemomenten`. De gebruiker heeft bevestigd dat alle onderdelen achter dezelfde login moeten blijven vallen.
+Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-app naar een WindWilly-suite. WindWilly wordt het hoofddomein met een chatbot-achtige hoofddienst op `/`, terwijl Wervelnieuws als subdienst onder `/wervelnieuws` blijft draaien. Daarnaast moeten placeholders beschikbaar komen voor `urenverantwoording` en `participatiemomenten`. De gebruiker heeft bevestigd dat alle onderdelen achter dezelfde login moeten blijven vallen.
 
 ## Goals / Non-goals
 ### Goals
-- Introduceer Windwilly-suite navigatie in de frontend.
+- Introduceer WindWilly-suite navigatie in de frontend.
 - Maak een placeholder-hoofdpagina op `/` (chatbot-stijl).
 - Zet Wervelnieuws-routes onder `/wervelnieuws/*`.
 - Voeg placeholders toe voor `/urenverantwoording` en `/participatiemomenten`.
@@ -16,14 +16,14 @@ Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-
 ### Non-goals
 - Geen implementatie van echte chatbotfunctionaliteit in iteratie 13.
 - Geen functionele uitbreiding van urenverantwoording of participatiemomenten buiten placeholders.
-- Geen backend API-hernoeming of domeinbrede migratie van interne namen naar Windwilly.
+- Geen backend API-hernoeming of domeinbrede migratie van interne namen naar WindWilly.
 - Geen wijziging aan publicatieflows of n8n-logica uit iteratie 12.
 
 ## Proposed approach
 1. Introduceer suite-routes in de bestaande React app met login-gating op app-niveau.
 2. Prefix bestaande Wervelnieuws-paden met `/wervelnieuws` en voeg redirects toe vanaf oude paden.
-3. Voeg placeholderpagina’s toe voor Windwilly Chatbot, Urenverantwoording en Participatiemomenten.
-4. Werk topnavigatie en branding bij naar Windwilly met duidelijke module-links.
+3. Voeg placeholderpagina’s toe voor WindWilly Chatbot, Urenverantwoording en Participatiemomenten.
+4. Werk topnavigatie en branding bij naar WindWilly met duidelijke module-links.
 5. Voeg Nginx SPA fallback-configuratie toe aan frontend image voor deep links.
 6. Update tests en About-changelog voor iteratie 13.
 
@@ -36,7 +36,7 @@ Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-
 6. Werk frontend tests en backend About/changelog entry bij.
 
 ## Acceptance criteria
-- Ingelogde gebruiker ziet Windwilly-suite navigatie met modules: WindWilly, Wervelnieuws, Urenverantwoording, Participatiemomenten.
+- Ingelogde gebruiker ziet WindWilly-suite navigatie met modules: WindWilly, Wervelnieuws, Urenverantwoording, Participatiemomenten.
 - Wervelnieuws-subnavigatie (`Main`, `Planning`, `Database`, `Log`, `About`) valt visueel onder de moduleknop `Wervelnieuws`.
 - Modulelabel `Chatbot` is hernoemd naar `WindWilly`.
 - Hoofdtabjes in de suite-navigatie hebben gelijke breedte.
@@ -44,11 +44,11 @@ Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-
 - Wervelnieuws-subnavigatie is op `/wervelnieuws/*` altijd zichtbaar (niet inklapbaar).
 - Wervelnieuws-subnavigatie is een dropdown onder de hoofdknop en fade-in op hover/focus.
 - Route `/wervelnieuws/main` (en andere Wervelnieuws-subroutes) werkt voor bestaande functionaliteit.
-- Route `/` toont een algemene Windwilly-landingspagina met module-uitleg.
+- Route `/` toont een algemene WindWilly-landingspagina met module-uitleg.
 - Routes `/urenverantwoording` en `/participatiemomenten` tonen placeholders.
 - Alle suite-routes blijven achter dezelfde login/auth-flow vallen.
 - Accountnaam/user-menu staat rechtsboven in de topbar.
-- Klik op het Windwilly-logo opent een algemene suite-landingspagina.
+- Klik op het WindWilly-logo opent een algemene suite-landingspagina.
 - Hoofdmenubalk is gefixeerd en kan bij omlaag scrollen uit beeld schuiven.
 - Hoofdmenulayout blijft stabiel (geen verspringing tussen routes met/zonder Wervelnieuws-submenu).
 - Menu-items blijven stabiel zonder verspringing tussen modulewissels.
@@ -71,17 +71,17 @@ Volgens `ITERATIONS.md` moet de applicatie evolueren van een losse Wervelnieuws-
 
 ## Notes / links
 - Bron: `ITERATIONS.md` Iteratie #13.
-- Confirmatie gebruiker: Windwilly hoofddienst op `/`, Wervelnieuws onder `/wervelnieuws`, login verplicht.
+- Confirmatie gebruiker: WindWilly hoofddienst op `/`, Wervelnieuws onder `/wervelnieuws`, login verplicht.
 
 ## Current status
 Completed
 
 ## What changed
 - Frontend suite-shell en route-structuur bijgewerkt in `frontend/src/app/App.tsx`:
-  - Branding gewijzigd naar **Windwilly** in topbar en login.
+  - Branding gewijzigd naar **WindWilly** in topbar en login.
   - Nieuwe suite-navigatie toegevoegd: **Chatbot**, **Wervelnieuws**, **Urenverantwoording**, **Participatiemomenten**.
   - Wervelnieuws-routes verplaatst naar `/wervelnieuws/*` via centrale `WERVEL_PATHS` constants.
-  - Placeholderpagina toegevoegd op `/` voor de Windwilly Chatbot.
+  - Placeholderpagina toegevoegd op `/` voor de WindWilly Chatbot.
   - Placeholderroutes toegevoegd voor `/urenverantwoording` en `/participatiemomenten`.
   - Legacy redirects toegevoegd vanaf `/main`, `/planning`, `/database`, `/log`, `/about`, `/settings`, `/admin`, `/admin/scheduler`.
   - Legacy detailroute `/planning/:topicId` redirectt nu naar `/wervelnieuws/planning/:topicId` met behoud van `topicId`.
@@ -90,7 +90,7 @@ Completed
   - Nieuw bestand `frontend/nginx.conf` met `try_files $uri $uri/ /index.html;`.
   - `frontend/Dockerfile` kopieert nu de custom Nginx-config naar `/etc/nginx/conf.d/default.conf`.
 - About/changelog bijgewerkt met een eindgebruikersvriendelijke iteratie-entry:
-  - `backend/app/api/meta.py` bevat nu iteratie `22` met uitleg over de Windwilly-suite start en subdienst-routing.
+  - `backend/app/api/meta.py` bevat nu iteratie `22` met uitleg over de WindWilly-suite start en subdienst-routing.
 - Frontend tests uitgebreid/aangepast in `frontend/src/app/App.test.tsx`:
   - Nieuwe test op suite-modules en chatbot-placeholder na login.
   - Nieuwe test op redirect van legacy `/main` naar Wervelnieuws-main flow.
@@ -101,8 +101,8 @@ Completed
 - Tweede feedbackronde verwerkt voor labels, zichtbaarheid en landing:
   - `frontend/src/app/App.tsx`:
     - Tab `Chatbot` hernoemd naar `WindWilly` en route op `/windwilly`.
-    - Nieuwe algemene landingspagina op `/` toegevoegd (`WindwillyLandingPage`).
-    - Logo `Windwilly` is klikbaar en linkt naar de landingspagina.
+    - Nieuwe algemene landingspagina op `/` toegevoegd (`WindWillyLandingPage`).
+    - Logo `WindWilly` is klikbaar en linkt naar de landingspagina.
     - Login navigeert na succes naar `/wervelnieuws/main` zodat Wervelnieuws direct geopend is.
     - Wervelnieuws-subtabs worden conditioneel getoond op basis van route (`/wervelnieuws/*`).
   - `frontend/src/styles.css`:
@@ -189,7 +189,7 @@ Completed
     - In de `@media (min-width: 1600px)` layout is `page-content` top-padding verhoogd naar `128px` zodat content ook op grote schermbreedtes onder de vaste menubalk start.
 - Twaalfde feedbackronde verwerkt voor compactere topbar + windmolenlogo:
   - `frontend/src/app/App.tsx`:
-    - Tekstlogo `Windwilly` in de topbar vervangen door een klikbaar windmolen-SVG (landing-link behouden).
+    - Tekstlogo `WindWilly` in de topbar vervangen door een klikbaar windmolen-SVG (landing-link behouden).
     - Visueel verborgen tekstlabel toegevoegd voor toegankelijkheid (`sr-only`).
   - `frontend/src/styles.css`:
     - Hoofdmenubalk compacter gemaakt (kleinere topbar padding en kleinere tab-padding).

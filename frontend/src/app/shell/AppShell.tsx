@@ -125,7 +125,7 @@ export function App() {
     onSuccess: () => {
       setAuthenticated(true);
       setLoginError(null);
-      navigate(WERVEL_PATHS.main, { replace: true });
+      navigate(WINDWILLY_PATHS.landing, { replace: true });
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -253,7 +253,7 @@ export function App() {
     return (
       <main className="login-shell">
         <section className="login-card">
-          <p className="eyebrow">Windwilly</p>
+          <p className="eyebrow">WindWilly</p>
           <h1>Suite Dashboard</h1>
           <p>Log in om de planning, publicaties en changelog te bekijken.</p>
           <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
@@ -284,7 +284,7 @@ export function App() {
   return (
     <div className="app-shell">
       <header className={`topbar ${topbarHidden ? "is-hidden" : ""}`}>
-        <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="Windwilly landing">
+        <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="WindWilly landing">
           <svg className="windmill-logo" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
             <circle cx="32" cy="24" r="4" />
             <line x1="32" y1="28" x2="32" y2="54" />
@@ -292,7 +292,7 @@ export function App() {
             <line x1="32" y1="24" x2="53" y2="27" />
             <line x1="32" y1="24" x2="21" y2="9" />
           </svg>
-          <span className="sr-only">Windwilly</span>
+          <span className="sr-only">WindWilly</span>
         </NavLink>
         <nav className="tabs suite-tabs" aria-label="Hoofdnavigatie">
           <NavLink to={WINDWILLY_PATHS.module}>WindWilly</NavLink>
@@ -359,8 +359,8 @@ export function App() {
 
       <main className="page-content">
         <Routes>
-          <Route path={WINDWILLY_PATHS.landing} element={<WindwillyLandingPage />} />
-          <Route path={WINDWILLY_PATHS.module} element={<WindwillyModulePlaceholder />} />
+          <Route path={WINDWILLY_PATHS.landing} element={<WindWillyLandingPage />} />
+          <Route path={WINDWILLY_PATHS.module} element={<WindWillyModulePlaceholder />} />
           <Route
             path={WERVEL_PATHS.main}
             element={
@@ -426,6 +426,9 @@ export function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <footer className="app-footer">
+        <small>© 2026 WindWilly · Vibecoded by BJ & MR</small>
+      </footer>
     </div>
   );
 }
@@ -442,18 +445,9 @@ function handleLogin(
   });
 }
 
-function WindwillyLandingPage() {
+function WindWillyLandingPage() {
   return (
     <section className="panel main-dashboard">
-      <header className="main-hero">
-        <p className="eyebrow">Suite-overzicht</p>
-        <h1>Welkom bij Windwilly</h1>
-        <p>
-          Windwilly bundelt meerdere interne diensten in één rustige werkomgeving: contentbeheer,
-          communicatieplanning en straks ook een projectchat-assistent.
-        </p>
-      </header>
-
       <div className="panel-grid">
         <article className="panel feature-card">
           <h2>WindWilly</h2>
@@ -476,11 +470,35 @@ function WindwillyLandingPage() {
           <p className="muted">Placeholder voor planning en verslaglegging van bewonersmomenten.</p>
         </article>
       </div>
+
+      <header className="main-hero windwilly-hero suite-overview-banner">
+        <p className="eyebrow">Suite-overzicht</p>
+        <h1>Welkom bij WindWilly</h1>
+        <p>Alles voor planning, content en publicatie in één overzichtelijke omgeving.</p>
+      </header>
+
+      <section className="panel cooperatives-section" aria-labelledby="cooperatives-heading">
+        <h2 id="cooperatives-heading">Bestuur (placeholder)</h2>
+        <div className="board-placeholder-grid" aria-label="Bestuursleden placeholders">
+          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 1">
+            <span className="member-avatar" aria-hidden="true">👤</span>
+            <h3>Bestuurslid 1</h3>
+          </article>
+          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 2">
+            <span className="member-avatar" aria-hidden="true">👤</span>
+            <h3>Bestuurslid 2</h3>
+          </article>
+          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 3">
+            <span className="member-avatar" aria-hidden="true">👤</span>
+            <h3>Bestuurslid 3</h3>
+          </article>
+        </div>
+      </section>
     </section>
   );
 }
 
-function WindwillyModulePlaceholder() {
+function WindWillyModulePlaceholder() {
   return (
     <section className="panel">
       <h1>WindWilly</h1>

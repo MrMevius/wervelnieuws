@@ -469,7 +469,7 @@ function renderApp(initialEntries: string[] = ["/"]) {
 async function loginIntoApp() {
   fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
   await waitFor(() => {
-    expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Welkom bij WindWilly|Workflow overzicht/i })).toBeInTheDocument();
   });
 }
 
@@ -500,7 +500,7 @@ describe("App", () => {
     });
   });
 
-  it("shows Windwilly suite modules after login", async () => {
+  it("shows WindWilly suite modules after login", async () => {
     renderApp();
     await loginIntoApp();
 
@@ -510,7 +510,7 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Trello" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
     });
   });
 
@@ -527,15 +527,20 @@ describe("App", () => {
     });
   });
 
-  it("opens general landing page when clicking Windwilly logo", async () => {
+  it("opens general landing page when clicking WindWilly logo", async () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Windwilly landing" }));
+    fireEvent.click(screen.getByRole("link", { name: "WindWilly landing" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Welkom bij Windwilly" })).toBeInTheDocument();
-      expect(screen.getByText(/bundelt meerdere interne diensten/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+      expect(screen.getByText(/Alles voor planning, content en publicatie/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Bestuur (placeholder)" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Bestuurslid 1" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Bestuurslid 2" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Bestuurslid 3" })).toBeInTheDocument();
+      expect(screen.getByText("© 2026 WindWilly · Vibecoded by BJ & MR")).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
     });
   });
@@ -1231,6 +1236,8 @@ describe("App", () => {
     });
     renderApp();
     await loginIntoApp();
+
+    clickWervelSubmenu("Main");
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();

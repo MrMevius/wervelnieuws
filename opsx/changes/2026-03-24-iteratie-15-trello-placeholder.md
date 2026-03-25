@@ -6,7 +6,7 @@ Volgens `ITERATIONS.md` iteratie 15 moet er een extra hoofdpagina komen naast `U
 
 ## Goals / Non-goals
 ### Goals
-- Voeg een nieuwe hoofdnavigatie-tab `Trello` toe in de Windwilly-suite, naast `Urenverantwoording`.
+- Voeg een nieuwe hoofdnavigatie-tab `Trello` toe in de WindWilly-suite, naast `Urenverantwoording`.
 - Voeg route `/trello` toe met een duidelijke placeholderpagina.
 - Geef de Trello-placeholderpagina een Trello-achtige board-achtergrond.
 - Houd de suite-navigatie bruikbaar met 5 hoofditems.
@@ -20,7 +20,7 @@ Volgens `ITERATIONS.md` iteratie 15 moet er een extra hoofdpagina komen naast `U
 ## Proposed approach
 1. Breid de topnavigatie uit met een nieuwe `Trello` link en route.
 2. Maak een specifieke Trello-placeholdercomponent met tekst die aangeeft dat nabouw later volgt.
-3. Voeg Trello als extra kaart toe aan de Windwilly landing-overzichtspagina.
+3. Voeg Trello als extra kaart toe aan de WindWilly landing-overzichtspagina.
 4. Voeg gerichte CSS toe voor een Trello-achtige achtergrond/board-sfeer.
 5. Pas suite-tab lay-out aan zodat 5 hoofditems netjes passen.
 6. Werk frontend tests bij voor de nieuwe link en route.
@@ -66,7 +66,7 @@ Completed
   - In de suite-topnavigatie is een extra hoofdtab toegevoegd: `Trello` (naast `Urenverantwoording`).
   - Nieuwe route toegevoegd: `/trello`.
   - Nieuwe component `TrelloPlaceholderPage` toegevoegd met duidelijke placeholdertekst en eenvoudige board-preview (kolommen + kaarten).
-  - Windwilly landing-overzicht uitgebreid met een extra modulekaart `Trello`.
+  - WindWilly landing-overzicht uitgebreid met een extra modulekaart `Trello`.
 - `frontend/src/styles.css`:
   - `.suite-tabs` aangepast naar 5 kolommen op desktop, zodat alle hoofdmodules netjes passen.
   - Trello-specifieke stijlen toegevoegd (`.trello-placeholder-page`, `.trello-board-preview`, `.trello-lane`, `.trello-card`) met board-achtige visuele achtergrond.

@@ -1,3 +1,38 @@
+Iteratie #15
+- Voeg een extra hoofdpagina toe naasr urenverantwoording genaamd > Trello
+- Zet hier een placeholder op, we gaan trello nabouwen voor onze eigen projeten
+- Maak de achtergrond van deze pagina lijkend op Trello
+- 
+
+Iteratie #14
+- Wervelnieuws: haal op de main page het bovenste blok weg (welkom user)
+- In het submenu hernoem database naar bronbestanden 
+- In database, maak de default weergave dat je alle bestanden van alle projecten ziet
+- 
+
+Iteratie #13
+- Graag de gehele app Wervelnieus een subpagina maken van WindWilly
+- Het accountbeheer van Wervelnieuws geld ook voor Windwily
+- Naast wervelnieuws komt ook 'windwilly' (maak placeholder, dit wordt een soort ChatGPT waar wij alle windprojectgerelateerde vragen aan kunnen stelln 
+- Daarnaast komt ook de subpagina 'urenverantwoording' (maak hier ook een placeholder van)
+- Daarnast komt ook de subpagina 'participatiemomenten'(maak hier ook een placeholder van)
+- Stel me alle benodigde vragen om de iteratie duidelijker te krijgen 1 voor 1 als mc vragen
+
+Iteratie #12
+- Json endpoint genereen waar n8n op aan kan sluiten
+- Hier alle foutmeldingen/succesmeldingen op presenteren
+- n8n regelt de notificatieafhandeling voor admins via Telegram
+
+Iteratie #11
+- De hoofdpagina log uitwerken.
+- Leg 1 voor 1 feature suggesties voor
+
+Iteratie #10
+- Knip het admin menu op in tabjes: gebruikersbeheer, projecten, thema's, AI, sceduler
+- Geef de admin op de ai thema pagina de mogelijkheid om thema's te beheren
+- Voeg enkele logische scedules toe
+- Geef nog een feature suggestie voor de admin pagina
+
 Iteratie #10
 - breid de planning uit met:
 - project
