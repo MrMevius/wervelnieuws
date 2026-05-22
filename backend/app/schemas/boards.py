@@ -1,0 +1,91 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.enums import BoardColumn
+
+
+class BoardProjectCreateRequest(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    description: str = ""
+    invited_user_ids: list[str] = Field(default_factory=list)
+
+
+class BoardProjectSummaryResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    invited_user_ids: list[str]
+    card_count: int
+    last_activity_at: datetime | None
+
+
+class BoardCardCreateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str = ""
+    column: BoardColumn = BoardColumn.todo
+    assignment_user_ids: list[str] = Field(default_factory=list)
+
+
+class BoardCardMoveRequest(BaseModel):
+    column: BoardColumn
+    position: int = Field(ge=0)
+
+
+class CardUpdateCreateRequest(BaseModel):
+    message: str = Field(min_length=1)
+
+
+class CardAssignmentResponse(BaseModel):
+    id: str
+    user_id: str
+    username: str
+
+
+class CardUpdateResponse(BaseModel):
+    id: str
+    author_user_id: str
+    author_username: str
+    message: str
+    created_at: datetime
+
+
+class RecordingResponse(BaseModel):
+    id: str
+    filename: str
+    file_path: str
+    duration: int | None
+    recorded_at: datetime
+    transcription_status: str
+    transcription_text: str
+    mime_type: str
+    size_bytes: int
+    created_at: datetime
+    download_url: str
+
+
+class BoardCardResponse(BaseModel):
+    id: str
+    project_id: str
+    title: str
+    description: str
+    column: BoardColumn
+    position: int
+    assignments: list[CardAssignmentResponse]
+    updates_count: int
+    recordings_count: int
+
+
+class ProjectBoardResponse(BaseModel):
+    project_id: str
+    project_name: str
+    invited_user_ids: list[str]
+    cards: list[BoardCardResponse]
+
+
+class CardDetailResponse(BaseModel):
+    card: BoardCardResponse
+    updates: list[CardUpdateResponse]
+    recordings: list[RecordingResponse]
+
+    model_config = ConfigDict(from_attributes=True)

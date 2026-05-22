@@ -152,6 +152,68 @@ button:disabled {
   color: var(--danger);
 }
 
+.vergaderborden-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.vergaderborden-project-card {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.user-chip {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--brand-soft);
+  color: var(--text);
+  font-size: 0.72rem;
+  border: 1px solid var(--line);
+}
+
+.board-detail-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.board-detail-modal {
+  width: min(760px, 94vw);
+  max-height: 88vh;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.record-button {
+  background: #c42333;
+  font-weight: 700;
+  padding: 12px 18px;
+}
+
 .success {
   color: var(--brand);
 }
@@ -635,71 +697,6 @@ button:disabled {
   padding: 18px;
   display: grid;
   gap: 14px;
-}
-
-.trello-placeholder-page {
-  position: relative;
-  overflow: hidden;
-  background:
-    linear-gradient(132deg, rgba(24, 56, 42, 0.94) 0%, rgba(30, 70, 52, 0.92) 52%, rgba(37, 84, 61, 0.9) 100%),
-    radial-gradient(circle at 10% 14%, rgba(166, 218, 187, 0.14) 0 18%, transparent 62%),
-    radial-gradient(circle at 92% 82%, rgba(157, 204, 186, 0.1) 0 16%, transparent 64%);
-  border-color: rgba(118, 165, 142, 0.45);
-  color: #e9f4ee;
-}
-
-.trello-placeholder-page::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    repeating-linear-gradient(
-      90deg,
-      rgba(182, 226, 202, 0.1) 0,
-      rgba(182, 226, 202, 0.1) 1px,
-      transparent 1px,
-      transparent 140px
-    ),
-    linear-gradient(180deg, rgba(215, 240, 226, 0.14), transparent 44%);
-}
-
-.trello-placeholder-page > * {
-  position: relative;
-  z-index: 1;
-}
-
-.trello-placeholder-page .eyebrow,
-.trello-placeholder-page .muted {
-  color: rgba(233, 244, 238, 0.9);
-}
-
-.trello-board-preview {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.trello-lane {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-  min-height: 170px;
-  border-radius: 12px;
-  padding: 10px;
-  background: rgba(13, 34, 25, 0.64);
-  border: 1px solid rgba(169, 215, 192, 0.28);
-  box-shadow: 0 8px 18px rgba(5, 18, 12, 0.24);
-}
-
-.trello-card {
-  display: block;
-  border-radius: 10px;
-  background: rgba(26, 58, 42, 0.84);
-  color: #f0f7f3;
-  padding: 8px 10px;
-  font-size: 0.9rem;
-  border: 1px solid rgba(178, 221, 200, 0.2);
 }
 
 .windwilly-chat-page {
@@ -1894,7 +1891,6 @@ thead th {
   .main-stats-grid,
   .main-content-grid,
   .windwilly-chat-layout,
-  .trello-board-preview,
   .about-grid,
   .settings-grid,
   .scheduler-grid {

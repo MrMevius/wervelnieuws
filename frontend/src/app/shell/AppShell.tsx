@@ -73,6 +73,7 @@ import {
 import { WERVEL_PATHS, WINDWILLY_PATHS } from "../routes/paths";
 import { useMainDashboardData } from "../features/main/hooks/useMainDashboardData";
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
+import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
 
 type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
@@ -323,7 +324,7 @@ export function App() {
               <NavLink to={WERVEL_PATHS.about}>About</NavLink>
             </nav>
           </div>
-          <NavLink to="/trello">Trello</NavLink>
+          <NavLink to={WINDWILLY_PATHS.vergaderborden}>Vergaderborden</NavLink>
           <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
@@ -407,10 +408,11 @@ export function App() {
             path={WERVEL_PATHS.adminScheduler}
             element={<AdminSchedulerPage currentUser={currentUserQuery.data} />}
           />
+          <Route path={WERVEL_PATHS.adminVergaderborden} element={<VergaderbordenPage />} />
           <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
 
           <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
-          <Route path="/trello" element={<TrelloPlaceholderPage />} />
+          <Route path={WINDWILLY_PATHS.vergaderborden} element={<VergaderbordenPage />} />
           <Route path="/participatiemomenten" element={<SuitePlaceholderPage title="Participatiemomenten" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
 
           <Route path="/main" element={<Navigate to={WERVEL_PATHS.main} replace />} />
@@ -421,6 +423,7 @@ export function App() {
           <Route path="/settings" element={<Navigate to={WERVEL_PATHS.settings} replace />} />
           <Route path="/admin" element={<Navigate to={WERVEL_PATHS.admin} replace />} />
           <Route path="/admin/scheduler" element={<Navigate to={WERVEL_PATHS.adminScheduler} replace />} />
+          <Route path="/admin/vergaderborden" element={<Navigate to={WERVEL_PATHS.adminVergaderborden} replace />} />
           <Route path="/about" element={<Navigate to={WERVEL_PATHS.about} replace />} />
 
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -462,8 +465,9 @@ function WindWillyLandingPage() {
           <p className="muted">Placeholder voor urenregistratie en teaminzicht per projectfase.</p>
         </article>
         <article className="panel feature-card">
-          <h2>Trello</h2>
-          <p className="muted">Placeholder voor een intern projectboard dat we in komende iteraties gaan nabouwen.</p>
+          <h2>Vergaderborden</h2>
+          <p className="muted">Beheer projectborden met kaarten, updates en opnames voor samenwerking binnen het team.</p>
+          <NavLink to={WINDWILLY_PATHS.vergaderborden}>Open Vergaderborden</NavLink>
         </article>
         <article className="panel feature-card">
           <h2>Participatiemomenten</h2>
@@ -558,36 +562,6 @@ function WindWillyModulePlaceholder() {
         <button type="button" disabled>
           Versturen
         </button>
-      </div>
-    </section>
-  );
-}
-
-function TrelloPlaceholderPage() {
-  return (
-    <section className="panel trello-placeholder-page">
-      <header>
-        <p className="eyebrow">Binnenkort</p>
-        <h1>Trello</h1>
-        <p className="muted">
-          Placeholder voor onze eigen Trello-achtige module voor projectwerk. In een volgende iteratie
-          bouwen we hier kolommen, kaarten en voortgangsbeheer.
-        </p>
-      </header>
-      <div className="trello-board-preview" aria-hidden="true">
-        <div className="trello-lane">
-          <strong>Te doen</strong>
-          <span className="trello-card">Kick-off voorbereiden</span>
-          <span className="trello-card">Bronnen verzamelen</span>
-        </div>
-        <div className="trello-lane">
-          <strong>Bezig</strong>
-          <span className="trello-card">Planning reviewen</span>
-        </div>
-        <div className="trello-lane">
-          <strong>Klaar</strong>
-          <span className="trello-card">Scope afgestemd</span>
-        </div>
       </div>
     </section>
   );

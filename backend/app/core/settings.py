@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     uploads_dir: str = "uploads"
     generated_dir: str = "generated"
     exports_dir: str = "exports"
+    recordings_dir: str = "recordings"
 
     openai_api_key: str = ""
     openai_model_text: str = "gpt-4.1-mini"
@@ -73,6 +74,7 @@ def get_settings() -> Settings:
     (settings.storage_root / settings.uploads_dir).mkdir(parents=True, exist_ok=True)
     (settings.storage_root / settings.generated_dir).mkdir(parents=True, exist_ok=True)
     (settings.storage_root / settings.exports_dir).mkdir(parents=True, exist_ok=True)
+    (settings.storage_root / settings.recordings_dir).mkdir(parents=True, exist_ok=True)
     return settings
 
 

@@ -7,10 +7,12 @@ export const WERVEL_PATHS = {
   about: "/wervelnieuws/about",
   settings: "/wervelnieuws/settings",
   admin: "/wervelnieuws/admin",
-  adminScheduler: "/wervelnieuws/admin/scheduler"
+  adminScheduler: "/wervelnieuws/admin/scheduler",
+  adminVergaderborden: "/wervelnieuws/admin/vergaderborden"
 } as const;
 
 export const WINDWILLY_PATHS = {
   landing: "/",
-  module: "/windwilly"
+  module: "/windwilly",
+  vergaderborden: "/vergaderborden"
 } as const;

@@ -12,6 +12,10 @@ function resolveApiBase(): string {
     const currentHost = window.location.hostname;
     const isCurrentLocal = currentHost === "localhost" || currentHost === "127.0.0.1";
     if (isConfiguredLocal && !isCurrentLocal) {
+      if (window.location.protocol === "https:") {
+        return `${window.location.origin}/api`;
+      }
+      url.protocol = window.location.protocol;
       url.hostname = currentHost;
       return url.toString().replace(/\/$/, "");
     }
@@ -31,6 +35,8 @@ export type Topic = {
   project_id: string;
   project_name: string;
   editorial_notes: string;
+  text_feedback?: string;
+  image_feedback?: string;
   planning_at: string | null;
   workflow_state: string;
   is_archived: boolean;
@@ -79,6 +85,8 @@ export type ContentChannelVariant = {
   generated_image_id: string | null;
   generated_image_path: string | null;
   approval_state: "pending" | "approved" | "rejected";
+  text_approval_state?: "pending" | "approved" | "rejected";
+  image_approval_state?: "pending" | "approved" | "rejected";
   approved_by_user_id: string | null;
   approved_at: string | null;
   created_at: string;
@@ -96,6 +104,7 @@ export type SourceTraceHit = {
   topic_id: string;
   project_id: string;
   project_name: string;
+  relevance_score?: number | null;
 };
 
 export type ChannelStatus = {
@@ -200,6 +209,52 @@ export type Project = {
   id: string;
   name: string;
   is_active: boolean;
+};
+
+export type BoardProjectSummary = {
+  id: string;
+  name: string;
+  description: string;
+  invited_user_ids: string[];
+  card_count: number;
+  last_activity_at: string | null;
+};
+
+export type BoardCard = {
+  id: string;
+  project_id: string;
+  title: string;
+  description: string;
+  column: "todo" | "doing" | "done";
+  position: number;
+  assignments: Array<{ id: string; user_id: string; username: string }>;
+  updates_count: number;
+  recordings_count: number;
+};
+
+export type BoardProjectDetail = {
+  project_id: string;
+  project_name: string;
+  invited_user_ids: string[];
+  cards: BoardCard[];
+};
+
+export type BoardCardDetail = {
+  card: BoardCard;
+  updates: Array<{ id: string; author_user_id: string; author_username: string; message: string; created_at: string }>;
+  recordings: Array<{
+    id: string;
+    filename: string;
+    file_path: string;
+    duration: number | null;
+    recorded_at: string;
+    transcription_status: "pending" | "done" | "failed";
+    transcription_text: string;
+    mime_type: string;
+    size_bytes: number;
+    created_at: string;
+    download_url: string;
+  }>;
 };
 
 export type AdminTheme = {
@@ -485,6 +540,43 @@ export function updateAdminProject(projectId: string, payload: { name?: string; 
   });
 }
 
+export function listBoardProjects() {
+  return request<BoardProjectSummary[]>("/boards/projects");
+}
+
+export function createBoardProject(payload: { name: string; description: string; invited_user_ids: string[] }) {
+  return request<BoardProjectSummary>("/boards/projects", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function getBoardProject(projectId: string) {
+  return request<BoardProjectDetail>(`/boards/projects/${projectId}`);
+}
+
+export function createBoardCard(projectId: string, payload: { title: string; description: string; column: "todo" | "doing" | "done"; assignment_user_ids: string[] }) {
+  return request<BoardCard>(`/boards/projects/${projectId}/cards`, { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function moveBoardCard(cardId: string, payload: { column: "todo" | "doing" | "done"; position: number }) {
+  return request<BoardCard>(`/boards/cards/${cardId}/move`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function getBoardCard(cardId: string) {
+  return request<BoardCardDetail>(`/boards/cards/${cardId}`);
+}
+
+export function postBoardCardUpdate(cardId: string, message: string) {
+  return request<{ id: string }>(`/boards/cards/${cardId}/updates`, { method: "POST", body: JSON.stringify({ message }) });
+}
+
+export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number) {
+  const fd = new FormData();
+  fd.append("file", blob, "opname.webm");
+  if (typeof duration === "number" && Number.isFinite(duration) && duration >= 0) {
+    fd.append("duration", String(Math.round(duration)));
+  }
+  return request<{ id: string }>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
 export function getAdminGenAIConfig() {
   return request<GenAIConfig>("/admin/genai-config");
 }
@@ -617,6 +709,8 @@ export type CreateTopicPayload = {
   theme: string;
   project_id: string;
   editorial_notes: string;
+  text_feedback?: string;
+  image_feedback?: string;
   planning_at: string | null;
   target_channels: string[];
 };
@@ -677,9 +771,31 @@ export function approveVariant(topicId: string, channel: ContentChannelVariant["
   });
 }
 
+export function approveVariantPart(
+  topicId: string,
+  channel: ContentChannelVariant["channel"],
+  part: "text" | "image"
+) {
+  return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}/${part}/approve`, {
+    method: "POST"
+  });
+}
+
 export function rejectVariant(topicId: string, channel: ContentChannelVariant["channel"]) {
   return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}/reject`, {
     method: "POST"
+  });
+}
+
+export function rejectVariantPart(
+  topicId: string,
+  channel: ContentChannelVariant["channel"],
+  part: "text" | "image",
+  note: string
+) {
+  return request<ContentChannelVariant>(`/content/${topicId}/variants/${channel}/${part}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ note })
   });
 }
 
@@ -755,6 +871,10 @@ export function requeueRetryJob(jobId: string) {
 
 export function getSchedulerOverview() {
   return request<SchedulerOverview>("/content/scheduler/overview");
+}
+
+export function getGeneratedImageBlob(imageId: string) {
+  return requestBlob(`/content/images/${imageId}`);
 }
 
 export function listActivityFeed(filters: ActivityFeedFilters = {}) {

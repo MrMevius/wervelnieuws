@@ -43,6 +43,45 @@ const mockApi = vi.hoisted(() => ({
       is_active: true
     }
   ]),
+  listBoardProjects: vi.fn().mockResolvedValue([
+    {
+      id: "bp1",
+      name: "Wekelijkse afstemming",
+      description: "Teamplanning en besluiten",
+      invited_user_ids: ["u1"],
+      card_count: 2
+    }
+  ]),
+  getBoardProject: vi.fn().mockResolvedValue({
+    project: {
+      id: "bp1",
+      name: "Wekelijkse afstemming",
+      description: "Teamplanning en besluiten",
+      invited_user_ids: ["u1"],
+      card_count: 2
+    },
+    cards: []
+  }),
+  getBoardCard: vi.fn().mockResolvedValue({
+    card: {
+      id: "bc1",
+      project_id: "bp1",
+      title: "Voorbeeldkaart",
+      description: "",
+      column: "todo",
+      position: 0,
+      assignments: [],
+      updates_count: 0,
+      recordings_count: 0
+    },
+    updates: [],
+    recordings: []
+  }),
+  createBoardProject: vi.fn().mockResolvedValue({ id: "bp2" }),
+  createBoardCard: vi.fn().mockResolvedValue({ id: "bc2" }),
+  moveBoardCard: vi.fn().mockResolvedValue({ status: "ok" }),
+  postBoardCardUpdate: vi.fn().mockResolvedValue({ id: "bu1" }),
+  uploadBoardRecording: vi.fn().mockResolvedValue({ id: "br1" }),
   createAdminUser: vi.fn().mockResolvedValue({
     id: "u3",
     username: "redacteur",
@@ -508,22 +547,31 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "WindWilly" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Trello" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
     });
   });
 
-  it("opens trello placeholder page from top navigation", async () => {
+  it("opens vergaderborden page from top navigation", async () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Trello" }));
+    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Trello" })).toBeInTheDocument();
-      expect(screen.getByText(/placeholder voor onze eigen trello-achtige module/i)).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Trello" }).closest("section")).toHaveClass("trello-placeholder-page");
+      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
+    });
+  });
+
+  it("does not expose legacy /trello placeholder route", async () => {
+    renderApp(["/trello"]);
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Trello" })).not.toBeInTheDocument();
     });
   });
 

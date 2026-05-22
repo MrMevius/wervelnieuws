@@ -63,3 +63,9 @@ class ThemePreference(str, Enum):
     light = "light"
     dark = "dark"
     system = "system"
+
+
+class BoardColumn(str, Enum):
+    todo = "todo"
+    doing = "doing"
+    done = "done"

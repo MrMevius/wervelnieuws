@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.models.enums import (
+    BoardColumn,
     ChannelName,
     ChannelPublishState,
     ContentApprovalState,
@@ -69,12 +70,132 @@ class Project(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    invited_user_ids_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     documents: Mapped[list["KnowledgeDocument"]] = relationship(
         back_populates="project", cascade="all,delete"
     )
     topics: Mapped[list["Topic"]] = relationship(back_populates="project")
+    board_cards: Mapped[list["BoardCard"]] = relationship(
+        back_populates="project", cascade="all,delete"
+    )
+
+    @property
+    def invited_user_ids(self) -> list[str]:
+        try:
+            parsed = json.loads(self.invited_user_ids_json or "[]")
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(parsed, list):
+            return []
+        return [str(item) for item in parsed if isinstance(item, str)]
+
+    @invited_user_ids.setter
+    def invited_user_ids(self, value: Sequence[str]) -> None:
+        self.invited_user_ids_json = json.dumps(list(dict.fromkeys(value)))
+
+
+class BoardCard(Base, TimestampMixin):
+    __tablename__ = "board_cards"
+    __table_args__ = (
+        Index("ix_board_cards_project_column_position", "project_id", "column", "position"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("projects.id"), nullable=False
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    column: Mapped[BoardColumn] = mapped_column(
+        Enum(BoardColumn), default=BoardColumn.todo, nullable=False
+    )
+    position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    project: Mapped[Project] = relationship(back_populates="board_cards")
+    assignments: Mapped[list["CardAssignment"]] = relationship(
+        back_populates="card", cascade="all,delete"
+    )
+    updates: Mapped[list["CardUpdate"]] = relationship(
+        back_populates="card", cascade="all,delete"
+    )
+    recordings: Mapped[list["Recording"]] = relationship(
+        back_populates="card", cascade="all,delete"
+    )
+
+
+class CardAssignment(Base, TimestampMixin):
+    __tablename__ = "card_assignments"
+    __table_args__ = (
+        UniqueConstraint("card_id", "user_id", name="uq_card_assignments_card_user"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    card_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("board_cards.id"), nullable=False
+    )
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+
+    card: Mapped[BoardCard] = relationship(back_populates="assignments")
+    user: Mapped[User] = relationship()
+
+
+class CardUpdate(Base):
+    __tablename__ = "card_updates"
+    __table_args__ = (Index("ix_card_updates_card_created", "card_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    card_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("board_cards.id"), nullable=False
+    )
+    author_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    card: Mapped[BoardCard] = relationship(back_populates="updates")
+    author: Mapped[User] = relationship()
+
+
+class Recording(Base):
+    __tablename__ = "recordings"
+    __table_args__ = (Index("ix_recordings_card_created", "card_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    card_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("board_cards.id"), nullable=False
+    )
+    uploaded_by_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    duration: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    mime_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    transcription_status: Mapped[str] = mapped_column(
+        String(20), default="pending", nullable=False
+    )
+    transcription_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    card: Mapped[BoardCard] = relationship(back_populates="recordings")
+    uploaded_by: Mapped[User] = relationship()
 
 
 class KnowledgeDocument(Base, TimestampMixin):

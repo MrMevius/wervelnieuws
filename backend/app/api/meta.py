@@ -308,6 +308,26 @@ def _default_about() -> AboutResponse:
                     "Het is bewust nog een placeholder: de schermopbouw staat klaar, maar zonder live AI-gesprekken in deze iteratie.",
                 ],
             },
+            {
+                "iteration": "28",
+                "date": "2026-05-14",
+                "title": "Nieuwe adminmodule Vergaderborden met kaarten, updates en opnames",
+                "highlights": [
+                    "Admins en uitgenodigde gebruikers kunnen nu werken met projectgebonden vergaderborden in drie vaste kolommen: Te doen, Bezig en Klaar.",
+                    "Kaarten ondersteunen drag-and-drop verplaatsen, updatehistorie en directe samenwerking met toegewezen gebruikers.",
+                    "Voor kaarten in Bezig kun je nu audio-opnames maken en uploaden, met veilige opslag op de server en download in het kaartdetail.",
+                ],
+            },
+            {
+                "iteration": "29",
+                "date": "2026-05-22",
+                "title": "Vergaderborden vervangt Trello-placeholder in navigatie en landing",
+                "highlights": [
+                    "De hoofdnavigatie toont nu Vergaderborden als vaste module-entry, zodat je direct in het werkende bordenoverzicht terechtkomt.",
+                    "De oude /trello-placeholderroute is verwijderd; de primaire route voor borden is nu /vergaderborden.",
+                    "Ook op de landing is de kaart bijgewerkt naar echte Vergaderborden-functionaliteit in plaats van placeholdertekst.",
+                ],
+            },
         ],
     )
 

@@ -1,5 +1,8 @@
 from app.models.entities import (
     AuditEvent,
+    BoardCard,
+    CardAssignment,
+    CardUpdate,
     ChannelPublicationState,
     ContentVersion,
     DocumentChunk,
@@ -10,6 +13,7 @@ from app.models.entities import (
     Project,
     PublicationRecord,
     PublicationSchedule,
+    Recording,
     RetryJob,
     SystemSetting,
     Topic,
@@ -33,7 +37,11 @@ __all__ = [
     "PublicationRecord",
     "ChannelPublicationState",
     "AuditEvent",
+    "BoardCard",
+    "CardAssignment",
+    "CardUpdate",
     "NotificationEvent",
     "SystemSetting",
     "RetryJob",
+    "Recording",
 ]
