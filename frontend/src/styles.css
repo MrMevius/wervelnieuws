@@ -155,17 +155,177 @@ button:disabled {
 .vergaderborden-project-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 10px;
-  margin: 12px 0;
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+
+.vergaderborden-page {
+  display: grid;
+  gap: 14px;
+}
+
+.vergaderborden-header {
+  display: grid;
+  gap: 4px;
+}
+
+.vergaderborden-header h1 {
+  margin: 0;
+}
+
+.vergaderborden-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.vergaderborden-primary-action {
+  justify-self: start;
+  min-height: 40px;
+  min-width: 136px;
+  font-weight: 600;
 }
 
 .vergaderborden-project-card {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   text-align: left;
   background: var(--surface-muted);
   color: var(--text);
   border: 1px solid var(--line);
+  padding: 12px;
+}
+
+.board-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+}
+
+.vergaderborden-column {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  background: color-mix(in srgb, var(--surface-muted) 80%, transparent 20%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.vergaderborden-column h3 {
+  margin: 2px 0 0;
+  font-size: 1rem;
+}
+
+.vergaderborden-column article {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  padding: 10px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent 40%);
+}
+
+.vergaderborden-column article p,
+.vergaderborden-column article small {
+  margin: 0;
+}
+
+.vergaderborden-card-add-form {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 85%, var(--surface-muted) 15%);
+}
+
+.vergaderborden-card-add-row {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.vergaderborden-card-add-row input,
+.vergaderborden-card-add-row select,
+.vergaderborden-card-add-row button {
+  min-height: 40px;
+}
+
+.vergaderborden-card-add-row-secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vergaderborden-create-form {
+  width: min(640px, 94vw);
+  display: grid;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+}
+
+.vergaderborden-create-form h2 {
+  margin: 0;
+}
+
+.vergaderborden-form-help {
+  margin: -2px 0 2px;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.vergaderborden-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.vergaderborden-field {
+  display: grid;
+  gap: 6px;
+}
+
+.vergaderborden-field > span {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.vergaderborden-field-full {
+  grid-column: 1 / -1;
+}
+
+.vergaderborden-field input,
+.vergaderborden-field textarea,
+.vergaderborden-field select {
+  min-height: 40px;
+}
+
+.vergaderborden-field textarea {
+  min-height: 90px;
+  resize: vertical;
+}
+
+.vergaderborden-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(13, 24, 20, 0.45);
 }
 
 .chip-row {
@@ -212,6 +372,33 @@ button:disabled {
   background: #c42333;
   font-weight: 700;
   padding: 12px 18px;
+}
+
+@media (max-width: 1100px) {
+  .board-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .board-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vergaderborden-card-add-row,
+  .vergaderborden-card-add-row-secondary,
+  .vergaderborden-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vergaderborden-form-actions {
+    justify-content: stretch;
+  }
+
+  .vergaderborden-form-actions button,
+  .vergaderborden-card-add-row button {
+    width: 100%;
+  }
 }
 
 .success {

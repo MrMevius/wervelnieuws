@@ -328,6 +328,16 @@ def _default_about() -> AboutResponse:
                     "Ook op de landing is de kaart bijgewerkt naar echte Vergaderborden-functionaliteit in plaats van placeholdertekst.",
                 ],
             },
+            {
+                "iteration": "30",
+                "date": "2026-05-22",
+                "title": "Vergaderborden rustiger en consistenter ingedeeld",
+                "highlights": [
+                    "Het formulier Nieuw project is opnieuw uitgelijnd met duidelijke velden, labels en een stabiele actieknoppenrij.",
+                    "Per bordkolom zijn de kaart-toevoegregels compacter en consistenter opgebouwd, met betere uitlijning van invoer en acties.",
+                    "Spacing, typografie en responsive gedrag zijn aangescherpt voor mobiel, tablet en desktop zonder wijziging van functionaliteit.",
+                ],
+            },
         ],
     )
 

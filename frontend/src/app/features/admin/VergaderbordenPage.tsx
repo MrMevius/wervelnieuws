@@ -94,9 +94,12 @@ export function VergaderbordenPage() {
 
   return (
     <section className="panel vergaderborden-page">
-      <h1>Vergaderborden</h1>
+      <div className="vergaderborden-header">
+        <h1>Vergaderborden</h1>
+        <p className="vergaderborden-subtitle">Projecten en kaarten overzichtelijk beheren per fase.</p>
+      </div>
       {showCreate && <CreateProjectModal users={usersQuery.data ?? []} onClose={() => setShowCreate(false)} onSubmit={(payload) => createProjectMutation.mutate(payload)} />}
-      <button onClick={() => setShowCreate(true)}>Nieuw project</button>
+      <button className="vergaderborden-primary-action" onClick={() => setShowCreate(true)}>Nieuw project</button>
 
       <div className="vergaderborden-project-grid">
         {(projectsQuery.data ?? []).map((project) => (
@@ -119,6 +122,7 @@ export function VergaderbordenPage() {
         <div className="board-grid">
           {KOLOMMEN.map((kolom) => (
             <div
+              className="vergaderborden-column"
               key={kolom}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -200,6 +204,7 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
   return (
     <div className="modal">
       <form
+        className="vergaderborden-create-form"
         onSubmit={(e) => {
           e.preventDefault();
           const fd = new FormData(e.currentTarget);
@@ -211,12 +216,25 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
         }}
       >
         <h2>Nieuw project</h2>
-        <input name="name" placeholder="Projectnaam" required />
-        <textarea name="description" placeholder="Beschrijving" />
-        <label>Uitgenodigde gebruikers</label>
-        <select name="invited_user_ids" multiple>{users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}</select>
-        <button type="submit">Opslaan</button>
-        <button type="button" onClick={onClose}>Sluiten</button>
+        <p className="vergaderborden-form-help">Vul de basisgegevens in en nodig teamleden uit.</p>
+        <div className="vergaderborden-form-grid">
+          <label className="vergaderborden-field">
+            <span>Projectnaam</span>
+            <input name="name" placeholder="Projectnaam" required />
+          </label>
+          <label className="vergaderborden-field vergaderborden-field-full">
+            <span>Beschrijving</span>
+            <textarea name="description" placeholder="Beschrijving" />
+          </label>
+          <label className="vergaderborden-field vergaderborden-field-full">
+            <span>Uitgenodigde gebruikers</span>
+            <select name="invited_user_ids" multiple>{users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}</select>
+          </label>
+        </div>
+        <div className="vergaderborden-form-actions">
+          <button type="submit">Opslaan</button>
+          <button type="button" onClick={onClose}>Sluiten</button>
+        </div>
       </form>
     </div>
   );
@@ -225,6 +243,7 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
 function CreateCardInline({ users, onCreate }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => void }) {
   return (
     <form
+      className="vergaderborden-card-add-form"
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
@@ -236,14 +255,18 @@ function CreateCardInline({ users, onCreate }: { users: AdminUser[]; onCreate: (
         (e.currentTarget as HTMLFormElement).reset();
       }}
     >
-      <input name="title" placeholder="Titel kaart" required />
-      <input name="description" placeholder="Beschrijving" />
-      <select name="assignment_user_ids" multiple>
-        {users.map((u) => (
-          <option key={u.id} value={u.id}>{u.username}</option>
-        ))}
-      </select>
-      <button type="submit">Kaart toevoegen</button>
+      <div className="vergaderborden-card-add-row">
+        <input name="title" placeholder="Titel kaart" required />
+        <button type="submit">Kaart toevoegen</button>
+      </div>
+      <div className="vergaderborden-card-add-row vergaderborden-card-add-row-secondary">
+        <input name="description" placeholder="Beschrijving" />
+        <select name="assignment_user_ids" multiple>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>{u.username}</option>
+          ))}
+        </select>
+      </div>
     </form>
   );
 }
