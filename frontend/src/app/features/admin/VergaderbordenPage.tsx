@@ -23,6 +23,8 @@ export function VergaderbordenPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [updateMessage, setUpdateMessage] = useState("");
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
@@ -47,7 +49,14 @@ export function VergaderbordenPage() {
   });
   const postUpdateMutation = useMutation({
     mutationFn: ({ cardId, message }: { cardId: string; message: string }) => postBoardCardUpdate(cardId, message),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] })
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", projectId] })
+      ]);
+      setUpdateMessage("");
+      setUpdateError(null);
+    }
   });
   const uploadRecordingMutation = useMutation({
     mutationFn: ({ cardId, blob, duration }: { cardId: string; blob: Blob; duration: number }) => uploadBoardRecording(cardId, blob, duration),
@@ -154,36 +163,69 @@ export function VergaderbordenPage() {
       )}
 
       {cardQuery.data && (
-        <div className="board-detail-overlay" role="dialog" aria-modal="true">
+        <div className="board-detail-overlay" role="dialog" aria-modal="true" onClick={(e) => {
+          if (e.target === e.currentTarget) setSelectedCardId(null);
+        }}>
           <div className="board-detail-modal">
-            <button type="button" onClick={() => setSelectedCardId(null)}>Sluiten</button>
+            <button type="button" className="board-detail-close" onClick={() => setSelectedCardId(null)} aria-label="Kaartdetail sluiten">×</button>
             <h2>Kaartdetail</h2>
             <p>{cardQuery.data.card.title}</p>
             <form
+              className="board-update-form"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
-                const fd = new FormData(e.currentTarget as HTMLFormElement);
-                const message = String(fd.get("message") || "").trim();
-                if (!message) return;
+                const message = updateMessage.trim();
+                if (!message) {
+                  setUpdateError("Vul eerst een update in.");
+                  return;
+                }
                 postUpdateMutation.mutate({ cardId: cardQuery.data!.card.id, message });
-                (e.currentTarget as HTMLFormElement).reset();
               }}
             >
-              <textarea name="message" placeholder="Nieuwe update" />
+              <label className="vergaderborden-field">
+                <span>Nieuwe update</span>
+                <textarea
+                  name="message"
+                  placeholder="Beschrijf kort de voortgang"
+                  value={updateMessage}
+                  onChange={(evt) => {
+                    setUpdateMessage(evt.target.value);
+                    if (updateError) setUpdateError(null);
+                  }}
+                />
+              </label>
+              {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
               <button type="submit">Update plaatsen</button>
             </form>
+            <section className="board-updates-section" aria-live="polite">
+              <h3>Updates</h3>
+              {[...cardQuery.data.updates]
+                .sort((a, b) => {
+                  const aTs = new Date(a.created_at || 0).getTime();
+                  const bTs = new Date(b.created_at || 0).getTime();
+                  return bTs - aTs;
+                })
+                .map((u) => {
+                  const hasDate = Boolean(u.created_at);
+                  const dateLabel = hasDate
+                    ? new Date(u.created_at).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
+                    : "Datum onbekend";
+                  const authorLabel = u.author_username?.trim() || "Onbekende auteur";
+                  return (
+                    <article key={u.id} className="board-update-item">
+                      <p className="board-update-message">{u.message?.trim() || "Update zonder tekst"}</p>
+                      <small className="board-update-meta">{dateLabel} · {authorLabel}</small>
+                    </article>
+                  );
+                })}
+              {cardQuery.data.updates.length === 0 && <p className="board-updates-empty">Er zijn nog geen updates geplaatst.</p>}
+            </section>
             {cardQuery.data.card.column === "doing" && (
               <div>
                 <button className="record-button" onClick={startOrStopRecording}>{recorder ? "Stop opname" : "Start opname"}</button>
                 <p>Timer: {recordingSeconds}s</p>
               </div>
             )}
-            <h3>Updates</h3>
-            {cardQuery.data.updates.map((u) => (
-              <p key={u.id}>
-                <strong>{u.author_username}</strong>: {u.message}
-              </p>
-            ))}
             <h3>Opnames</h3>
             {cardQuery.data.recordings.map((r) => (
               <div key={r.id}>
@@ -241,31 +283,50 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
 }
 
 function CreateCardInline({ users, onCreate }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => void }) {
+  const [titleError, setTitleError] = useState<string | null>(null);
+
   return (
     <form
       className="vergaderborden-card-add-form"
+      noValidate
       onSubmit={(e) => {
         e.preventDefault();
         const fd = new FormData(e.currentTarget);
         const title = String(fd.get("title") || "").trim();
         const description = String(fd.get("description") || "").trim();
         const assignment_user_ids = fd.getAll("assignment_user_ids").map(String);
-        if (!title) return;
+        if (!title) {
+          setTitleError("Titel is verplicht.");
+          return;
+        }
         onCreate({ title, description, assignment_user_ids });
         (e.currentTarget as HTMLFormElement).reset();
+        setTitleError(null);
       }}
     >
-      <div className="vergaderborden-card-add-row">
-        <input name="title" placeholder="Titel kaart" required />
-        <button type="submit">Kaart toevoegen</button>
-      </div>
-      <div className="vergaderborden-card-add-row vergaderborden-card-add-row-secondary">
-        <input name="description" placeholder="Beschrijving" />
-        <select name="assignment_user_ids" multiple>
+      <div className="vergaderborden-card-add-grid">
+        <label className="vergaderborden-field vergaderborden-field-full">
+          <span>Titel</span>
+          <input name="title" placeholder="Titel kaart" required onChange={() => {
+            if (titleError) setTitleError(null);
+          }} />
+        </label>
+        {titleError && <p className="error vergaderborden-inline-error vergaderborden-field-full">{titleError}</p>}
+        <label className="vergaderborden-field vergaderborden-field-full">
+          <span>Beschrijving</span>
+          <input name="description" placeholder="Korte toelichting (optioneel)" />
+        </label>
+        <label className="vergaderborden-field vergaderborden-field-full">
+          <span>Teamleden</span>
+          <select name="assignment_user_ids" multiple>
           {users.map((u) => (
             <option key={u.id} value={u.id}>{u.username}</option>
           ))}
-        </select>
+          </select>
+        </label>
+      </div>
+      <div className="vergaderborden-card-add-actions">
+        <button type="submit">Kaart toevoegen</button>
       </div>
     </form>
   );

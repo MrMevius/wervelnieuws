@@ -338,6 +338,16 @@ def _default_about() -> AboutResponse:
                     "Spacing, typografie en responsive gedrag zijn aangescherpt voor mobiel, tablet en desktop zonder wijziging van functionaliteit.",
                 ],
             },
+            {
+                "iteration": "31",
+                "date": "2026-05-26",
+                "title": "Vergaderborden: kaart toevoegen en update-flow duidelijker gemaakt",
+                "highlights": [
+                    "Het compacte kaartformulier in alle kolommen is nu strakker uitgelijnd met verplichte titel en directe inline foutmelding.",
+                    "Het kaartdetailvenster heeft een kleinere sluitknop rechtsboven en sluit nu ook direct bij een klik buiten het venster.",
+                    "Updates worden nu onder het formulier getoond (nieuwste bovenaan) met datum/tijd en auteur, plus nette fallback en lege statusmelding.",
+                ],
+            },
         ],
     )
 

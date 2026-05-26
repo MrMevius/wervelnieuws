@@ -565,6 +565,86 @@ describe("App", () => {
     });
   });
 
+  it("shows inline error when adding a card without title", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByText("Wekelijkse afstemming"));
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: "Kaart toevoegen" }).length).toBeGreaterThan(0);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Kaart toevoegen" })[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Titel is verplicht.")).toBeInTheDocument();
+      expect(mockApi.createBoardCard).not.toHaveBeenCalled();
+    });
+  });
+
+  it("shows inline error for empty update and closes detail on outside click", async () => {
+    mockApi.getBoardProject.mockResolvedValueOnce({
+      project: {
+        id: "bp1",
+        name: "Wekelijkse afstemming",
+        description: "Teamplanning en besluiten",
+        invited_user_ids: ["u1"],
+        card_count: 1
+      },
+      cards: [
+        {
+          id: "bc1",
+          project_id: "bp1",
+          title: "Voorbeeldkaart",
+          description: "",
+          column: "todo",
+          position: 0,
+          assignments: [],
+          updates_count: 0,
+          recordings_count: 0
+        }
+      ]
+    });
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByText("Wekelijkse afstemming"));
+    await waitFor(() => {
+      expect(screen.getByText("Voorbeeldkaart")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText("Voorbeeldkaart"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Vul eerst een update in.")).toBeInTheDocument();
+      expect(mockApi.postBoardCardUpdate).not.toHaveBeenCalled();
+    });
+
+    fireEvent.click(screen.getByRole("dialog"));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("does not expose legacy /trello placeholder route", async () => {
     renderApp(["/trello"]);
     await loginIntoApp();

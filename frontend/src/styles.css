@@ -235,11 +235,16 @@ button:disabled {
 
 .vergaderborden-card-add-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   padding: 10px;
   border: 1px dashed var(--line);
   border-radius: 10px;
   background: color-mix(in srgb, var(--surface) 85%, var(--surface-muted) 15%);
+}
+
+.vergaderborden-card-add-grid {
+  display: grid;
+  gap: 8px;
 }
 
 .vergaderborden-card-add-row {
@@ -257,6 +262,20 @@ button:disabled {
 
 .vergaderborden-card-add-row-secondary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vergaderborden-card-add-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.vergaderborden-card-add-actions button {
+  min-height: 40px;
+}
+
+.vergaderborden-inline-error {
+  margin: -2px 0 0;
+  font-size: 0.82rem;
 }
 
 .vergaderborden-create-form {
@@ -357,15 +376,77 @@ button:disabled {
 }
 
 .board-detail-modal {
+  position: relative;
   width: min(760px, 94vw);
   max-height: 88vh;
   overflow: auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
-  padding: 14px;
+  padding: 16px;
   display: grid;
-  gap: 10px;
+  gap: 12px;
+}
+
+.board-detail-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.board-update-form {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface) 55%);
+}
+
+.board-update-form textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.board-updates-section {
+  display: grid;
+  gap: 8px;
+}
+
+.board-updates-section h3 {
+  margin: 0;
+}
+
+.board-update-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 88%, var(--surface-muted) 12%);
+}
+
+.board-update-message,
+.board-update-meta,
+.board-updates-empty {
+  margin: 0;
+}
+
+.board-update-meta {
+  color: var(--text-muted);
+}
+
+.board-updates-empty {
+  color: var(--text-muted);
 }
 
 .record-button {
@@ -396,7 +477,8 @@ button:disabled {
   }
 
   .vergaderborden-form-actions button,
-  .vergaderborden-card-add-row button {
+  .vergaderborden-card-add-row button,
+  .vergaderborden-card-add-actions button {
     width: 100%;
   }
 }
