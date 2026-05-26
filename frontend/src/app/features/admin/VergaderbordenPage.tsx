@@ -10,6 +10,7 @@ import {
   listBoardProjects,
   moveBoardCard,
   postBoardCardUpdate,
+  updateBoardCardTitle,
   uploadBoardRecording
 } from "../../../lib/api/client";
 
@@ -20,6 +21,13 @@ type DragCardMeta = {
   cardId: string;
   sourceColumn: "todo" | "doing" | "done";
   sourcePosition: number;
+};
+
+type TitleEditState = {
+  cardId: string;
+  value: string;
+  original: string;
+  error: string | null;
 };
 
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
@@ -58,6 +66,8 @@ export function VergaderbordenPage() {
   const [dragOverColumn, setDragOverColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
+  const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
+  const skipNextTitleBlurRef = useRef(false);
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
@@ -84,6 +94,15 @@ export function VergaderbordenPage() {
       queryClient.invalidateQueries({ queryKey: ["board-project", projectId] });
     },
     onSettled: () => setSavingCardId(null)
+  });
+  const updateTitleMutation = useMutation({
+    mutationFn: ({ cardId, title }: { cardId: string; title: string }) => updateBoardCardTitle(cardId, { title }),
+    onSuccess: async (_card, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] })
+      ]);
+    }
   });
   const postUpdateMutation = useMutation({
     mutationFn: ({ cardId, message }: { cardId: string; message: string }) => postBoardCardUpdate(cardId, message),
@@ -120,6 +139,10 @@ export function VergaderbordenPage() {
     setActiveCreateColumn(null);
   }, [projectId]);
 
+  useEffect(() => {
+    setTitleEdit(null);
+  }, [selectedCardId]);
+
   const startOrStopRecording = async () => {
     if (!cardQuery.data) return;
     if (recorder) {
@@ -141,6 +164,30 @@ export function VergaderbordenPage() {
     mr.start();
     setRecorder(mr);
     (window as any).__vergaderbordTimer = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+  };
+
+  const startTitleEdit = (cardId: string, title: string) => {
+    setTitleEdit({ cardId, value: title, original: title, error: null });
+  };
+
+  const saveTitleEdit = async () => {
+    if (!titleEdit || updateTitleMutation.isPending) return;
+    const nextTitle = titleEdit.value.trim();
+    if (!nextTitle) {
+      setTitleEdit((current) => (current ? { ...current, error: "Vul een kaarttitel in." } : current));
+      return;
+    }
+    if (nextTitle === titleEdit.original.trim()) {
+      setTitleEdit(null);
+      return;
+    }
+    try {
+      await updateTitleMutation.mutateAsync({ cardId: titleEdit.cardId, title: nextTitle });
+      setTitleEdit(null);
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : "Kaarttitel opslaan is mislukt.";
+      setTitleEdit((current) => (current ? { ...current, error: message } : current));
+    }
   };
 
   return (
@@ -266,7 +313,48 @@ export function VergaderbordenPage() {
           <div className="board-detail-modal">
             <button type="button" className="board-detail-close" onClick={() => setSelectedCardId(null)} aria-label="Kaartdetail sluiten">×</button>
             <h2>Kaartdetail</h2>
-            <p>{cardQuery.data.card.title}</p>
+            {titleEdit?.cardId === cardQuery.data.card.id ? (
+              <div className="vergaderborden-card-title-edit">
+                <label className="sr-only" htmlFor="board-detail-title-input">Kaarttitel</label>
+                <input
+                  id="board-detail-title-input"
+                  className="vergaderborden-card-title-input"
+                  value={titleEdit.value}
+                  autoFocus
+                  aria-label="Kaarttitel"
+                  onChange={(e) => setTitleEdit((current) => (current ? { ...current, value: e.target.value, error: null } : current))}
+                  onBlur={() => {
+                    if (skipNextTitleBlurRef.current) {
+                      skipNextTitleBlurRef.current = false;
+                      return;
+                    }
+                    void saveTitleEdit();
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void saveTitleEdit();
+                    }
+                    if (e.key === "Escape") {
+                      e.preventDefault();
+                      skipNextTitleBlurRef.current = true;
+                      setTitleEdit(null);
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+                {titleEdit.error && <p className="error vergaderborden-inline-error" role="alert">{titleEdit.error}</p>}
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="vergaderborden-card-title-button"
+                aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
+                onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
+              >
+                {cardQuery.data.card.title}
+              </button>
+            )}
             <form
               className="board-update-form"
               onSubmit={(e: FormEvent) => {

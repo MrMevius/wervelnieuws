@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import BoardColumn
 
@@ -30,6 +30,21 @@ class BoardCardCreateRequest(BaseModel):
 class BoardCardMoveRequest(BaseModel):
     column: BoardColumn
     position: int = Field(ge=0)
+
+
+class BoardCardTitleUpdateRequest(BaseModel):
+    title: str = Field(max_length=255)
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def normalize_title(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Vul een kaarttitel in.")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Vul een kaarttitel in.")
+        return normalized
 
 
 class CardUpdateCreateRequest(BaseModel):

@@ -248,6 +248,28 @@ button:disabled {
   background: var(--surface);
   padding: 10px;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent 40%);
+  cursor: pointer;
+}
+
+.vergaderborden-card-title-button {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.vergaderborden-card-title-edit {
+  display: grid;
+  gap: 4px;
+}
+
+.vergaderborden-card-title-input {
+  width: 100%;
+  padding: 7px 9px;
 }
 
 .vergaderborden-column article p,

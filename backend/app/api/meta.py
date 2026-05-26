@@ -378,6 +378,26 @@ def _default_about() -> AboutResponse:
                     "Bij een same-column drop/no-op wordt geen extra systeemupdate aangemaakt, zodat de timeline schoon blijft.",
                 ],
             },
+            {
+                "iteration": "35",
+                "date": "2026-05-26",
+                "title": "Vergaderborden: kaarttitels direct aanpassen",
+                "highlights": [
+                    "Vergaderbord-kaarten tonen nu een handje bij hover, zodat direct duidelijk is dat je ze kunt openen.",
+                    "Kaarttitels kun je nu rechtstreeks op het bord aanpassen zonder eerst het kaartdetail te openen.",
+                    "Een aangepaste titel wordt direct opgeslagen en lege titels worden met een duidelijke melding tegengehouden.",
+                ],
+            },
+            {
+                "iteration": "36",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: kaarttitels bewerken vanuit kaartdetail",
+                "highlights": [
+                    "Kaarttitels pas je nu alleen aan nadat je een kaart hebt geopend, zodat het bordoverzicht rustig blijft voor scannen en slepen.",
+                    "In het kaartdetail kun je de titel nog steeds direct inline wijzigen met dezelfde duidelijke validatie.",
+                    "Kaarten in het overzicht blijven klikbaar met een handcursor en openen gewoon de detailweergave.",
+                ],
+            },
         ],
     )
 

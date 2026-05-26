@@ -53,6 +53,13 @@ class BoardRepository:
     def get_card(self, card_id: str) -> BoardCard | None:
         return self.db.scalar(select(BoardCard).where(BoardCard.id == card_id).options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user)))
 
+    def update_card_title(self, card: BoardCard, title: str) -> BoardCard:
+        card.title = title.strip()
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
     def replace_assignments(self, card: BoardCard, user_ids: list[str]) -> None:
         self.db.query(CardAssignment).filter(CardAssignment.card_id == card.id).delete()
         for user_id in dict.fromkeys(user_ids):

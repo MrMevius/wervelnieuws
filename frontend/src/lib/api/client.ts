@@ -560,6 +560,10 @@ export function moveBoardCard(cardId: string, payload: { column: "todo" | "doing
   return request<BoardCard>(`/boards/cards/${cardId}/move`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
+export function updateBoardCardTitle(cardId: string, payload: { title: string }) {
+  return request<BoardCard>(`/boards/cards/${cardId}/title`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
 export function getBoardCard(cardId: string) {
   return request<BoardCardDetail>(`/boards/cards/${cardId}`);
 }

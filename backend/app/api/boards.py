@@ -12,6 +12,7 @@ from app.schemas.boards import (
     BoardCardCreateRequest,
     BoardCardMoveRequest,
     BoardCardResponse,
+    BoardCardTitleUpdateRequest,
     BoardProjectCreateRequest,
     BoardProjectSummaryResponse,
     CardAssignmentResponse,
@@ -133,6 +134,22 @@ def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depen
     service.touch_activity(service.ensure_project_access(repo.get_project(moved.project_id), current))
     AuditService(db).log("board.card.moved", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, column=payload.column.value, position=payload.position))
     return _card_response(repo, moved)
+
+
+@router.patch("/cards/{card_id}/title", response_model=BoardCardResponse)
+def update_card_title(card_id: str, payload: BoardCardTitleUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    previous_title = card.title
+    updated = repo.update_card_title(card, payload.title)
+    service.touch_activity(service.ensure_project_access(repo.get_project(updated.project_id), current))
+    AuditService(db).log(
+        "board.card.title_updated",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=updated.id, previous_title=previous_title, title=updated.title),
+    )
+    return _card_response(repo, updated)
 
 
 @router.get("/cards/{card_id}", response_model=CardDetailResponse)
