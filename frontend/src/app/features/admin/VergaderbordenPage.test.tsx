@@ -148,6 +148,7 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.queryByRole("button", { name: "Kaarttitel bewerken: Oude titel" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" }));
     const input = await screen.findByLabelText("Kaarttitel");
     fireEvent.change(input, { target: { value: "Nieuwe titel" } });
@@ -179,6 +180,7 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.queryByRole("button", { name: "Kaarttitel bewerken: Todo titel" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Kaarttitel bewerken: Doing titel" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByTestId("board-card-c3"));
+    expect(screen.queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Done titel" }));
     const input = await screen.findByLabelText("Kaarttitel");
     fireEvent.change(input, { target: { value: "Done titel aangepast" } });

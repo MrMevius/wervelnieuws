@@ -312,48 +312,56 @@ export function VergaderbordenPage() {
         }}>
           <div className="board-detail-modal">
             <button type="button" className="board-detail-close" onClick={() => setSelectedCardId(null)} aria-label="Kaartdetail sluiten">×</button>
-            <h2>Kaartdetail</h2>
             {titleEdit?.cardId === cardQuery.data.card.id ? (
-              <div className="vergaderborden-card-title-edit">
-                <label className="sr-only" htmlFor="board-detail-title-input">Kaarttitel</label>
-                <input
-                  id="board-detail-title-input"
-                  className="vergaderborden-card-title-input"
-                  value={titleEdit.value}
-                  autoFocus
-                  aria-label="Kaarttitel"
-                  onChange={(e) => setTitleEdit((current) => (current ? { ...current, value: e.target.value, error: null } : current))}
-                  onBlur={() => {
-                    if (skipNextTitleBlurRef.current) {
-                      skipNextTitleBlurRef.current = false;
-                      return;
-                    }
-                    void saveTitleEdit();
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
+              <div className="board-detail-title-edit">
+                <label className="vergaderborden-field">
+                  <span>Kaarttitel</span>
+                  <input
+                    autoFocus
+                    name="kaarttitel"
+                    value={titleEdit.value}
+                    onChange={(evt) => setTitleEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
+                    onBlur={() => {
+                      if (skipNextTitleBlurRef.current) {
+                        skipNextTitleBlurRef.current = false;
+                        return;
+                      }
                       void saveTitleEdit();
-                    }
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      skipNextTitleBlurRef.current = true;
-                      setTitleEdit(null);
-                      e.currentTarget.blur();
-                    }
-                  }}
-                />
-                {titleEdit.error && <p className="error vergaderborden-inline-error" role="alert">{titleEdit.error}</p>}
+                    }}
+                    onKeyDown={(evt) => {
+                      if (evt.key === "Enter") {
+                        evt.preventDefault();
+                        skipNextTitleBlurRef.current = true;
+                        void saveTitleEdit();
+                      }
+                      if (evt.key === "Escape") {
+                        evt.preventDefault();
+                        skipNextTitleBlurRef.current = true;
+                        setTitleEdit(null);
+                      }
+                    }}
+                    disabled={updateTitleMutation.isPending}
+                  />
+                </label>
+                {titleEdit.error && <p className="error vergaderborden-inline-error">{titleEdit.error}</p>}
               </div>
             ) : (
-              <button
-                type="button"
-                className="vergaderborden-card-title-button"
-                aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
-                onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
-              >
-                {cardQuery.data.card.title}
-              </button>
+              <div className="board-detail-title-row">
+                <h2
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
+                  onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
+                  onKeyDown={(evt) => {
+                    if (evt.key === "Enter" || evt.key === " ") {
+                      evt.preventDefault();
+                      startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title);
+                    }
+                  }}
+                >
+                  {cardQuery.data.card.title}
+                </h2>
+              </div>
             )}
             <form
               className="board-update-form"
