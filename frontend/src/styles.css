@@ -203,6 +203,17 @@ button:disabled {
   align-items: start;
 }
 
+.vergaderborden-move-error,
+.vergaderborden-saving-indicator {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.vergaderborden-saving-indicator {
+  font-size: 0.86rem;
+  color: var(--text-muted);
+}
+
 .vergaderborden-column {
   display: grid;
   gap: 10px;
@@ -211,6 +222,17 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.vergaderborden-column.is-drag-over {
+  border-color: color-mix(in srgb, var(--brand) 45%, var(--line) 55%);
+  background: color-mix(in srgb, var(--brand-soft) 38%, var(--surface-muted) 62%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-soft) 45%, transparent 55%);
+}
+
+.vergaderborden-column.is-saving {
+  opacity: 0.9;
 }
 
 .vergaderborden-column h3 {
@@ -242,6 +264,22 @@ button:disabled {
   background: color-mix(in srgb, var(--surface) 85%, var(--surface-muted) 15%);
 }
 
+.vergaderborden-card-add-toggle {
+  min-height: 38px;
+  width: 100%;
+  text-align: left;
+  background: color-mix(in srgb, var(--brand-soft) 58%, var(--surface) 42%);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.vergaderborden-card-add-cancel {
+  background: var(--surface-muted);
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
 .vergaderborden-card-add-grid {
   display: grid;
   gap: 8px;
@@ -266,6 +304,7 @@ button:disabled {
 
 .vergaderborden-card-add-actions {
   display: flex;
+  gap: 8px;
   justify-content: flex-end;
 }
 
@@ -323,6 +362,39 @@ button:disabled {
 .vergaderborden-field textarea,
 .vergaderborden-field select {
   min-height: 40px;
+}
+
+.vergaderborden-multiselect-trigger {
+  min-height: 40px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid #b7c7bc;
+  text-align: left;
+}
+
+.vergaderborden-multiselect-menu {
+  margin-top: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.vergaderborden-multiselect-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.vergaderborden-multiselect-option input {
+  width: 16px;
+  height: 16px;
 }
 
 .vergaderborden-field textarea {

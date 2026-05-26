@@ -1,10 +1,16 @@
 from collections.abc import Generator
+import os
 from pathlib import Path
+import tempfile
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+
+os.environ.setdefault(
+    "STORAGE_ROOT", str(Path(tempfile.gettempdir()) / "wervelnieuws-test-storage")
+)
 
 from app.api.deps import get_db
 from app.core.db import Base

@@ -95,3 +95,123 @@ def test_upload_recording_only_allowed_for_doing_column(client):
     )
     assert record.status_code == 400
     assert "Doing" in record.json()["detail"]
+
+
+def test_move_card_rejects_negative_position(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Move validatie", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    move = client.patch(
+        f"/api/boards/cards/{card_id}/move",
+        headers=headers,
+        json={"column": "doing", "position": -1},
+    )
+    assert move.status_code == 422
+
+
+def test_move_card_returns_404_for_unknown_card(client):
+    headers = _login(client)
+    move = client.patch(
+        "/api/boards/cards/00000000-0000-0000-0000-000000000000/move",
+        headers=headers,
+        json={"column": "doing", "position": 0},
+    )
+    assert move.status_code == 404
+
+
+def test_move_card_creates_system_update_for_column_change(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Move updates", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kolommove", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    move = client.patch(
+        f"/api/boards/cards/{card_id}/move",
+        headers=headers,
+        json={"column": "doing", "position": 0},
+    )
+    assert move.status_code == 200
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail.status_code == 200
+    updates = detail.json()["updates"]
+    assert len(updates) == 1
+    assert "Kaart verplaatst van Te doen naar Bezig" in updates[0]["message"]
+    assert "door admin op" in updates[0]["message"]
+
+
+def test_move_card_same_column_creates_no_system_update(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Noop updates", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Geen update", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    move = client.patch(
+        f"/api/boards/cards/{card_id}/move",
+        headers=headers,
+        json={"column": "todo", "position": 0},
+    )
+    assert move.status_code == 200
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["updates"] == []
+
+
+def test_move_card_creates_system_update_for_doing_to_done(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Move updates 2", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kolommove 2", "description": "", "column": "doing", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    move = client.patch(
+        f"/api/boards/cards/{card_id}/move",
+        headers=headers,
+        json={"column": "done", "position": 0},
+    )
+    assert move.status_code == 200
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail.status_code == 200
+    updates = detail.json()["updates"]
+    assert len(updates) == 1
+    assert "Kaart verplaatst van Bezig naar Klaar" in updates[0]["message"]
+    assert "door admin op" in updates[0]["message"]

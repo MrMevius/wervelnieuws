@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -23,6 +25,24 @@ from app.services.audit_service import AuditService
 from app.services.board_service import BoardService
 
 router = APIRouter(prefix="/boards", tags=["boards"])
+
+_COLUMN_LABELS_NL = {
+    "todo": "Te doen",
+    "doing": "Bezig",
+    "done": "Klaar",
+}
+
+
+def _column_label_nl(column_value: str) -> str:
+    return _COLUMN_LABELS_NL.get(column_value, column_value)
+
+
+def _build_move_update_message(old_column: str, new_column: str, actor_username: str, moved_at: datetime) -> str:
+    moved_label = moved_at.astimezone(UTC).strftime("%d-%m-%Y %H:%M")
+    return (
+        f"Kaart verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)} "
+        f"door {actor_username} op {moved_label}."
+    )
 
 
 def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
@@ -102,7 +122,14 @@ def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depen
     repo = BoardRepository(db)
     service = BoardService(repo)
     card = service.ensure_card_access(repo.get_card(card_id), current)
+    old_column = card.column.value
     moved = repo.move_card(card, payload.column, payload.position)
+    if old_column != moved.column.value:
+        repo.create_update(
+            moved.id,
+            current.id,
+            _build_move_update_message(old_column, moved.column.value, current.username, datetime.now(UTC)),
+        )
     service.touch_activity(service.ensure_project_access(repo.get_project(moved.project_id), current))
     AuditService(db).log("board.card.moved", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, column=payload.column.value, position=payload.position))
     return _card_response(repo, moved)

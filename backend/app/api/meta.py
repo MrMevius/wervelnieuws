@@ -348,6 +348,36 @@ def _default_about() -> AboutResponse:
                     "Updates worden nu onder het formulier getoond (nieuwste bovenaan) met datum/tijd en auteur, plus nette fallback en lege statusmelding.",
                 ],
             },
+            {
+                "iteration": "32",
+                "date": "2026-05-26",
+                "title": "Vergaderborden: rustiger kaart-aanmaak en teamselectie verbeterd",
+                "highlights": [
+                    "Per bordkolom staat het kaartformulier nu standaard verborgen achter een duidelijke '+ Kaart toevoegen'-knop, waardoor het bord rustiger leest.",
+                    "Er kan nu maar één kaartformulier tegelijk openstaan en na succesvol opslaan sluit het formulier automatisch.",
+                    "Teamleden kies je nu via een overzichtelijke dropdown met multi-select, terwijl de koppeling op de achtergrond hetzelfde blijft werken.",
+                ],
+            },
+            {
+                "iteration": "33",
+                "date": "2026-05-26",
+                "title": "Vergaderborden: kaartjes verslepen nu duidelijker en betrouwbaarder",
+                "highlights": [
+                    "Kaartjes tussen Te doen, Bezig en Klaar opslaan nu direct bij loslaten, zodat de nieuwe status meteen wordt bewaard.",
+                    "Tijdens slepen en opslaan zie je nu duidelijkere visuele feedback per kolom, inclusief melding als een kaart wordt opgeslagen.",
+                    "Bij een fout krijg je een heldere Nederlandstalige melding en het bord wordt automatisch opnieuw opgehaald voor consistente weergave.",
+                ],
+            },
+            {
+                "iteration": "34",
+                "date": "2026-05-26",
+                "title": "Vergaderborden: kolomverplaatsingen nu zichtbaar in kaartupdates",
+                "highlights": [
+                    "Bij het verplaatsen van een kaart tussen Te doen, Bezig en Klaar wordt nu automatisch een zichtbare kaartupdate toegevoegd.",
+                    "De update toont van/naar-kolom in het Nederlands, inclusief gebruiker en tijdstip van de verplaatsing.",
+                    "Bij een same-column drop/no-op wordt geen extra systeemupdate aangemaakt, zodat de timeline schoon blijft.",
+                ],
+            },
         ],
     )
 

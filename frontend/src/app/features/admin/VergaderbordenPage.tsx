@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdminUser,
   createBoardCard,
@@ -16,15 +16,48 @@ import {
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
 
+type DragCardMeta = {
+  cardId: string;
+  sourceColumn: "todo" | "doing" | "done";
+  sourcePosition: number;
+};
+
+const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
+
+function parseDragCardMeta(raw: string): DragCardMeta | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as DragCardMeta;
+    if (!parsed.cardId || !parsed.sourceColumn || typeof parsed.sourcePosition !== "number") {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function toDutchMoveError(err: unknown): string {
+  if (err instanceof Error) {
+    const msg = err.message?.trim();
+    if (msg) return `Kaart verplaatsen is mislukt: ${msg}`;
+  }
+  return MOVE_ERROR_FALLBACK;
+}
+
 export function VergaderbordenPage() {
   const queryClient = useQueryClient();
   const [projectId, setProjectId] = useState<string | null>(null);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [activeCreateColumn, setActiveCreateColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
+  const [dragOverColumn, setDragOverColumn] = useState<"todo" | "doing" | "done" | null>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
@@ -45,7 +78,12 @@ export function VergaderbordenPage() {
   });
   const moveCardMutation = useMutation({
     mutationFn: ({ cardId, column, position }: { cardId: string; column: "todo" | "doing" | "done"; position: number }) => moveBoardCard(cardId, { column, position }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", projectId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", projectId] }),
+    onError: (error) => {
+      setMoveError(toDutchMoveError(error));
+      queryClient.invalidateQueries({ queryKey: ["board-project", projectId] });
+    },
+    onSettled: () => setSavingCardId(null)
   });
   const postUpdateMutation = useMutation({
     mutationFn: ({ cardId, message }: { cardId: string; message: string }) => postBoardCardUpdate(cardId, message),
@@ -77,6 +115,10 @@ export function VergaderbordenPage() {
       done: cards.filter((c) => c.column === "done").sort((a, b) => a.position - b.position)
     };
   }, [boardQuery.data]);
+
+  useEffect(() => {
+    setActiveCreateColumn(null);
+  }, [projectId]);
 
   const startOrStopRecording = async () => {
     if (!cardQuery.data) return;
@@ -129,24 +171,79 @@ export function VergaderbordenPage() {
 
       {projectId && (
         <div className="board-grid">
+          {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
+          {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
           {KOLOMMEN.map((kolom) => (
             <div
-              className="vergaderborden-column"
+              className={`vergaderborden-column${dragOverColumn === kolom ? " is-drag-over" : ""}${savingCardId ? " is-saving" : ""}`}
               key={kolom}
-              onDragOver={(e) => e.preventDefault()}
+              data-testid={`board-column-${kolom}`}
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (dragOverColumn !== kolom) setDragOverColumn(kolom);
+              }}
+              onDragLeave={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                setDragOverColumn((current) => (current === kolom ? null : current));
+              }}
               onDrop={(e) => {
-                const cardId = e.dataTransfer.getData("text/plain");
-                const position = (cardsByColumn[kolom] ?? []).length;
-                moveCardMutation.mutate({ cardId, column: kolom, position });
+                e.preventDefault();
+                setDragOverColumn(null);
+                const cardMeta = parseDragCardMeta(e.dataTransfer.getData("application/json"));
+                if (!cardMeta) return;
+
+                const isSameColumn = cardMeta.sourceColumn === kolom;
+                if (isSameColumn) {
+                  return;
+                }
+
+                const targetCards = cardsByColumn[kolom] ?? [];
+                const targetPosition = targetCards.length;
+
+                setMoveError(null);
+                setSavingCardId(cardMeta.cardId);
+                moveCardMutation.mutate({ cardId: cardMeta.cardId, column: kolom, position: targetPosition });
               }}
             >
               <h3>{KOLOM_TITEL[kolom]}</h3>
-              <CreateCardInline
-                users={usersQuery.data ?? []}
-                onCreate={(payload) => projectId && createCardMutation.mutate({ projectId, column: kolom, ...payload })}
-              />
+              {activeCreateColumn !== kolom ? (
+                <button
+                  type="button"
+                  className="vergaderborden-card-add-toggle"
+                  onClick={() => setActiveCreateColumn(kolom)}
+                >
+                  + Kaart toevoegen
+                </button>
+              ) : (
+                <CreateCardInline
+                  users={usersQuery.data ?? []}
+                  onCreate={async (payload) => {
+                    if (!projectId) return false;
+                    try {
+                      await createCardMutation.mutateAsync({ projectId, column: kolom, ...payload });
+                      setActiveCreateColumn(null);
+                      return true;
+                    } catch {
+                      return false;
+                    }
+                  }}
+                  onCancel={() => setActiveCreateColumn(null)}
+                />
+              )}
               {cardsByColumn[kolom].map((card) => (
-                <article key={card.id} draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", card.id)} onClick={() => setSelectedCardId(card.id)}>
+                <article
+                  key={card.id}
+                  data-testid={`board-card-${card.id}`}
+                  draggable
+                  onDragStart={(e) => {
+                    setMoveError(null);
+                    const payload: DragCardMeta = { cardId: card.id, sourceColumn: card.column, sourcePosition: card.position };
+                    e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                    e.dataTransfer.setData("text/plain", card.id);
+                  }}
+                  onDragEnd={() => setDragOverColumn(null)}
+                  onClick={() => setSelectedCardId(card.id)}
+                >
                   <strong>{card.title}</strong>
                   <p>{card.description || "Geen beschrijving"}</p>
                   <div className="chip-row">
@@ -282,26 +379,54 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
   );
 }
 
-function CreateCardInline({ users, onCreate }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => void }) {
+function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => Promise<boolean>; onCancel: () => void }) {
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onDocClick = (evt: MouseEvent) => {
+      if (!containerRef.current) return;
+      if (!containerRef.current.contains(evt.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const toggleUser = (userId: string) => {
+    setSelectedUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  };
+
+  const selectedUserLabel = selectedUserIds.length
+    ? `${selectedUserIds.length} teamlid${selectedUserIds.length === 1 ? "" : "en"} geselecteerd`
+    : "Selecteer teamleden";
 
   return (
     <form
       className="vergaderborden-card-add-form"
       noValidate
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
+        const form = e.currentTarget as HTMLFormElement;
         const fd = new FormData(e.currentTarget);
         const title = String(fd.get("title") || "").trim();
         const description = String(fd.get("description") || "").trim();
-        const assignment_user_ids = fd.getAll("assignment_user_ids").map(String);
+        const assignment_user_ids = selectedUserIds;
         if (!title) {
           setTitleError("Titel is verplicht.");
           return;
         }
-        onCreate({ title, description, assignment_user_ids });
-        (e.currentTarget as HTMLFormElement).reset();
-        setTitleError(null);
+        const success = await onCreate({ title, description, assignment_user_ids });
+        if (success) {
+          form.reset();
+          setSelectedUserIds([]);
+          setDropdownOpen(false);
+          setTitleError(null);
+        }
       }}
     >
       <div className="vergaderborden-card-add-grid">
@@ -316,16 +441,42 @@ function CreateCardInline({ users, onCreate }: { users: AdminUser[]; onCreate: (
           <span>Beschrijving</span>
           <input name="description" placeholder="Korte toelichting (optioneel)" />
         </label>
-        <label className="vergaderborden-field vergaderborden-field-full">
+        <div className="vergaderborden-field vergaderborden-field-full" ref={containerRef}>
           <span>Teamleden</span>
-          <select name="assignment_user_ids" multiple>
-          {users.map((u) => (
-            <option key={u.id} value={u.id}>{u.username}</option>
+          <button
+            type="button"
+            className="vergaderborden-multiselect-trigger"
+            onClick={() => setDropdownOpen((open) => !open)}
+            aria-expanded={dropdownOpen}
+            aria-haspopup="listbox"
+          >
+            {selectedUserLabel}
+          </button>
+          {selectedUserIds.map((id) => (
+            <input key={id} type="hidden" name="assignment_user_ids" value={id} />
           ))}
-          </select>
-        </label>
+          {dropdownOpen && (
+            <div className="vergaderborden-multiselect-menu" role="listbox" aria-label="Teamleden kiezen" aria-multiselectable="true">
+              {users.map((u) => {
+                const checked = selectedUserIds.includes(u.id);
+                const label = u.full_name?.trim() || u.username;
+                return (
+                  <label key={u.id} className="vergaderborden-multiselect-option">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleUser(u.id)}
+                    />
+                    <span>{label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
       <div className="vergaderborden-card-add-actions">
+        <button type="button" className="vergaderborden-card-add-cancel" onClick={onCancel}>Sluiten</button>
         <button type="submit">Kaart toevoegen</button>
       </div>
     </form>
