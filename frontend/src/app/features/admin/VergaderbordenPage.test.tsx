@@ -21,6 +21,25 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../../../lib/api/client", () => api);
 
+let mediaRecorderInstances: FakeMediaRecorder[] = [];
+
+class FakeMediaRecorder {
+  public ondataavailable: ((evt: { data: Blob }) => void) | null = null;
+  public onstop: (() => void) | null = null;
+  constructor(_stream: MediaStream, _options?: MediaRecorderOptions) {
+    mediaRecorderInstances.push(this);
+  }
+  start() {
+    // no-op
+  }
+  requestData() {
+    this.ondataavailable?.({ data: new Blob(["audio"], { type: "audio/webm" }) });
+  }
+  stop() {
+    this.onstop?.();
+  }
+}
+
 function renderPage(initialEntry = "/vergaderborden?project=p1", canManageProjects = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
@@ -75,6 +94,18 @@ describe("Vergaderborden drag/drop", () => {
     api.moveBoardCard.mockResolvedValue({ status: "ok" });
     api.updateBoardCardTitle.mockResolvedValue({ id: "c1", title: "Nieuwe titel" });
     api.updateBoardCardDescription.mockResolvedValue({ id: "c1", description: "Nieuwe beschrijving" });
+    mediaRecorderInstances = [];
+    const getUserMedia = vi.fn().mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }]
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia },
+      configurable: true
+    });
+    Object.defineProperty(window, "MediaRecorder", {
+      value: FakeMediaRecorder,
+      configurable: true
+    });
   });
 
   it("slaat direct op bij verplaatsen naar andere kolom", async () => {
@@ -419,5 +450,130 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     expect(await screen.findByText("Verplaatst van Te doen naar Bezig door Admin Gebruiker.")).toBeInTheDocument();
     expect(await screen.findByText(/· Admin Gebruiker/)).toBeInTheDocument();
+  });
+
+  it("toont recordknoppen op alle kaarten en opent detail niet bij recordklik", async () => {
+    const todoCardDetail = { id: "c1", project_id: "p1", title: "Todo kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Todo kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Doing kaart", description: "", column: "doing", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c3", project_id: "p1", title: "Done kaart", description: "", column: "done", position: 0, assignments: [], updates_count: 0, recordings_count: 0 }
+      ]
+    });
+    api.getBoardCard.mockResolvedValue({ card: todoCardDetail, updates: [], recordings: [] });
+
+    renderPage();
+
+    const todoCard = await screen.findByTestId("board-card-c1");
+    await screen.findByTestId("board-card-c2");
+    await screen.findByTestId("board-card-c3");
+    expect(screen.getAllByRole("button", { name: /Start opname voor/ })).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Start opname voor Todo kaart" })).toHaveAttribute("title", "Start opname voor Todo kaart");
+    expect(screen.getByRole("button", { name: "Start opname voor Todo kaart" })).toHaveClass("record-icon-button");
+    expect(screen.queryByText("Start opname")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start opname voor Todo kaart" }));
+    expect(await screen.findByRole("button", { name: "Stop opname voor Todo kaart" })).toHaveAttribute("title", "Stop opname voor Todo kaart");
+    expect(screen.getByRole("button", { name: "Stop opname voor Todo kaart" })).toHaveClass("is-active");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(todoCard);
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("start en stopt opname vanaf kaart, toont timer op actieve kaart en uploadt", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Kaart 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Kaart 2", description: "", column: "done", position: 0, assignments: [], updates_count: 0, recordings_count: 0 }
+      ]
+    });
+
+    renderPage();
+
+    await screen.findByTestId("board-card-c1");
+    const startOne = screen.getByRole("button", { name: "Start opname voor Kaart 1" });
+    fireEvent.click(startOne);
+    await new Promise((resolve) => setTimeout(resolve, 5200));
+    await waitFor(() => {
+      expect(screen.getByText(/Timer: [1-9]\ds|Timer: [1-9]s/)).toBeInTheDocument();
+    }, { timeout: 2500 });
+    expect(screen.queryByRole("button", { name: "Stop opname voor Kaart 2" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop opname voor Kaart 1" }));
+    await waitFor(() => {
+      expect(api.uploadBoardRecording).toHaveBeenCalledWith("c1", expect.any(Blob), expect.any(Number));
+    });
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledTimes(2);
+    });
+  }, 12000);
+
+  it("blokkeert kaartopnames korter dan 5 seconden zonder upload en met NL-melding", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [{ id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 }]
+    });
+
+    renderPage();
+
+    await screen.findByTestId("board-card-c1");
+    fireEvent.click(screen.getByRole("button", { name: "Start opname voor Kaart" }));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    fireEvent.click(screen.getByRole("button", { name: "Stop opname voor Kaart" }));
+
+    expect(api.uploadBoardRecording).not.toHaveBeenCalled();
+    expect(await screen.findByText("Opname is te kort. Neem minimaal 5 seconden op.")).toBeInTheDocument();
+    expect(screen.queryByText(/Timer:/)).not.toBeInTheDocument();
+  });
+
+  it("staat maar één actieve opname tegelijk toe en toont Nederlandse foutmelding", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Kaart 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Kaart 2", description: "", column: "done", position: 0, assignments: [], updates_count: 0, recordings_count: 0 }
+      ]
+    });
+
+    renderPage();
+
+    await screen.findByTestId("board-card-c1");
+    fireEvent.click(screen.getByRole("button", { name: "Start opname voor Kaart 1" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Start opname voor Kaart 2" })).toBeDisabled();
+    });
+
+    expect(screen.queryByText("Er kan maar één opname tegelijk actief zijn.")).not.toBeInTheDocument();
+  });
+
+  it("toont Nederlandse microfoonfout wanneer starten mislukt", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [{ id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 }]
+    });
+    Object.defineProperty(navigator, "mediaDevices", {
+      value: { getUserMedia: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true
+    });
+
+    renderPage();
+
+    await screen.findByTestId("board-card-c1");
+    fireEvent.click(screen.getByRole("button", { name: "Start opname voor Kaart" }));
+    expect(await screen.findByText("Microfoon starten is mislukt. Controleer toestemming en probeer opnieuw.")).toBeInTheDocument();
   });
 });

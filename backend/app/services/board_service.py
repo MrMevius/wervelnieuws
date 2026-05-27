@@ -7,7 +7,6 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.core.settings import get_settings
 from app.models.entities import BoardCard, Project, User
-from app.models.enums import BoardColumn
 from app.repositories.board_repository import BoardRepository
 
 
@@ -52,8 +51,6 @@ class BoardService:
         return normalized
 
     def store_recording(self, card: BoardCard, file: UploadFile) -> tuple[str, int, str, str]:
-        if card.column != BoardColumn.doing:
-            raise HTTPException(status_code=400, detail="Opnames zijn alleen toegestaan in 'Doing'")
         mime_type = (file.content_type or "").lower().strip()
         if mime_type not in {"audio/webm", "audio/ogg", "audio/webm;codecs=opus", "audio/ogg;codecs=opus"}:
             raise HTTPException(status_code=400, detail="Ongeldig audioformaat. Gebruik WebM/Opus.")

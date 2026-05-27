@@ -22,6 +22,8 @@ import {
 
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
+const MIN_RECORDING_SECONDS = 5;
+const RECORDING_TOO_SHORT_MESSAGE = "Opname is te kort. Neem minimaal 5 seconden op.";
 
 type DragCardMeta = {
   cardId: string;
@@ -77,7 +79,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [activeCreateColumn, setActiveCreateColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [activeRecordingCardId, setActiveRecordingCardId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
   const [dragOverColumn, setDragOverColumn] = useState<"todo" | "doing" | "done" | null>(null);
@@ -86,6 +90,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
   const [descriptionEdit, setDescriptionEdit] = useState<DescriptionEditState | null>(null);
   const skipNextTitleBlurRef = useRef(false);
+  const recordingStartedAtRef = useRef<number | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
@@ -159,7 +164,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   });
   const uploadRecordingMutation = useMutation({
     mutationFn: ({ cardId, blob, duration }: { cardId: string; blob: Blob; duration: number }) => uploadBoardRecording(cardId, blob, duration),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] })
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] })
+      ]);
+    },
+    onError: () => {
+      setRecordingError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
+    }
   });
 
   const cardsByColumn = useMemo(() => {
@@ -210,27 +223,62 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     setDescriptionEdit(null);
   }, [selectedCardId]);
 
-  const startOrStopRecording = async () => {
-    if (!cardQuery.data) return;
-    if (recorder) {
+  useEffect(() => {
+    return () => {
+      window.clearInterval((window as any).__vergaderbordTimer);
+    };
+  }, []);
+
+  const startOrStopRecording = async (cardId: string) => {
+    if (recorder && activeRecordingCardId === cardId) {
+      recorder.requestData();
       recorder.stop();
       return;
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
-    const chunks: BlobPart[] = [];
-    mr.ondataavailable = (evt) => chunks.push(evt.data);
-    mr.onstop = () => {
-      setRecorder(null);
-      window.clearInterval((window as any).__vergaderbordTimer);
-      const blob = new Blob(chunks, { type: "audio/webm" });
-      uploadRecordingMutation.mutate({ cardId: cardQuery.data.card.id, blob, duration: recordingSeconds });
+    if (recorder && activeRecordingCardId && activeRecordingCardId !== cardId) {
+      setRecordingError("Er kan maar één opname tegelijk actief zijn.");
+      return;
+    }
+    try {
+      setRecordingError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      const chunks: BlobPart[] = [];
+      mr.ondataavailable = (evt) => {
+        if (evt.data && evt.data.size > 0) {
+          chunks.push(evt.data);
+        }
+      };
+      mr.onstop = () => {
+        const finishedCardId = cardId;
+        const startedAt = recordingStartedAtRef.current;
+        const elapsedByClock = startedAt ? Math.floor((Date.now() - startedAt) / 1000) : 0;
+        const durationAtStop = Math.max(recordingSeconds, elapsedByClock);
+        recordingStartedAtRef.current = null;
+        setRecorder(null);
+        setActiveRecordingCardId(null);
+        window.clearInterval((window as any).__vergaderbordTimer);
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        if (durationAtStop < MIN_RECORDING_SECONDS) {
+          setRecordingError(RECORDING_TOO_SHORT_MESSAGE);
+        } else if (blob.size > 0) {
+          setRecordingError(null);
+          uploadRecordingMutation.mutate({ cardId: finishedCardId, blob, duration: durationAtStop });
+        } else {
+          setRecordingError("Geen audiogegevens opgenomen. Probeer opnieuw.");
+        }
+        setRecordingSeconds(0);
+        stream.getTracks().forEach((track) => track.stop());
+      };
+      mr.start();
+      setActiveRecordingCardId(cardId);
+      setRecorder(mr);
       setRecordingSeconds(0);
-      stream.getTracks().forEach((track) => track.stop());
-    };
-    mr.start();
-    setRecorder(mr);
-    (window as any).__vergaderbordTimer = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+      recordingStartedAtRef.current = Date.now();
+      (window as any).__vergaderbordTimer = window.setInterval(() => setRecordingSeconds((s) => s + 1), 1000);
+    } catch {
+      setRecordingError("Microfoon starten is mislukt. Controleer toestemming en probeer opnieuw.");
+    }
   };
 
   const startTitleEdit = (cardId: string, title: string) => {
@@ -349,6 +397,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               {cardsByColumn[kolom].map((card) => (
                 <article
                   key={card.id}
+                  className="vergaderborden-board-card"
                   data-testid={`board-card-${card.id}`}
                   draggable
                   onDragStart={(e) => {
@@ -368,14 +417,31 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     ))}
                   </div>
                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count}</small>
+                  <div className="board-card-recording-controls">
+                    <button
+                      type="button"
+                      className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
+                      onClick={(evt) => {
+                        evt.stopPropagation();
+                        void startOrStopRecording(card.id);
+                      }}
+                      disabled={Boolean(recorder && activeRecordingCardId !== card.id)}
+                      aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+                      title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+                    >
+                      <span aria-hidden="true">{activeRecordingCardId === card.id ? "⏹" : "🎤"}</span>
+                    </button>
+                    {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
+                  </div>
                 </article>
               ))}
             </div>
           ))}
         </div>
       )}
+      {recordingError && <p className="error vergaderborden-inline-error">{recordingError}</p>}
 
-      {cardQuery.data && (
+      {cardQuery.data?.card && (
         <div className="board-detail-overlay" role="dialog" aria-modal="true" onClick={(e) => {
           if (e.target === e.currentTarget) setSelectedCardId(null);
         }}>
@@ -520,8 +586,17 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             </section>
             {cardQuery.data.card.column === "doing" && (
               <div>
-                <button className="record-button" onClick={startOrStopRecording}>{recorder ? "Stop opname" : "Start opname"}</button>
-                <p>Timer: {recordingSeconds}s</p>
+                <button
+                  type="button"
+                  className="record-button"
+                  onClick={() => {
+                    void startOrStopRecording(cardQuery.data.card.id);
+                  }}
+                  disabled={Boolean(recorder && activeRecordingCardId !== cardQuery.data.card.id)}
+                >
+                  {activeRecordingCardId === cardQuery.data.card.id ? "Stop opname" : "Start opname"}
+                </button>
+                {activeRecordingCardId === cardQuery.data.card.id && <p>Timer: {recordingSeconds}s</p>}
               </div>
             )}
             <h3>Opnames</h3>

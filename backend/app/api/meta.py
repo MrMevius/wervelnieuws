@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "45",
+                "date": "2026-05-27",
+                "title": "Vergaderbord-opnameknop duidelijker en minimale opnameduur",
+                "highlights": [
+                    "De opnameknop op vergaderbord-kaarten is nu duidelijk rood en rond, zodat starten direct herkenbaar is.",
+                    "Tijdens opnemen verandert de knop zichtbaar naar een donkere stop-state voor extra duidelijkheid.",
+                    "Opnames korter dan 5 seconden worden nu direct afgekeurd met melding: 'Opname is te kort. Neem minimaal 5 seconden op.'",
+                ],
+            },
+            {
                 "iteration": "33",
                 "date": "2026-05-27",
                 "title": "Kaartbeschrijving direct bewerken in Vergaderborden",
@@ -466,6 +476,26 @@ def _default_about() -> AboutResponse:
                     "Adminsessies blijven nu standaard 30 dagen actief, zodat je niet telkens opnieuw hoeft in te loggen.",
                     "De app controleert bij het opstarten automatisch je sessie via een veilige servercheck.",
                     "Uitloggen sluit de sessie nu direct af en verwijdert de login-cookie netjes.",
+                ],
+            },
+            {
+                "iteration": "43",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: direct opnemen op elk kaartje",
+                "highlights": [
+                    "Elk kaartje in Te doen, Bezig en Klaar heeft nu een eigen opnameknop, zodat je direct kunt starten zonder eerst detail te openen.",
+                    "Tijdens opname draait de timer alleen op het actieve kaartje en er kan maar één opname tegelijk actief zijn.",
+                    "Opname-uploads worden nu voor alle kaartkolommen geaccepteerd; na upload verversen bord en kaartdetail direct.",
+                ],
+            },
+            {
+                "iteration": "44",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: compacte opnameknop op kaartjes",
+                "highlights": [
+                    "De opnameknop op kaartjes is nu compact en staat rechtsboven als icoonknop, zodat kaarten rustiger en overzichtelijker blijven.",
+                    "Bij actieve opname verandert de knop direct naar een duidelijke rode stopknop, terwijl de timer zichtbaar blijft op het actieve kaartje.",
+                    "De opnamebediening blijft volledig toegankelijk met Nederlandstalige knoplabels en tooltips voor start en stop.",
                 ],
             },
         ],

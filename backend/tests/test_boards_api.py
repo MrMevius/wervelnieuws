@@ -72,7 +72,7 @@ def test_board_access_for_invited_user_only(client):
     assert board_for_editor.status_code == 403
 
 
-def test_upload_recording_only_allowed_for_doing_column(client):
+def test_upload_recording_allowed_for_all_columns(client):
     headers = _login(client)
     create_project = client.post(
         "/api/boards/projects",
@@ -80,21 +80,21 @@ def test_upload_recording_only_allowed_for_doing_column(client):
         json={"name": "Doing check", "description": "", "invited_user_ids": []},
     )
     project_id = create_project.json()["id"]
-    create_card = client.post(
-        f"/api/boards/projects/{project_id}/cards",
-        headers=headers,
-        json={"title": "Niet doing", "description": "", "column": "todo", "assignment_user_ids": []},
-    )
-    card_id = create_card.json()["id"]
+    for column in ["todo", "doing", "done"]:
+        create_card = client.post(
+            f"/api/boards/projects/{project_id}/cards",
+            headers=headers,
+            json={"title": f"Kaart {column}", "description": "", "column": column, "assignment_user_ids": []},
+        )
+        card_id = create_card.json()["id"]
 
-    audio = BytesIO(b"RIFF....WEBM")
-    record = client.post(
-        f"/api/boards/cards/{card_id}/recordings",
-        headers=headers,
-        files={"file": ("opname.webm", audio, "audio/webm")},
-    )
-    assert record.status_code == 400
-    assert "Doing" in record.json()["detail"]
+        audio = BytesIO(b"RIFF....WEBM")
+        record = client.post(
+            f"/api/boards/cards/{card_id}/recordings",
+            headers=headers,
+            files={"file": ("opname.webm", audio, "audio/webm")},
+        )
+        assert record.status_code == 200
 
 
 def test_move_card_rejects_negative_position(client):

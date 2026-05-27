@@ -234,6 +234,11 @@ button:disabled {
   cursor: pointer;
 }
 
+.vergaderborden-board-card {
+  position: relative;
+  padding-right: 52px;
+}
+
 .vergaderborden-card-title-button {
   justify-self: start;
   padding: 0;
@@ -530,6 +535,46 @@ button:disabled {
   background: #c42333;
   font-weight: 700;
   padding: 12px 18px;
+}
+
+.board-card-recording-controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+}
+
+.record-icon-button {
+  inline-size: 32px;
+  block-size: 32px;
+  min-inline-size: 32px;
+  border-radius: 999px;
+  border: 1px solid #b11f2d;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #d92f3e;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.record-icon-button.is-active {
+  background: #8f1521;
+  color: #fff;
+  border-color: #8f1521;
+}
+
+.record-icon-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.board-card-recording-timer {
+  margin: 0;
+  font-size: 0.85rem;
 }
 
 @media (max-width: 1100px) {
