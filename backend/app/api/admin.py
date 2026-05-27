@@ -499,6 +499,12 @@ def update_user_admin_status(
             detail="Cannot remove admin rights from the last admin user",
         )
 
+    if "full_name" in payload.model_fields_set:
+        user.full_name = payload.full_name
+    if "email" in payload.model_fields_set:
+        user.email = payload.email
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
     updated = user_repo.update_admin_status(user, is_admin=payload.is_admin)
     return AdminUserResponse(
         id=updated.id,

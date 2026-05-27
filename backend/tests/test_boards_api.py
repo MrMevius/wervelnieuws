@@ -222,8 +222,8 @@ def test_move_card_creates_system_update_for_column_change(client):
     assert detail.status_code == 200
     updates = detail.json()["updates"]
     assert len(updates) == 1
-    assert "Kaart verplaatst van Te doen naar Bezig" in updates[0]["message"]
-    assert "door admin op" in updates[0]["message"]
+    assert updates[0]["message"] == "Verplaatst van Te doen naar Bezig door admin."
+    assert updates[0]["author_display_name"] == "admin"
 
 
 def test_move_card_same_column_creates_no_system_update(client):
@@ -279,5 +279,39 @@ def test_move_card_creates_system_update_for_doing_to_done(client):
     assert detail.status_code == 200
     updates = detail.json()["updates"]
     assert len(updates) == 1
-    assert "Kaart verplaatst van Bezig naar Klaar" in updates[0]["message"]
-    assert "door admin op" in updates[0]["message"]
+    assert updates[0]["message"] == "Verplaatst van Bezig naar Klaar door admin."
+
+
+def test_board_uses_full_name_with_trimmed_fallback_for_display_labels(client):
+    headers = _login(client)
+    users = client.get("/api/admin/users", headers=headers)
+    assert users.status_code == 200
+    admin = next(user for user in users.json() if user["username"] == "admin")
+    patch = client.patch(
+        f"/api/admin/users/{admin['id']}",
+        headers=headers,
+        json={"full_name": "  Beheerder Bord  ", "email": None, "is_active": True, "is_admin": True},
+    )
+    assert patch.status_code == 200
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Naamweergave", "description": "", "invited_user_ids": [admin["id"]]},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Naamkaart", "description": "", "column": "todo", "assignment_user_ids": [admin["id"]]},
+    )
+    card = create_card.json()
+    assert card["assignments"][0]["user_display_name"] == "Beheerder Bord"
+
+    posted = client.post(
+        f"/api/boards/cards/{card['id']}/updates",
+        headers=headers,
+        json={"message": "Korte update"},
+    )
+    assert posted.status_code == 200
+    assert posted.json()["author_display_name"] == "Beheerder Bord"

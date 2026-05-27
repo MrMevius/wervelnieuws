@@ -428,6 +428,16 @@ def _default_about() -> AboutResponse:
                     "Bovenaan Vergaderborden zie je nu alleen de naam van het geopende bord, zonder de generieke subtitel.",
                 ],
             },
+            {
+                "iteration": "40",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: duidelijkere verplaatsingsupdates en volledige namen",
+                "highlights": [
+                    "Automatische kaartverplaatsingsupdates zijn korter en tonen alleen nog van/naar-kolom plus wie de verplaatsing deed.",
+                    "De tijd staat niet meer dubbel in de update-tekst, omdat datum en tijd al apart als metadata onder elke update zichtbaar blijven.",
+                    "Waar gebruikers in Vergaderborden zichtbaar zijn, tonen we nu bij voorkeur de volledige naam met een nette fallback naar gebruikersnaam.",
+                ],
+            },
         ],
     )
 

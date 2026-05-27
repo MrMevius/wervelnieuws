@@ -55,12 +55,14 @@ class CardAssignmentResponse(BaseModel):
     id: str
     user_id: str
     username: str
+    user_display_name: str
 
 
 class CardUpdateResponse(BaseModel):
     id: str
     author_user_id: str
     author_username: str
+    author_display_name: str
     message: str
     created_at: datetime
 

@@ -37,6 +37,10 @@ type TitleEditState = {
 
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 
+function displayNameForUser(user: Pick<AdminUser, "full_name" | "username">): string {
+  return user.full_name?.trim() || user.username;
+}
+
 function parseDragCardMeta(raw: string): DragCardMeta | null {
   if (!raw) return null;
   try {
@@ -322,7 +326,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   <p>{card.description || "Geen beschrijving"}</p>
                   <div className="chip-row">
                     {card.assignments.map((assn) => (
-                      <span key={assn.id} className="user-chip" title={assn.username}>{assn.username.slice(0, 2).toUpperCase()}</span>
+                      <span key={assn.id} className="user-chip" title={assn.user_display_name}>{assn.user_display_name.slice(0, 2).toUpperCase()}</span>
                     ))}
                   </div>
                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count}</small>
@@ -430,7 +434,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const dateLabel = hasDate
                     ? new Date(u.created_at).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
                     : "Datum onbekend";
-                  const authorLabel = u.author_username?.trim() || "Onbekende auteur";
+                  const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   return (
                     <article key={u.id} className="board-update-item">
                       <p className="board-update-message">{u.message?.trim() || "Update zonder tekst"}</p>
@@ -490,7 +494,7 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
           </label>
           <label className="vergaderborden-field vergaderborden-field-full">
             <span>Uitgenodigde gebruikers</span>
-            <select name="invited_user_ids" multiple>{users.map((u) => <option key={u.id} value={u.id}>{u.username}</option>)}</select>
+            <select name="invited_user_ids" multiple>{users.map((u) => <option key={u.id} value={u.id}>{displayNameForUser(u)}</option>)}</select>
           </label>
         </div>
         <div className="vergaderborden-form-actions">
@@ -582,7 +586,7 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
             <div className="vergaderborden-multiselect-menu" role="listbox" aria-label="Teamleden kiezen" aria-multiselectable="true">
               {users.map((u) => {
                 const checked = selectedUserIds.includes(u.id);
-                const label = u.full_name?.trim() || u.username;
+                const label = displayNameForUser(u);
                 return (
                   <label key={u.id} className="vergaderborden-multiselect-option">
                     <input

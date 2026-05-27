@@ -12,6 +12,17 @@ class AdminUserResponse(BaseModel):
 
 class UpdateAdminUserRequest(BaseModel):
     is_admin: bool
+    full_name: str | None = None
+    email: str | None = None
+    is_active: bool | None = None
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def normalize_optional_full_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class UpdateAdminUserPasswordRequest(BaseModel):

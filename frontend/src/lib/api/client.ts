@@ -227,7 +227,7 @@ export type BoardCard = {
   description: string;
   column: "todo" | "doing" | "done";
   position: number;
-  assignments: Array<{ id: string; user_id: string; username: string }>;
+  assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string }>;
   updates_count: number;
   recordings_count: number;
 };
@@ -241,7 +241,7 @@ export type BoardProjectDetail = {
 
 export type BoardCardDetail = {
   card: BoardCard;
-  updates: Array<{ id: string; author_user_id: string; author_username: string; message: string; created_at: string }>;
+  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; created_at: string }>;
   recordings: Array<{
     id: string;
     filename: string;

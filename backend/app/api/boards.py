@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -38,11 +36,16 @@ def _column_label_nl(column_value: str) -> str:
     return _COLUMN_LABELS_NL.get(column_value, column_value)
 
 
-def _build_move_update_message(old_column: str, new_column: str, actor_username: str, moved_at: datetime) -> str:
-    moved_label = moved_at.astimezone(UTC).strftime("%d-%m-%Y %H:%M")
+def _display_name(user: User | None) -> str:
+    if not user:
+        return "onbekend"
+    return (user.full_name or "").strip() or user.username
+
+
+def _build_move_update_message(old_column: str, new_column: str, actor_display_name: str) -> str:
     return (
-        f"Kaart verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)} "
-        f"door {actor_username} op {moved_label}."
+        f"Verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)} "
+        f"door {actor_display_name}."
     )
 
 
@@ -55,7 +58,12 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         column=card.column,
         position=card.position,
         assignments=[
-            CardAssignmentResponse(id=row.id, user_id=row.user_id, username=row.user.username)
+            CardAssignmentResponse(
+                id=row.id,
+                user_id=row.user_id,
+                username=row.user.username,
+                user_display_name=_display_name(row.user),
+            )
             for row in card.assignments
         ],
         updates_count=repo.count_updates(card.id),
@@ -129,7 +137,7 @@ def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depen
         repo.create_update(
             moved.id,
             current.id,
-            _build_move_update_message(old_column, moved.column.value, current.username, datetime.now(UTC)),
+            _build_move_update_message(old_column, moved.column.value, _display_name(current)),
         )
     service.touch_activity(service.ensure_project_access(repo.get_project(moved.project_id), current))
     AuditService(db).log("board.card.moved", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, column=payload.column.value, position=payload.position))
@@ -161,7 +169,17 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
     recordings = repo.list_recordings(card.id)
     return CardDetailResponse(
         card=_card_response(repo, card),
-        updates=[CardUpdateResponse(id=row.id, author_user_id=row.author_user_id, author_username=repo.get_user(row.author_user_id).username if repo.get_user(row.author_user_id) else "onbekend", message=row.message, created_at=row.created_at) for row in updates],
+        updates=[
+            CardUpdateResponse(
+                id=row.id,
+                author_user_id=row.author_user_id,
+                author_username=author.username if (author := repo.get_user(row.author_user_id)) else "onbekend",
+                author_display_name=_display_name(author),
+                message=row.message,
+                created_at=row.created_at,
+            )
+            for row in updates
+        ],
         recordings=[
             RecordingResponse(
                 id=row.id,
@@ -189,7 +207,14 @@ def post_update(card_id: str, payload: CardUpdateCreateRequest, current: User = 
     row = repo.create_update(card.id, current.id, payload.message)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.card.updated", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=row.id))
-    return CardUpdateResponse(id=row.id, author_user_id=row.author_user_id, author_username=current.username, message=row.message, created_at=row.created_at)
+    return CardUpdateResponse(
+        id=row.id,
+        author_user_id=row.author_user_id,
+        author_username=current.username,
+        author_display_name=_display_name(current),
+        message=row.message,
+        created_at=row.created_at,
+    )
 
 
 @router.post("/cards/{card_id}/recordings", response_model=RecordingResponse)

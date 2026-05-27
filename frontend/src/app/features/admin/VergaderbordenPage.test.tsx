@@ -328,4 +328,45 @@ describe("Vergaderborden drag/drop", () => {
 
     expect(await screen.findByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
   });
+
+  it("toont display names voor toewijzingen en update-auteur", async () => {
+    const card = {
+      id: "c1",
+      project_id: "p1",
+      title: "Kaart",
+      description: "",
+      column: "todo",
+      position: 0,
+      assignments: [{ id: "a1", user_id: "u1", username: "admin", user_display_name: "Admin Gebruiker" }],
+      updates_count: 1,
+      recordings_count: 0
+    };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        {
+          id: "u1",
+          author_user_id: "u1",
+          author_username: "admin",
+          author_display_name: "Admin Gebruiker",
+          message: "Verplaatst van Te doen naar Bezig door Admin Gebruiker.",
+          created_at: "2026-05-27T10:00:00Z"
+        }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+
+    expect(await screen.findByTitle("Admin Gebruiker")).toBeInTheDocument();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    expect(await screen.findByText("Verplaatst van Te doen naar Bezig door Admin Gebruiker.")).toBeInTheDocument();
+    expect(await screen.findByText(/· Admin Gebruiker/)).toBeInTheDocument();
+  });
 });
