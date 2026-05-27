@@ -44,6 +44,7 @@ import {
   getAdminGenAIModelOptions,
   listActivityFeed,
   listNotificationFeed,
+  listBoardProjects,
   listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
@@ -74,6 +75,10 @@ import { WERVEL_PATHS, WINDWILLY_PATHS } from "../routes/paths";
 import { useMainDashboardData } from "../features/main/hooks/useMainDashboardData";
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
 import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
+import {
+  resolveVergaderbordenProjectId,
+  VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
+} from "../features/admin/vergaderbordenProjectSelection";
 
 type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
@@ -90,9 +95,12 @@ export function App() {
   const [avatarVersion, setAvatarVersion] = useState(0);
   const [topbarHidden, setTopbarHidden] = useState(false);
   const [wervelDropdownOpen, setWervelDropdownOpen] = useState(false);
+  const [vergaderDropdownOpen, setVergaderDropdownOpen] = useState(false);
   const lastScrollYRef = useRef(0);
   const wervelDropdownCloseTimeoutRef = useRef<number | null>(null);
+  const vergaderDropdownCloseTimeoutRef = useRef<number | null>(null);
   const showWervelDropdown = wervelDropdownOpen;
+  const showVergaderDropdown = vergaderDropdownOpen;
 
   function openWervelDropdown() {
     if (wervelDropdownCloseTimeoutRef.current !== null) {
@@ -112,10 +120,31 @@ export function App() {
     }, 120);
   }
 
+  function openVergaderDropdown() {
+    if (vergaderDropdownCloseTimeoutRef.current !== null) {
+      window.clearTimeout(vergaderDropdownCloseTimeoutRef.current);
+      vergaderDropdownCloseTimeoutRef.current = null;
+    }
+    setVergaderDropdownOpen(true);
+  }
+
+  function scheduleVergaderDropdownClose() {
+    if (vergaderDropdownCloseTimeoutRef.current !== null) {
+      window.clearTimeout(vergaderDropdownCloseTimeoutRef.current);
+    }
+    vergaderDropdownCloseTimeoutRef.current = window.setTimeout(() => {
+      setVergaderDropdownOpen(false);
+      vergaderDropdownCloseTimeoutRef.current = null;
+    }, 120);
+  }
+
   useEffect(() => {
     return () => {
       if (wervelDropdownCloseTimeoutRef.current !== null) {
         window.clearTimeout(wervelDropdownCloseTimeoutRef.current);
+      }
+      if (vergaderDropdownCloseTimeoutRef.current !== null) {
+        window.clearTimeout(vergaderDropdownCloseTimeoutRef.current);
       }
     };
   }, []);
@@ -211,6 +240,23 @@ export function App() {
 
   const topicsQuery = usePlanningData(authenticated);
   const { aboutQuery, mainActivityQuery, mainNotificationQuery } = useMainDashboardData(authenticated);
+  const boardProjectsQuery = useQuery({
+    queryKey: ["board-projects"],
+    queryFn: listBoardProjects,
+    enabled: authenticated
+  });
+  const vergaderbordenTarget = useMemo(() => {
+    const projects = boardProjectsQuery.data ?? [];
+    if (!projects.length) {
+      return WINDWILLY_PATHS.vergaderborden;
+    }
+    const storedProjectId = window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY);
+    const projectId = resolveVergaderbordenProjectId(projects, storedProjectId);
+    if (!projectId) {
+      return WINDWILLY_PATHS.vergaderborden;
+    }
+    return `${WINDWILLY_PATHS.vergaderborden}?project=${projectId}`;
+  }, [boardProjectsQuery.data]);
 
   useEffect(() => {
     if (!authenticated) {
@@ -324,7 +370,34 @@ export function App() {
               <NavLink to={WERVEL_PATHS.about}>About</NavLink>
             </nav>
           </div>
-          <NavLink to={WINDWILLY_PATHS.vergaderborden}>Vergaderborden</NavLink>
+          <div
+            className={`suite-group ${showVergaderDropdown ? "is-open" : ""}`}
+            aria-label="Vergaderborden projecten"
+            onMouseEnter={openVergaderDropdown}
+            onMouseLeave={scheduleVergaderDropdownClose}
+            onFocus={openVergaderDropdown}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                scheduleVergaderDropdownClose();
+              }
+            }}
+          >
+            <NavLink to={vergaderbordenTarget}>Vergaderborden</NavLink>
+            <nav
+              className={`wervel-dropdown ${showVergaderDropdown ? "is-open" : ""}`}
+              aria-label="Vergaderborden projectnavigatie"
+              aria-hidden={!showVergaderDropdown}
+            >
+              {(boardProjectsQuery.data ?? []).map((project) => (
+                <NavLink key={project.id} to={`${WINDWILLY_PATHS.vergaderborden}?project=${project.id}`}>
+                  {project.name}
+                </NavLink>
+              ))}
+              {currentUserQuery.data?.is_admin && (
+                <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw project (admin)</NavLink>
+              )}
+            </nav>
+          </div>
           <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
@@ -408,7 +481,7 @@ export function App() {
             path={WERVEL_PATHS.adminScheduler}
             element={<AdminSchedulerPage currentUser={currentUserQuery.data} />}
           />
-          <Route path={WERVEL_PATHS.adminVergaderborden} element={<VergaderbordenPage />} />
+          <Route path={WERVEL_PATHS.adminVergaderborden} element={<VergaderbordenPage canManageProjects />} />
           <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
 
           <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />

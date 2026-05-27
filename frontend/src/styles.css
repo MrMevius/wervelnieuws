@@ -152,13 +152,6 @@ button:disabled {
   color: var(--danger);
 }
 
-.vergaderborden-project-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-  margin: 14px 0 18px;
-}
-
 .vergaderborden-page {
   display: grid;
   gap: 14px;
@@ -184,16 +177,6 @@ button:disabled {
   min-height: 40px;
   min-width: 136px;
   font-weight: 600;
-}
-
-.vergaderborden-project-card {
-  display: grid;
-  gap: 8px;
-  text-align: left;
-  background: var(--surface-muted);
-  color: var(--text);
-  border: 1px solid var(--line);
-  padding: 12px;
 }
 
 .board-grid {

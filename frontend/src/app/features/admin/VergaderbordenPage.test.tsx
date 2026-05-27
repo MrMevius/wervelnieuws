@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VergaderbordenPage } from "./VergaderbordenPage";
+import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./vergaderbordenProjectSelection";
 
 const api = vi.hoisted(() => ({
   listBoardProjects: vi.fn(),
@@ -18,13 +20,17 @@ const api = vi.hoisted(() => ({
 
 vi.mock("../../../lib/api/client", () => api);
 
-function renderPage() {
+function renderPage(initialEntry = "/vergaderborden?project=p1", canManageProjects = false) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
   });
   return render(
     <QueryClientProvider client={queryClient}>
-      <VergaderbordenPage />
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <Routes>
+          <Route path="/vergaderborden" element={<VergaderbordenPage canManageProjects={canManageProjects} />} />
+        </Routes>
+      </MemoryRouter>
     </QueryClientProvider>
   );
 }
@@ -40,8 +46,17 @@ function makeDataTransfer() {
 describe("Vergaderborden drag/drop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     api.listAdminUsers.mockResolvedValue([{ id: "u1", username: "admin", full_name: "Admin" }]);
     api.listBoardProjects.mockResolvedValue([
+      {
+        id: "p0",
+        name: "Algemeen",
+        description: "",
+        invited_user_ids: ["u1"],
+        card_count: 0,
+        last_activity_at: null
+      },
       {
         id: "p1",
         name: "Project A",
@@ -69,7 +84,6 @@ describe("Vergaderborden drag/drop", () => {
     });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     const card = await screen.findByTestId("board-card-c1");
     const doingColumn = await screen.findByTestId("board-column-doing");
@@ -95,7 +109,6 @@ describe("Vergaderborden drag/drop", () => {
     });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     const card = await screen.findByTestId("board-card-c1");
     const todoColumn = await screen.findByTestId("board-column-todo");
@@ -118,7 +131,6 @@ describe("Vergaderborden drag/drop", () => {
     api.moveBoardCard.mockRejectedValueOnce(new Error("Serverfout"));
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     const card = await screen.findByTestId("board-card-c1");
     const doingColumn = await screen.findByTestId("board-column-doing");
@@ -143,7 +155,6 @@ describe("Vergaderborden drag/drop", () => {
     api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     expect(screen.queryByRole("button", { name: "Kaarttitel bewerken: Oude titel" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
@@ -174,7 +185,6 @@ describe("Vergaderborden drag/drop", () => {
     api.getBoardCard.mockResolvedValue({ card: detailCard, updates: [], recordings: [] });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     await screen.findByText("Todo titel");
     expect(screen.queryByRole("button", { name: "Kaarttitel bewerken: Todo titel" })).not.toBeInTheDocument();
@@ -202,7 +212,6 @@ describe("Vergaderborden drag/drop", () => {
     api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" }));
@@ -225,7 +234,6 @@ describe("Vergaderborden drag/drop", () => {
     api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
 
     renderPage();
-    fireEvent.click((await screen.findByText("Project A")).closest("button") as HTMLButtonElement);
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     await waitFor(() => {
@@ -238,5 +246,86 @@ describe("Vergaderborden drag/drop", () => {
 
     expect(api.updateBoardCardTitle).not.toHaveBeenCalled();
     expect(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" })).toBeInTheDocument();
+  });
+
+  it("kiest standaard Algemeen als project wanneer query ontbreekt", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p0",
+      project_name: "Algemeen",
+      invited_user_ids: ["u1"],
+      cards: []
+    });
+
+    renderPage("/vergaderborden");
+
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledWith("p0");
+    });
+    expect(screen.getByRole("heading", { name: "Algemeen" })).toBeInTheDocument();
+    expect(screen.queryByText("Projecten en kaarten overzichtelijk beheren per fase.")).not.toBeInTheDocument();
+    expect(window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY)).toBe("p0");
+  });
+
+  it("slaat alleen geldige project-id op in localStorage", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=p1");
+
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledWith("p1");
+    });
+
+    expect(window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY)).toBe("p1");
+  });
+
+  it("valideert ongeldige projectquery en valt terug op Algemeen", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p0",
+      project_name: "Algemeen",
+      invited_user_ids: ["u1"],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=bestaat-niet");
+
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledWith("p0");
+    });
+    expect(window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY)).toBe("p0");
+  });
+
+  it("toont geen pagina-level projectselector en geen nieuw-project knop in reguliere context", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=p1", false);
+
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledWith("p1");
+    });
+    expect(screen.queryByTestId("vergaderborden-project-select")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nieuw project" })).not.toBeInTheDocument();
+  });
+
+  it("toont nieuw-project knop alleen in admin-context", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=p1", true);
+
+    expect(await screen.findByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
   });
 });

@@ -398,6 +398,36 @@ def _default_about() -> AboutResponse:
                     "Kaarten in het overzicht blijven klikbaar met een handcursor en openen gewoon de detailweergave.",
                 ],
             },
+            {
+                "iteration": "37",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: compact project kiezen via dropdown",
+                "highlights": [
+                    "Bovenaan Vergaderborden kies je nu een project via een compacte dropdown in plaats van grote projectkaarten.",
+                    "Als het project 'Algemeen' beschikbaar is, wordt dat nu automatisch als standaard gekozen.",
+                    "De bordkaarten en kaartinteracties blijven hetzelfde, met meer zichtbare ruimte voor het bord zelf.",
+                ],
+            },
+            {
+                "iteration": "38",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: projectkeuze via hoofdmenu en admin-only projectaanmaak",
+                "highlights": [
+                    "Projectkeuze voor Vergaderborden loopt nu via het hoofdmenu, met directe links per project naar /vergaderborden?project=<id>.",
+                    "De Vergaderborden-pagina leest projectselectie nu uit de URL, inclusief fallback naar 'Algemeen' bij ontbrekende of ongeldige query.",
+                    "Nieuw project aanmaken staat niet meer in de reguliere weergave en is alleen nog beschikbaar via de admin-context.",
+                ],
+            },
+            {
+                "iteration": "39",
+                "date": "2026-05-27",
+                "title": "Vergaderborden: sneller terug naar je laatst gekozen bord",
+                "highlights": [
+                    "De hoofdmenu-link Vergaderborden opent nu automatisch het laatst gekozen geldige project in dezelfde browser.",
+                    "Als een oude projectkeuze niet meer bestaat, valt de pagina automatisch terug op Algemeen of het eerste beschikbare project.",
+                    "Bovenaan Vergaderborden zie je nu alleen de naam van het geopende bord, zonder de generieke subtitel.",
+                ],
+            },
         ],
     )
 

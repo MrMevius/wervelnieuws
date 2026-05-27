@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./features/admin/vergaderbordenProjectSelection";
 
 const mockApi = vi.hoisted(() => ({
   login: vi.fn().mockResolvedValue(undefined),
@@ -522,7 +523,21 @@ function clickWervelSubmenu(label: string) {
   fireEvent.click(screen.getByRole("link", { name: label }));
 }
 
+function openVergaderbordenDropdown() {
+  const vergaderLink = screen.getByRole("link", { name: "Vergaderborden" });
+  fireEvent.mouseEnter(vergaderLink.parentElement as HTMLElement);
+}
+
+function clickVergaderbordenProject(label: string) {
+  openVergaderbordenDropdown();
+  fireEvent.click(screen.getByRole("link", { name: label }));
+}
+
 describe("App", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it("shows login form first", () => {
     renderApp();
     expect(screen.getByRole("button", { name: "Inloggen" })).toBeInTheDocument();
@@ -557,11 +572,37 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
+    clickVergaderbordenProject("Wekelijkse afstemming");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Nieuw project" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens last valid vergaderbord from topnav title link", async () => {
+    window.localStorage.setItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY, "bp1");
+    renderApp();
+    await loginIntoApp();
+
     fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
+      expect(mockApi.getBoardProject).toHaveBeenCalledWith("bp1");
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to first valid vergaderbord when stored id is stale", async () => {
+    window.localStorage.setItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY, "stale-id");
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
+
+    await waitFor(() => {
+      expect(mockApi.getBoardProject).toHaveBeenCalledWith("bp1");
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
     });
   });
 
@@ -569,23 +610,71 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
+    clickVergaderbordenProject("Wekelijkse afstemming");
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
     });
-
-    fireEvent.click(await screen.findByText("Wekelijkse afstemming"));
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "Kaart toevoegen" }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole("button", { name: /\+ kaart toevoegen/i }).length).toBeGreaterThan(0);
     });
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Kaart toevoegen" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /\+ kaart toevoegen/i })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
 
     await waitFor(() => {
       expect(screen.getByText("Titel is verplicht.")).toBeInTheDocument();
       expect(mockApi.createBoardCard).not.toHaveBeenCalled();
+    });
+  });
+
+  it("opens only one create form and submits assignment_user_ids as string array", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickVergaderbordenProject("Wekelijkse afstemming");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /\+ kaart toevoegen/i })).toHaveLength(3);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /\+ kaart toevoegen/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByPlaceholderText("Titel kaart")).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /\+ kaart toevoegen/i })[0]);
+
+    await waitFor(() => {
+      expect(screen.getAllByPlaceholderText("Titel kaart")).toHaveLength(1);
+    });
+
+    fireEvent.change(screen.getByPlaceholderText("Titel kaart"), { target: { value: "Nieuwe kaart" } });
+    fireEvent.change(screen.getByPlaceholderText("Korte toelichting (optioneel)"), { target: { value: "Beschrijving" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Selecteer teamleden" }));
+    fireEvent.click(screen.getByLabelText("Admin"));
+    fireEvent.click(screen.getByLabelText("Editor"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    await waitFor(() => {
+      expect(mockApi.createBoardCard).toHaveBeenCalled();
+      expect(screen.queryByPlaceholderText("Titel kaart")).not.toBeInTheDocument();
+    });
+
+    const lastCall = mockApi.createBoardCard.mock.calls[mockApi.createBoardCard.mock.calls.length - 1];
+    expect(lastCall[0]).toBe("bp1");
+    expect(lastCall[1]).toMatchObject({
+      title: "Nieuwe kaart",
+      description: "Beschrijving",
+      assignment_user_ids: ["u1", "u2"]
     });
   });
 
@@ -616,12 +705,11 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Vergaderborden" }));
+    clickVergaderbordenProject("Wekelijkse afstemming");
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Vergaderborden" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
     });
 
-    fireEvent.click(await screen.findByText("Wekelijkse afstemming"));
     await waitFor(() => {
       expect(screen.getByText("Voorbeeldkaart")).toBeInTheDocument();
     });

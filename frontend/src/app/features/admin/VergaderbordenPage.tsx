@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
   createBoardCard,
@@ -13,6 +14,10 @@ import {
   updateBoardCardTitle,
   uploadBoardRecording
 } from "../../../lib/api/client";
+import {
+  resolveVergaderbordenProjectId,
+  VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
+} from "./vergaderbordenProjectSelection";
 
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
@@ -53,9 +58,9 @@ function toDutchMoveError(err: unknown): string {
   return MOVE_ERROR_FALLBACK;
 }
 
-export function VergaderbordenPage() {
+export function VergaderbordenPage({ canManageProjects = false }: { canManageProjects?: boolean }) {
   const queryClient = useQueryClient();
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [activeCreateColumn, setActiveCreateColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -71,8 +76,23 @@ export function VergaderbordenPage() {
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
-  const boardQuery = useQuery({ queryKey: ["board-project", projectId], queryFn: () => getBoardProject(projectId || ""), enabled: Boolean(projectId) });
+  const requestedProjectId = searchParams.get("project");
+  const resolvedProjectId = useMemo(() => {
+    const projects = projectsQuery.data ?? [];
+    return resolveVergaderbordenProjectId(projects, requestedProjectId);
+  }, [projectsQuery.data, requestedProjectId]);
+
+  const boardQuery = useQuery({
+    queryKey: ["board-project", resolvedProjectId],
+    queryFn: () => getBoardProject(resolvedProjectId || ""),
+    enabled: Boolean(resolvedProjectId)
+  });
   const cardQuery = useQuery({ queryKey: ["board-card", selectedCardId], queryFn: () => getBoardCard(selectedCardId || ""), enabled: Boolean(selectedCardId) });
+  const resolvedProjectName = useMemo(() => {
+    const projects = projectsQuery.data ?? [];
+    const selected = projects.find((project) => project.id === resolvedProjectId);
+    return selected?.name ?? boardQuery.data?.project_name ?? null;
+  }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
 
   const createProjectMutation = useMutation({
     mutationFn: createBoardProject,
@@ -84,14 +104,14 @@ export function VergaderbordenPage() {
   const createCardMutation = useMutation({
     mutationFn: ({ projectId: id, title, description, column, assignment_user_ids }: { projectId: string; title: string; description: string; column: "todo" | "doing" | "done"; assignment_user_ids: string[] }) =>
       createBoardCard(id, { title, description, column, assignment_user_ids }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", projectId] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
   });
   const moveCardMutation = useMutation({
     mutationFn: ({ cardId, column, position }: { cardId: string; column: "todo" | "doing" | "done"; position: number }) => moveBoardCard(cardId, { column, position }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", projectId] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
     onError: (error) => {
       setMoveError(toDutchMoveError(error));
-      queryClient.invalidateQueries({ queryKey: ["board-project", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] });
     },
     onSettled: () => setSavingCardId(null)
   });
@@ -99,7 +119,7 @@ export function VergaderbordenPage() {
     mutationFn: ({ cardId, title }: { cardId: string; title: string }) => updateBoardCardTitle(cardId, { title }),
     onSuccess: async (_card, variables) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["board-project", projectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
         queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] })
       ]);
     }
@@ -109,7 +129,7 @@ export function VergaderbordenPage() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] }),
-        queryClient.invalidateQueries({ queryKey: ["board-project", projectId] })
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
       ]);
       setUpdateMessage("");
       setUpdateError(null);
@@ -119,12 +139,6 @@ export function VergaderbordenPage() {
     mutationFn: ({ cardId, blob, duration }: { cardId: string; blob: Blob; duration: number }) => uploadBoardRecording(cardId, blob, duration),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] })
   });
-
-  const usersById = useMemo(() => {
-    const map = new Map<string, AdminUser>();
-    for (const user of usersQuery.data ?? []) map.set(user.id, user);
-    return map;
-  }, [usersQuery.data]);
 
   const cardsByColumn = useMemo(() => {
     const cards = boardQuery.data?.cards ?? [];
@@ -137,7 +151,34 @@ export function VergaderbordenPage() {
 
   useEffect(() => {
     setActiveCreateColumn(null);
-  }, [projectId]);
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    const projects = projectsQuery.data ?? [];
+    if (!projects.length || !resolvedProjectId) {
+      return;
+    }
+    if (requestedProjectId === resolvedProjectId) {
+      return;
+    }
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.set("project", resolvedProjectId);
+      return next;
+    }, { replace: true });
+  }, [projectsQuery.data, requestedProjectId, resolvedProjectId, setSearchParams]);
+
+  useEffect(() => {
+    const projects = projectsQuery.data ?? [];
+    if (!projects.length || !resolvedProjectId) return;
+
+    if (projects.some((project) => project.id === resolvedProjectId)) {
+      window.localStorage.setItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY, resolvedProjectId);
+      return;
+    }
+
+    window.localStorage.removeItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY);
+  }, [projectsQuery.data, resolvedProjectId]);
 
   useEffect(() => {
     setTitleEdit(null);
@@ -193,30 +234,16 @@ export function VergaderbordenPage() {
   return (
     <section className="panel vergaderborden-page">
       <div className="vergaderborden-header">
-        <h1>Vergaderborden</h1>
-        <p className="vergaderborden-subtitle">Projecten en kaarten overzichtelijk beheren per fase.</p>
+        {resolvedProjectName && <h1>{resolvedProjectName}</h1>}
       </div>
-      {showCreate && <CreateProjectModal users={usersQuery.data ?? []} onClose={() => setShowCreate(false)} onSubmit={(payload) => createProjectMutation.mutate(payload)} />}
-      <button className="vergaderborden-primary-action" onClick={() => setShowCreate(true)}>Nieuw project</button>
+      {canManageProjects && (
+        <>
+          {showCreate && <CreateProjectModal users={usersQuery.data ?? []} onClose={() => setShowCreate(false)} onSubmit={(payload) => createProjectMutation.mutate(payload)} />}
+          <button className="vergaderborden-primary-action" onClick={() => setShowCreate(true)}>Nieuw project</button>
+        </>
+      )}
 
-      <div className="vergaderborden-project-grid">
-        {(projectsQuery.data ?? []).map((project) => (
-          <button key={project.id} className="vergaderborden-project-card" onClick={() => setProjectId(project.id)}>
-            <strong>{project.name}</strong>
-            <small>{project.card_count} kaartjes</small>
-            <small>{project.description || "Geen beschrijving"}</small>
-            <div className="chip-row">
-              {project.invited_user_ids.map((uid) => {
-                const user = usersById.get(uid);
-                const label = user?.full_name?.trim() || user?.username || "Onbekend";
-                return <span key={uid} className="user-chip" title={label}>{label.slice(0, 2).toUpperCase()}</span>;
-              })}
-            </div>
-          </button>
-        ))}
-      </div>
-
-      {projectId && (
+      {resolvedProjectId && (
         <div className="board-grid">
           {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
           {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
@@ -265,9 +292,9 @@ export function VergaderbordenPage() {
                 <CreateCardInline
                   users={usersQuery.data ?? []}
                   onCreate={async (payload) => {
-                    if (!projectId) return false;
+                    if (!resolvedProjectId) return false;
                     try {
-                      await createCardMutation.mutateAsync({ projectId, column: kolom, ...payload });
+                      await createCardMutation.mutateAsync({ projectId: resolvedProjectId, column: kolom, ...payload });
                       setActiveCreateColumn(null);
                       return true;
                     } catch {
