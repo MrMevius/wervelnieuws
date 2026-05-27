@@ -18,8 +18,6 @@ def hash_password(password: str) -> str:
 
 def create_access_token(subject: str) -> str:
     settings = get_settings()
-    expires = datetime.now(UTC) + timedelta(
-        minutes=settings.access_token_expire_minutes
-    )
+    expires = datetime.now(UTC) + timedelta(minutes=settings.access_token_ttl_minutes)
     payload = {"sub": subject, "exp": expires}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")

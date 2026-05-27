@@ -448,6 +448,16 @@ def _default_about() -> AboutResponse:
                     "De knop opent nog steeds dezelfde bestaande flow om een nieuw vergaderbordproject aan te maken.",
                 ],
             },
+            {
+                "iteration": "42",
+                "date": "2026-05-27",
+                "title": "Ingelogd blijven na verversen of browser herstart",
+                "highlights": [
+                    "Adminsessies blijven nu standaard 30 dagen actief, zodat je niet telkens opnieuw hoeft in te loggen.",
+                    "De app controleert bij het opstarten automatisch je sessie via een veilige servercheck.",
+                    "Uitloggen sluit de sessie nu direct af en verwijdert de login-cookie netjes.",
+                ],
+            },
         ],
     )
 

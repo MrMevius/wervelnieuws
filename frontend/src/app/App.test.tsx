@@ -7,6 +7,7 @@ import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./features/admin/vergad
 
 const mockApi = vi.hoisted(() => ({
   login: vi.fn().mockResolvedValue(undefined),
+  logout: vi.fn().mockResolvedValue({ status: "ok" }),
   setToken: vi.fn(),
   getCurrentUser: vi.fn().mockResolvedValue({
     id: "u1",
@@ -507,6 +508,15 @@ function renderApp(initialEntries: string[] = ["/"]) {
 }
 
 async function loginIntoApp() {
+  mockApi.getCurrentUser.mockResolvedValueOnce({
+    id: "u1",
+    username: "admin",
+    full_name: null,
+    email: null,
+    is_admin: true,
+    theme_preference: "system",
+    has_avatar: false
+  });
   fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
   await waitFor(() => {
     expect(screen.getByRole("heading", { name: /Welkom bij WindWilly|Workflow overzicht/i })).toBeInTheDocument();
@@ -536,6 +546,27 @@ function clickVergaderbordenProject(label: string) {
 describe("App", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    mockApi.getCurrentUser.mockReset();
+    mockApi.getCurrentUser.mockRejectedValue(new Error("401"));
+    mockApi.logout.mockClear();
+  });
+
+  it("bootstraps authenticated session via /auth/me", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Welkom bij WindWilly|Workflow overzicht/i })).toBeInTheDocument();
+    });
   });
 
   it("shows login form first", () => {
@@ -833,6 +864,7 @@ describe("App", () => {
   });
 
   it("hides admin option in user menu for non-admins", async () => {
+    mockApi.getCurrentUser.mockRejectedValueOnce(new Error("401"));
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u3",
       username: "editor",

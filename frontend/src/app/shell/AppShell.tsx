@@ -53,12 +53,12 @@ import {
   listTopicThemes,
   listVersions,
   login,
+  logout as logoutRequest,
   triggerGeneration,
   regenerateContent,
   getSchedulerOverview,
   rejectVariantPart,
   scheduleTopic,
-  setToken,
   updateTopic,
   updateVariant,
   updateAdminUserActive,
@@ -153,6 +153,7 @@ export function App() {
     mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
     onMutate: () => setLoginError(null),
     onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["current-user"] });
       setAuthenticated(true);
       setLoginError(null);
       navigate(WINDWILLY_PATHS.landing, { replace: true });
@@ -170,8 +171,18 @@ export function App() {
   const currentUserQuery = useQuery({
     queryKey: ["current-user"],
     queryFn: getCurrentUser,
-    enabled: authenticated
+    retry: false
   });
+
+  useEffect(() => {
+    if (currentUserQuery.isSuccess) {
+      setAuthenticated(true);
+      return;
+    }
+    if (currentUserQuery.isError) {
+      setAuthenticated(false);
+    }
+  }, [currentUserQuery.isError, currentUserQuery.isSuccess]);
 
   useEffect(() => {
     if (!currentUserQuery.data) {
@@ -284,8 +295,12 @@ export function App() {
     return () => window.removeEventListener("scroll", onScroll);
   }, [authenticated]);
 
-  function logout() {
-    setToken("");
+  async function logout() {
+    try {
+      await logoutRequest();
+    } catch {
+      // noop: local auth state is still reset below
+    }
     setAuthenticated(false);
     setMenuOpen(false);
     setLoginError(null);

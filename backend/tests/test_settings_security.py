@@ -33,3 +33,14 @@ def test_validate_runtime_security_rejects_wildcard_origins_in_production() -> N
     )
     with pytest.raises(RuntimeError, match="ALLOWED_ORIGINS"):
         validate_runtime_security(settings)
+
+
+def test_validate_runtime_security_rejects_insecure_cookie_in_production() -> None:
+    settings = Settings(
+        env="production",
+        secret_key="very-strong-secret",
+        allowed_origins="https://app.example.org",
+        auth_cookie_secure=False,
+    )
+    with pytest.raises(RuntimeError, match="AUTH_COOKIE_SECURE"):
+        validate_runtime_security(settings)

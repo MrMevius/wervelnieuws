@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -24,13 +24,37 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit)])
-def login(payload: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+def login(
+    payload: LoginRequest, response: Response, db: Session = Depends(get_db)
+) -> TokenResponse:
+    settings = get_settings()
     token = AuthService(db).login(payload.username, payload.password)
     if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
+    response.set_cookie(
+        key=settings.auth_cookie_name,
+        value=token,
+        max_age=settings.auth_cookie_ttl_days * 24 * 60 * 60,
+        httponly=True,
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+        path="/",
+    )
     return TokenResponse(access_token=token)
+
+
+@router.post("/logout")
+def logout(response: Response) -> dict[str, str]:
+    settings = get_settings()
+    response.delete_cookie(
+        key=settings.auth_cookie_name,
+        path="/",
+        secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite,
+    )
+    return {"status": "ok"}
 
 
 @router.get("/me", response_model=CurrentUserResponse)

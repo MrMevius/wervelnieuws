@@ -1,4 +1,8 @@
+import re
+import time
 from io import BytesIO
+
+from jose import jwt
 
 
 PNG_1X1 = (
@@ -40,6 +44,96 @@ def test_auth_me_returns_current_user(client):
     assert payload["is_admin"] is True
     assert payload["theme_preference"] == "system"
     assert payload["has_avatar"] is False
+
+
+def test_login_sets_http_only_cookie_with_expected_ttl(client):
+    response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert response.status_code == 200
+    set_cookie = response.headers.get("set-cookie", "")
+    assert "wervel_session=" in set_cookie
+    assert "HttpOnly" in set_cookie
+    assert "Max-Age=2592000" in set_cookie
+
+
+def test_login_token_expiry_aligns_with_cookie_ttl_by_default(client):
+    response = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert response.status_code == 200
+
+    token = response.json()["access_token"]
+    claims = jwt.get_unverified_claims(token)
+
+    set_cookie = response.headers.get("set-cookie", "")
+    match = re.search(r"Max-Age=(\d+)", set_cookie)
+    assert match is not None
+    cookie_ttl_seconds = int(match.group(1))
+
+    token_ttl_seconds = int(claims["exp"] - time.time())
+    assert cookie_ttl_seconds - 120 <= token_ttl_seconds <= cookie_ttl_seconds + 120
+
+
+def test_auth_me_accepts_cookie_without_bearer_header(client):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert login.status_code == 200
+
+    response = client.get("/api/auth/me")
+    assert response.status_code == 200
+    assert response.json()["username"] == "admin"
+
+
+def test_auth_me_keeps_bearer_fallback_when_cookie_missing(client):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert login.status_code == 200
+    token = login.json()["access_token"]
+    client.cookies.clear()
+
+    response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert response.json()["username"] == "admin"
+
+
+def test_auth_me_prefers_explicit_bearer_when_cookie_also_present(client):
+    admin_login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert admin_login.status_code == 200
+
+    editor_login = client.post(
+        "/api/auth/login", json={"username": "editor", "password": "editor12345"}
+    )
+    assert editor_login.status_code == 200
+    editor_token = editor_login.json()["access_token"]
+
+    response = client.get(
+        "/api/auth/me", headers={"Authorization": f"Bearer {editor_token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["username"] == "editor"
+    assert response.json()["is_admin"] is False
+
+
+def test_logout_clears_cookie_and_auth_me_becomes_unauthenticated(client):
+    login = client.post(
+        "/api/auth/login", json={"username": "admin", "password": "admin12345"}
+    )
+    assert login.status_code == 200
+
+    logout = client.post("/api/auth/logout")
+    assert logout.status_code == 200
+    assert logout.json()["status"] == "ok"
+    set_cookie = logout.headers.get("set-cookie", "")
+    assert "wervel_session=" in set_cookie
+    assert "Max-Age=0" in set_cookie
+
+    me = client.get("/api/auth/me")
+    assert me.status_code == 401
 
 
 def test_auth_me_for_non_admin_returns_is_admin_false(client):

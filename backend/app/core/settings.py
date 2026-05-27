@@ -16,7 +16,11 @@ class Settings(BaseSettings):
     app_name: str = "Wervelnieuws API"
     env: str = "development"
     secret_key: str = Field(default="change-me", min_length=8)
-    access_token_expire_minutes: int = 60 * 12
+    access_token_expire_minutes: int | None = None
+    auth_cookie_name: str = "wervel_session"
+    auth_cookie_ttl_days: int = 30
+    auth_cookie_secure: bool = False
+    auth_cookie_samesite: str = "lax"
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -67,6 +71,12 @@ class Settings(BaseSettings):
             return MIN_DATABASE_UPLOAD_BYTES
         return parsed
 
+    @property
+    def access_token_ttl_minutes(self) -> int:
+        if self.access_token_expire_minutes is not None:
+            return self.access_token_expire_minutes
+        return self.auth_cookie_ttl_days * 24 * 60
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -100,4 +110,9 @@ def validate_runtime_security(settings: Settings) -> None:
     if "*" in origins:
         raise RuntimeError(
             "Unsafe ALLOWED_ORIGINS for production. Use explicit origins only."
+        )
+
+    if not settings.auth_cookie_secure:
+        raise RuntimeError(
+            "Unsafe AUTH_COOKIE_SECURE for production. Set AUTH_COOKIE_SECURE=true."
         )

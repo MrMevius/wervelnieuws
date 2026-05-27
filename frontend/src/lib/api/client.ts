@@ -411,6 +411,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -426,6 +427,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {})
@@ -438,11 +440,16 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
 }
 
 export async function login(username: string, password: string) {
-  const result = await request<{ access_token: string }>("/auth/login", {
+  await request<{ access_token: string }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ username, password })
   });
-  setToken(result.access_token);
+}
+
+export function logout() {
+  return request<{ status: string }>("/auth/logout", {
+    method: "POST"
+  });
 }
 
 export function getCurrentUser() {
@@ -637,6 +644,7 @@ export function uploadDatabaseDocumentWithProgress(
   return new Promise<DatabaseDocument>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", `${API_BASE}/database/documents`);
+    xhr.withCredentials = true;
     if (token) {
       xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     }
