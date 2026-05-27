@@ -438,6 +438,16 @@ def _default_about() -> AboutResponse:
                     "Waar gebruikers in Vergaderborden zichtbaar zijn, tonen we nu bij voorkeur de volledige naam met een nette fallback naar gebruikersnaam.",
                 ],
             },
+            {
+                "iteration": "41",
+                "date": "2026-05-27",
+                "title": "Admin: nieuw vergaderbord aanmaken nu direct zichtbaar",
+                "highlights": [
+                    "Op de Admin-pagina staat nu een duidelijk hoofditem ‘Nieuw vergaderbord aanmaken’.",
+                    "De oude admin-optie is weggehaald uit de Vergaderborden-projectdropdown bovenin.",
+                    "De knop opent nog steeds dezelfde bestaande flow om een nieuw vergaderbordproject aan te maken.",
+                ],
+            },
         ],
     )
 

@@ -888,6 +888,37 @@ describe("App", () => {
     });
   });
 
+  it("shows 'Nieuw vergaderbord aanmaken' in Admin and removes old dropdown action", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    openVergaderbordenDropdown();
+    expect(screen.queryByRole("link", { name: "Nieuw project \(admin\)" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Nieuw vergaderbord aanmaken" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "Nieuw vergaderbord aanmaken" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
+    });
+  });
+
   it("allows admin to create a new user", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",

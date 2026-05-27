@@ -393,9 +393,6 @@ export function App() {
                   {project.name}
                 </NavLink>
               ))}
-              {currentUserQuery.data?.is_admin && (
-                <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw project (admin)</NavLink>
-              )}
             </nav>
           </div>
           <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
@@ -4013,6 +4010,9 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   return (
     <section className="panel">
       <h1>Admin</h1>
+      <div className="admin-primary-actions">
+        <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
+      </div>
       <div className="admin-tab-row" role="tablist" aria-label="Admin onderdelen">
         <button type="button" role="tab" aria-selected={activeAdminTab === "users"} onClick={() => setActiveAdminTab("users")}>Gebruikers</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "projects"} onClick={() => setActiveAdminTab("projects")}>Projecten</button>

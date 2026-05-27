@@ -1971,6 +1971,23 @@ tbody tr.row-selected {
   margin-bottom: 12px;
 }
 
+.admin-primary-actions {
+  margin-bottom: 12px;
+}
+
+.admin-primary-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
 .admin-tab-row button[role="tab"] {
   border: 1px solid var(--line);
   background: var(--surface-muted);
