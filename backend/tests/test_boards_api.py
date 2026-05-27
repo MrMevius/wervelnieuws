@@ -196,6 +196,75 @@ def test_update_card_title_returns_404_for_unknown_card(client):
     assert update.status_code == 404
 
 
+def test_update_card_description_persists_and_allows_empty(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Beschrijving update", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "Oude beschrijving", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    update = client.patch(
+        f"/api/boards/cards/{card_id}/description",
+        headers=headers,
+        json={"description": "  Nieuwe beschrijving  "},
+    )
+    assert update.status_code == 200
+    assert update.json()["description"] == "Nieuwe beschrijving"
+
+    clear = client.patch(
+        f"/api/boards/cards/{card_id}/description",
+        headers=headers,
+        json={"description": "   "},
+    )
+    assert clear.status_code == 200
+    assert clear.json()["description"] == ""
+
+    board = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board.status_code == 200
+    assert board.json()["cards"][0]["description"] == ""
+
+
+def test_update_card_description_rejects_extra_fields(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Beschrijving validatie", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+
+    scoped = client.patch(
+        f"/api/boards/cards/{card_id}/description",
+        headers=headers,
+        json={"description": "Nieuwe beschrijving", "title": "Niet toegestaan"},
+    )
+    assert scoped.status_code == 422
+
+
+def test_update_card_description_returns_404_for_unknown_card(client):
+    headers = _login(client)
+    update = client.patch(
+        "/api/boards/cards/00000000-0000-0000-0000-000000000000/description",
+        headers=headers,
+        json={"description": "Nieuwe beschrijving"},
+    )
+    assert update.status_code == 404
+
+
 def test_move_card_creates_system_update_for_column_change(client):
     headers = _login(client)
     create_project = client.post(

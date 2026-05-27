@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   createBoardCard: vi.fn(),
   moveBoardCard: vi.fn(),
   updateBoardCardTitle: vi.fn(),
+  updateBoardCardDescription: vi.fn(),
   postBoardCardUpdate: vi.fn(),
   uploadBoardRecording: vi.fn()
 }));
@@ -73,6 +74,7 @@ describe("Vergaderborden drag/drop", () => {
     api.uploadBoardRecording.mockResolvedValue({ id: "r1" });
     api.moveBoardCard.mockResolvedValue({ status: "ok" });
     api.updateBoardCardTitle.mockResolvedValue({ id: "c1", title: "Nieuwe titel" });
+    api.updateBoardCardDescription.mockResolvedValue({ id: "c1", description: "Nieuwe beschrijving" });
   });
 
   it("slaat direct op bij verplaatsen naar andere kolom", async () => {
@@ -221,6 +223,55 @@ describe("Vergaderborden drag/drop", () => {
 
     expect(await screen.findByText("Vul een kaarttitel in.")).toBeInTheDocument();
     expect(api.updateBoardCardTitle).not.toHaveBeenCalled();
+  });
+
+  it("bewerkt kaartbeschrijving inline en slaat op bij blur met refresh", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "Oud", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const input = await screen.findByLabelText("Beschrijving");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "Nieuwe beschrijving" } });
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(api.updateBoardCardDescription).toHaveBeenCalledWith("c1", { description: "Nieuwe beschrijving" });
+    });
+    await waitFor(() => {
+      expect(api.getBoardProject).toHaveBeenCalledTimes(2);
+      expect(api.getBoardCard).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("doet geen description API-call bij ongewijzigde tekst", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "Ongewijzigd", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const input = await screen.findByLabelText("Beschrijving");
+    fireEvent.focus(input);
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(api.updateBoardCardDescription).not.toHaveBeenCalled();
+    });
   });
 
   it("opent kaartdetail vanaf het overzicht en annuleert detailtitelbewerking met Escape", async () => {

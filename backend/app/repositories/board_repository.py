@@ -60,6 +60,13 @@ class BoardRepository:
         self.db.refresh(card)
         return card
 
+    def update_card_description(self, card: BoardCard, description: str) -> BoardCard:
+        card.description = description.strip()
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
     def replace_assignments(self, card: BoardCard, user_ids: list[str]) -> None:
         self.db.query(CardAssignment).filter(CardAssignment.card_id == card.id).delete()
         for user_id in dict.fromkeys(user_ids):

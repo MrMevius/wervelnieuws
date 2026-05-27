@@ -9,6 +9,7 @@ from app.repositories.board_repository import BoardRepository
 from app.schemas.boards import (
     BoardCardCreateRequest,
     BoardCardMoveRequest,
+    BoardCardDescriptionUpdateRequest,
     BoardCardResponse,
     BoardCardTitleUpdateRequest,
     BoardProjectCreateRequest,
@@ -157,6 +158,16 @@ def update_card_title(card_id: str, payload: BoardCardTitleUpdateRequest, curren
         actor_user_id=current.id,
         details_json=service.audit_details(card_id=updated.id, previous_title=previous_title, title=updated.title),
     )
+    return _card_response(repo, updated)
+
+
+@router.patch("/cards/{card_id}/description", response_model=BoardCardResponse)
+def update_card_description(card_id: str, payload: BoardCardDescriptionUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    updated = repo.update_card_description(card, payload.description)
+    service.touch_activity(service.ensure_project_access(repo.get_project(updated.project_id), current))
     return _card_response(repo, updated)
 
 

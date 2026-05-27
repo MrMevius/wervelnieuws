@@ -47,6 +47,18 @@ class BoardCardTitleUpdateRequest(BaseModel):
         return normalized
 
 
+class BoardCardDescriptionUpdateRequest(BaseModel):
+    description: str = Field(max_length=5000)
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Beschrijving moet tekst zijn.")
+        return value.strip()
+
+
 class CardUpdateCreateRequest(BaseModel):
     message: str = Field(min_length=1)
 

@@ -11,6 +11,7 @@ import {
   listBoardProjects,
   moveBoardCard,
   postBoardCardUpdate,
+  updateBoardCardDescription,
   updateBoardCardTitle,
   uploadBoardRecording
 } from "../../../lib/api/client";
@@ -29,6 +30,13 @@ type DragCardMeta = {
 };
 
 type TitleEditState = {
+  cardId: string;
+  value: string;
+  original: string;
+  error: string | null;
+};
+
+type DescriptionEditState = {
   cardId: string;
   value: string;
   original: string;
@@ -76,6 +84,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [moveError, setMoveError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
+  const [descriptionEdit, setDescriptionEdit] = useState<DescriptionEditState | null>(null);
   const skipNextTitleBlurRef = useRef(false);
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
@@ -121,6 +130,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   });
   const updateTitleMutation = useMutation({
     mutationFn: ({ cardId, title }: { cardId: string; title: string }) => updateBoardCardTitle(cardId, { title }),
+    onSuccess: async (_card, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] })
+      ]);
+    }
+  });
+  const updateDescriptionMutation = useMutation({
+    mutationFn: ({ cardId, description }: { cardId: string; description: string }) => updateBoardCardDescription(cardId, { description }),
     onSuccess: async (_card, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
@@ -188,6 +206,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     setTitleEdit(null);
   }, [selectedCardId]);
 
+  useEffect(() => {
+    setDescriptionEdit(null);
+  }, [selectedCardId]);
+
   const startOrStopRecording = async () => {
     if (!cardQuery.data) return;
     if (recorder) {
@@ -232,6 +254,22 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     } catch (err) {
       const message = err instanceof Error && err.message ? err.message : "Kaarttitel opslaan is mislukt.";
       setTitleEdit((current) => (current ? { ...current, error: message } : current));
+    }
+  };
+
+  const saveDescriptionEdit = async () => {
+    if (!descriptionEdit || updateDescriptionMutation.isPending) return;
+    const nextDescription = descriptionEdit.value.trim();
+    if (nextDescription === descriptionEdit.original.trim()) {
+      setDescriptionEdit(null);
+      return;
+    }
+    try {
+      await updateDescriptionMutation.mutateAsync({ cardId: descriptionEdit.cardId, description: nextDescription });
+      setDescriptionEdit(null);
+    } catch (err) {
+      const message = err instanceof Error && err.message ? err.message : "Kaartbeschrijving opslaan is mislukt.";
+      setDescriptionEdit((current) => (current ? { ...current, error: message } : current));
     }
   };
 
@@ -394,6 +432,42 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 </h2>
               </div>
             )}
+            <div className="board-detail-description-edit">
+              <label className="vergaderborden-field">
+                <span>Beschrijving</span>
+                <textarea
+                  aria-label="Beschrijving"
+                  value={descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description}
+                  onFocus={() => {
+                    if (descriptionEdit?.cardId === cardQuery.data!.card.id) return;
+                    setDescriptionEdit({
+                      cardId: cardQuery.data!.card.id,
+                      value: cardQuery.data!.card.description,
+                      original: cardQuery.data!.card.description,
+                      error: null
+                    });
+                  }}
+                  onChange={(evt) => {
+                    if (descriptionEdit?.cardId !== cardQuery.data!.card.id) {
+                      setDescriptionEdit({
+                        cardId: cardQuery.data!.card.id,
+                        value: evt.target.value,
+                        original: cardQuery.data!.card.description,
+                        error: null
+                      });
+                      return;
+                    }
+                    setDescriptionEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current));
+                  }}
+                  onBlur={() => {
+                    void saveDescriptionEdit();
+                  }}
+                  placeholder="Geen beschrijving"
+                  disabled={updateDescriptionMutation.isPending}
+                />
+              </label>
+              {descriptionEdit?.error && <p className="error vergaderborden-inline-error">{descriptionEdit.error}</p>}
+            </div>
             <form
               className="board-update-form"
               onSubmit={(e: FormEvent) => {

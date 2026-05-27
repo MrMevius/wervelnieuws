@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "33",
+                "date": "2026-05-27",
+                "title": "Kaartbeschrijving direct bewerken in Vergaderborden",
+                "highlights": [
+                    "In het kaartdetail kun je de beschrijving nu direct inline aanpassen zonder extra scherm.",
+                    "Een gewijzigde beschrijving wordt automatisch opgeslagen zodra je uit het veld klikt.",
+                    "Bij ongewijzigde tekst wordt geen onnodige opslagaanroep gedaan, waardoor werken rustiger blijft.",
+                ],
+            },
+            {
                 "iteration": "02",
                 "date": "2026-03-12",
                 "title": "Duidelijker dashboard en betere navigatie",
