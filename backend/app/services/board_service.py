@@ -66,6 +66,26 @@ class BoardService:
         original_name = (file.filename or "opname.webm").strip() or "opname.webm"
         return str(target), len(content), mime_type, original_name
 
+    def store_update_image(self, card: BoardCard, file: UploadFile) -> str:
+        mime_type = (file.content_type or "").lower().strip()
+        allowed = {
+            "image/png": ".png",
+            "image/jpeg": ".jpg",
+            "image/webp": ".webp",
+        }
+        if mime_type not in allowed:
+            raise HTTPException(status_code=400, detail="Ongeldig afbeeldingsformaat. Gebruik PNG, JPG of WEBP.")
+
+        settings = get_settings()
+        root = settings.storage_root / settings.uploads_dir / "board-updates" / card.project_id / card.id
+        root.mkdir(parents=True, exist_ok=True)
+        target = root / f"{uuid4()}{allowed[mime_type]}"
+        content = file.file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Lege upload is niet toegestaan.")
+        target.write_bytes(content)
+        return str(target)
+
     @staticmethod
     def audit_details(**kwargs: str | int | None) -> str:
         return json.dumps(kwargs)

@@ -76,6 +76,8 @@ class CardUpdateResponse(BaseModel):
     author_username: str
     author_display_name: str
     message: str
+    image_url: str | None = None
+    edited_from_update_id: str | None = None
     created_at: datetime
 
 

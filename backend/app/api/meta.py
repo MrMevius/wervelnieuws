@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "47",
+                "date": "2026-05-28",
+                "title": "Vergaderbord-updates: eigen update bewerken met revisie",
+                "highlights": [
+                    "Bij vergaderbord-updates kan nu alleen de auteur zelf een geplaatste update bewerken.",
+                    "Bewerken van een update maakt een nieuwe revisie, zodat eerdere inhoud bewaard blijft in de updatehistorie.",
+                    "Bij een update-edit kun je nu ook een afbeelding toevoegen, vervangen of verwijderen zonder automatische herpublicatie of nieuwsbrief-resend.",
+                ],
+            },
+            {
                 "iteration": "46",
                 "date": "2026-05-28",
                 "title": "Vergaderborden: duidelijke verplaatsingsupdates met kolomnamen",

@@ -5,7 +5,9 @@ import {
   AdminUser,
   createBoardCard,
   createBoardProject,
+  editBoardCardUpdate,
   getBoardCard,
+  getCurrentUser,
   getBoardProject,
   listAdminUsers,
   listBoardProjects,
@@ -42,6 +44,15 @@ type DescriptionEditState = {
   cardId: string;
   value: string;
   original: string;
+  error: string | null;
+};
+
+type UpdateEditState = {
+  updateId: string;
+  value: string;
+  original: string;
+  removeImage: boolean;
+  newImage: File | null;
   error: string | null;
 };
 
@@ -103,11 +114,13 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
   const [descriptionEdit, setDescriptionEdit] = useState<DescriptionEditState | null>(null);
+  const [updateEdit, setUpdateEdit] = useState<UpdateEditState | null>(null);
   const skipNextTitleBlurRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
+  const currentUserQuery = useQuery({ queryKey: ["current-user"], queryFn: getCurrentUser });
   const requestedProjectId = searchParams.get("project");
   const resolvedProjectId = useMemo(() => {
     const projects = projectsQuery.data ?? [];
@@ -174,6 +187,17 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       ]);
       setUpdateMessage("");
       setUpdateError(null);
+    }
+  });
+  const editUpdateMutation = useMutation({
+    mutationFn: ({ cardId, updateId, message, removeImage, image }: { cardId: string; updateId: string; message: string; removeImage?: boolean; image?: File | null }) =>
+      editBoardCardUpdate(cardId, updateId, { message, remove_image: removeImage, image }),
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
+      ]);
+      setUpdateEdit(null);
     }
   });
   const uploadRecordingMutation = useMutation({
@@ -591,7 +615,86 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   return (
                     <article key={u.id} className="board-update-item">
-                      <p className="board-update-message">{renderBoardUpdateMessage(u.message)}</p>
+                      {updateEdit?.updateId === u.id ? (
+                        <div>
+                          <textarea
+                            aria-label="Update bewerken"
+                            value={updateEdit.value}
+                            onChange={(evt) => setUpdateEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
+                            disabled={editUpdateMutation.isPending}
+                          />
+                          <div>
+                            <input
+                              aria-label="Afbeelding bij update"
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              onChange={(evt) => {
+                                const file = evt.target.files?.[0] ?? null;
+                                setUpdateEdit((current) => (current ? { ...current, newImage: file, removeImage: file ? false : current.removeImage } : current));
+                              }}
+                              disabled={editUpdateMutation.isPending}
+                            />
+                            {(u.image_url || updateEdit.newImage) && (
+                              <button
+                                type="button"
+                                onClick={() => setUpdateEdit((current) => (current ? { ...current, removeImage: true, newImage: null } : current))}
+                                disabled={editUpdateMutation.isPending}
+                              >
+                                Afbeelding verwijderen
+                              </button>
+                            )}
+                          </div>
+                          <div>
+                            <button
+                              type="button"
+                              disabled={editUpdateMutation.isPending}
+                              onClick={() => {
+                                const next = updateEdit.value.trim();
+                                if (!next) {
+                                  setUpdateEdit((current) => (current ? { ...current, error: "Updatetekst mag niet leeg zijn" } : current));
+                                  return;
+                                }
+                                editUpdateMutation.mutate({
+                                  cardId: cardQuery.data!.card.id,
+                                  updateId: u.id,
+                                  message: next,
+                                  removeImage: updateEdit.removeImage,
+                                  image: updateEdit.newImage
+                                }, {
+                                  onError: (err) => {
+                                    const msg = err instanceof Error && err.message ? err.message : "Update opslaan is mislukt";
+                                    setUpdateEdit((current) => (current ? { ...current, error: msg } : current));
+                                  }
+                                });
+                              }}
+                            >Opslaan</button>
+                            <button type="button" onClick={() => setUpdateEdit(null)} disabled={editUpdateMutation.isPending}>Annuleren</button>
+                          </div>
+                          {updateEdit.error && <p className="error vergaderborden-inline-error">{updateEdit.error}</p>}
+                        </div>
+                      ) : (
+                        <>
+                          <p className="board-update-message">{renderBoardUpdateMessage(u.message)}</p>
+                          {u.image_url && <img src={u.image_url} alt="Update-afbeelding" style={{ maxWidth: "220px", borderRadius: "8px" }} />}
+                          {u.author_user_id === currentUserQuery.data?.id && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setUpdateEdit({
+                                  updateId: u.id,
+                                  value: u.message,
+                                  original: u.message,
+                                  removeImage: false,
+                                  newImage: null,
+                                  error: null
+                                })
+                              }
+                            >
+                              Bewerken
+                            </button>
+                          )}
+                        </>
+                      )}
                       <small className="board-update-meta">{dateLabel} · {authorLabel}</small>
                     </article>
                   );

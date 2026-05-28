@@ -10,12 +10,14 @@ const api = vi.hoisted(() => ({
   listAdminUsers: vi.fn(),
   getBoardProject: vi.fn(),
   getBoardCard: vi.fn(),
+  getCurrentUser: vi.fn(),
   createBoardProject: vi.fn(),
   createBoardCard: vi.fn(),
   moveBoardCard: vi.fn(),
   updateBoardCardTitle: vi.fn(),
   updateBoardCardDescription: vi.fn(),
   postBoardCardUpdate: vi.fn(),
+  editBoardCardUpdate: vi.fn(),
   uploadBoardRecording: vi.fn()
 }));
 
@@ -87,9 +89,11 @@ describe("Vergaderborden drag/drop", () => {
       }
     ]);
     api.getBoardCard.mockResolvedValue({ card: null, updates: [], recordings: [] });
+    api.getCurrentUser.mockResolvedValue({ id: "u1", username: "admin" });
     api.createBoardProject.mockResolvedValue({ id: "p2" });
     api.createBoardCard.mockResolvedValue({ id: "c2" });
     api.postBoardCardUpdate.mockResolvedValue({ id: "u2" });
+    api.editBoardCardUpdate.mockResolvedValue({ id: "u3" });
     api.uploadBoardRecording.mockResolvedValue({ id: "r1" });
     api.moveBoardCard.mockResolvedValue({ status: "ok" });
     api.updateBoardCardTitle.mockResolvedValue({ id: "c1", title: "Nieuwe titel" });
@@ -438,6 +442,8 @@ describe("Vergaderborden drag/drop", () => {
           author_username: "admin",
           author_display_name: "Admin Gebruiker",
           message: "Kaart verplaatst van Te doen naar Bezig.",
+          image_url: null,
+          edited_from_update_id: null,
           created_at: "2026-05-27T10:00:00Z"
         }
       ],
@@ -452,6 +458,37 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
     expect(await screen.findByText(/· Admin Gebruiker/)).toBeInTheDocument();
+  });
+
+  it("toont update-bewerken alleen voor auteur en ondersteunt save/cancel", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        { id: "u1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Eigen update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T10:00:00Z" },
+        { id: "u2", author_user_id: "u2", author_username: "editor", author_display_name: "Editor", message: "Andermans update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T09:00:00Z" }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    expect(await screen.findByText("Eigen update")).toBeInTheDocument();
+    const editButtons = screen.getAllByRole("button", { name: "Bewerken" });
+    expect(editButtons).toHaveLength(1);
+
+    fireEvent.click(editButtons[0]);
+    const textarea = await screen.findByLabelText("Update bewerken");
+    fireEvent.change(textarea, { target: { value: "Eigen update aangepast" } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    await waitFor(() => {
+      expect(api.editBoardCardUpdate).toHaveBeenCalledWith("c1", "u1", expect.objectContaining({ message: "Eigen update aangepast" }));
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bewerken" }));
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+    expect(screen.queryByLabelText("Update bewerken")).not.toBeInTheDocument();
   });
 
   it("toont recordknoppen op alle kaarten en opent detail niet bij recordklik", async () => {

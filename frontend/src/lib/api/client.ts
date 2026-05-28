@@ -241,7 +241,7 @@ export type BoardProjectDetail = {
 
 export type BoardCardDetail = {
   card: BoardCard;
-  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; created_at: string }>;
+  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; created_at: string }>;
   recordings: Array<{
     id: string;
     filename: string;
@@ -581,6 +581,14 @@ export function getBoardCard(cardId: string) {
 
 export function postBoardCardUpdate(cardId: string, message: string) {
   return request<{ id: string }>(`/boards/cards/${cardId}/updates`, { method: "POST", body: JSON.stringify({ message }) });
+}
+
+export function editBoardCardUpdate(cardId: string, updateId: string, payload: { message: string; remove_image?: boolean; image?: Blob | null }) {
+  const fd = new FormData();
+  fd.append("message", payload.message);
+  if (payload.remove_image) fd.append("remove_image", "true");
+  if (payload.image) fd.append("image", payload.image, "update-image.png");
+  return request<{ id: string }>(`/boards/cards/${cardId}/updates/${updateId}`, { method: "PATCH", body: fd });
 }
 
 export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number) {

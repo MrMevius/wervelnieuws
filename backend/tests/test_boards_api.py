@@ -384,3 +384,100 @@ def test_board_uses_full_name_with_trimmed_fallback_for_display_labels(client):
     )
     assert posted.status_code == 200
     assert posted.json()["author_display_name"] == "Beheerder Bord"
+
+
+def test_edit_own_update_creates_revision_and_keeps_history(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Edit update", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+    created = client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Origineel"})
+    assert created.status_code == 200
+    update_id = created.json()["id"]
+
+    edited = client.patch(
+        f"/api/boards/cards/{card_id}/updates/{update_id}",
+        headers=headers,
+        data={"message": "Aangepast"},
+    )
+    assert edited.status_code == 200
+    assert edited.json()["message"] == "Aangepast"
+    assert edited.json()["edited_from_update_id"] == update_id
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail.status_code == 200
+    messages = [item["message"] for item in detail.json()["updates"]]
+    assert "Origineel" in messages
+    assert "Aangepast" in messages
+
+
+def test_edit_update_forbidden_for_non_owner(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    editor = next(item for item in users if item["username"] == "editor")
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Edit forbidden", "description": "", "invited_user_ids": [editor["id"]]},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+    created = client.post(f"/api/boards/cards/{card_id}/updates", headers=admin_headers, json={"message": "Origineel"})
+    update_id = created.json()["id"]
+
+    forbidden = client.patch(
+        f"/api/boards/cards/{card_id}/updates/{update_id}",
+        headers=editor_headers,
+        data={"message": "Niet toegestaan"},
+    )
+    assert forbidden.status_code == 403
+
+
+def test_edit_update_supports_image_upload_and_remove(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Edit image", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+    created = client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Met image"})
+    update_id = created.json()["id"]
+
+    upload = client.patch(
+        f"/api/boards/cards/{card_id}/updates/{update_id}",
+        headers=headers,
+        data={"message": "Met image aangepast"},
+        files={"image": ("update.png", BytesIO(b"fakepng"), "image/png")},
+    )
+    assert upload.status_code == 200
+    assert upload.json()["image_url"]
+
+    remove = client.patch(
+        f"/api/boards/cards/{card_id}/updates/{upload.json()['id']}",
+        headers=headers,
+        data={"message": "Image verwijderd", "remove_image": "true"},
+    )
+    assert remove.status_code == 200
+    assert remove.json()["image_url"] is None

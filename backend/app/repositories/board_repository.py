@@ -101,6 +101,22 @@ class BoardRepository:
         self.db.refresh(row)
         return row
 
+    def get_update(self, update_id: str) -> CardUpdate | None:
+        return self.db.get(CardUpdate, update_id)
+
+    def create_update_revision(self, source: CardUpdate, message: str, image_path: str | None) -> CardUpdate:
+        row = CardUpdate(
+            card_id=source.card_id,
+            author_user_id=source.author_user_id,
+            message=message.strip(),
+            image_path=image_path,
+            edited_from_update_id=source.id,
+        )
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
     def list_recordings(self, card_id: str) -> list[Recording]:
         return list(self.db.scalars(select(Recording).where(Recording.card_id == card_id).order_by(Recording.created_at.desc())).all())
 

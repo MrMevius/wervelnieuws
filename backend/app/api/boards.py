@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -67,6 +69,12 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         updates_count=repo.count_updates(card.id),
         recordings_count=repo.count_recordings(card.id),
     )
+
+
+def _update_image_url(update_id: str, image_path: str | None) -> str | None:
+    if not image_path:
+        return None
+    return f"/api/boards/updates/{update_id}/image"
 
 
 @router.get("/projects", response_model=list[BoardProjectSummaryResponse])
@@ -184,6 +192,8 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
                 author_username=author.username if (author := repo.get_user(row.author_user_id)) else "onbekend",
                 author_display_name=_display_name(author),
                 message=row.message,
+                image_url=_update_image_url(row.id, row.image_path),
+                edited_from_update_id=row.edited_from_update_id,
                 created_at=row.created_at,
             )
             for row in updates
@@ -221,7 +231,53 @@ def post_update(card_id: str, payload: CardUpdateCreateRequest, current: User = 
         author_username=current.username,
         author_display_name=_display_name(current),
         message=row.message,
+        image_url=_update_image_url(row.id, row.image_path),
+        edited_from_update_id=row.edited_from_update_id,
         created_at=row.created_at,
+    )
+
+
+@router.patch("/cards/{card_id}/updates/{update_id}", response_model=CardUpdateResponse)
+def edit_own_update(
+    card_id: str,
+    update_id: str,
+    message: str = Form(...),
+    remove_image: bool = Form(default=False),
+    image: UploadFile | None = File(default=None),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CardUpdateResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    update = repo.get_update(update_id)
+    if not update or update.card_id != card.id:
+        raise HTTPException(status_code=404, detail="Update niet gevonden")
+    if update.author_user_id != current.id:
+        raise HTTPException(status_code=403, detail="Alleen de auteur mag deze update aanpassen")
+
+    normalized = message.strip()
+    if not normalized:
+        raise HTTPException(status_code=422, detail="Updatetekst mag niet leeg zijn")
+
+    image_path = update.image_path
+    if remove_image:
+        image_path = None
+    if image is not None:
+        image_path = service.store_update_image(card, image)
+
+    revised = repo.create_update_revision(update, normalized, image_path)
+    service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
+    AuditService(db).log("board.card.update_edited", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=revised.id, edited_from_update_id=update.id))
+    return CardUpdateResponse(
+        id=revised.id,
+        author_user_id=revised.author_user_id,
+        author_username=current.username,
+        author_display_name=_display_name(current),
+        message=revised.message,
+        image_url=_update_image_url(revised.id, revised.image_path),
+        edited_from_update_id=revised.edited_from_update_id,
+        created_at=revised.created_at,
     )
 
 
@@ -265,3 +321,20 @@ def download_recording(recording_id: str, current: User = Depends(get_current_us
     card = service.ensure_card_access(repo.get_card(recording.card_id), current)
     del card
     return FileResponse(path=recording.file_path, media_type=recording.mime_type, filename=recording.filename)
+
+
+@router.get("/updates/{update_id}/image")
+def download_update_image(update_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FileResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    update = repo.get_update(update_id)
+    if not update:
+        raise HTTPException(status_code=404, detail="Update niet gevonden")
+    card = service.ensure_card_access(repo.get_card(update.card_id), current)
+    del card
+    if not update.image_path:
+        raise HTTPException(status_code=404, detail="Afbeelding niet gevonden")
+    file_path = Path(update.image_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Afbeelding niet gevonden")
+    return FileResponse(path=str(file_path))
