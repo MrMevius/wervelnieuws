@@ -201,6 +201,9 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
         recordings=[
             RecordingResponse(
                 id=row.id,
+                uploaded_by_user_id=row.uploaded_by_user_id,
+                uploaded_by_username=recording_user.username if (recording_user := repo.get_user(row.uploaded_by_user_id)) else None,
+                uploaded_by_display_name=_display_name(recording_user),
                 filename=row.filename,
                 file_path=row.file_path,
                 duration=row.duration,
@@ -324,6 +327,9 @@ def upload_recording(
     AuditService(db).log("board.recording.created", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, recording_id=row.id))
     return RecordingResponse(
         id=row.id,
+        uploaded_by_user_id=row.uploaded_by_user_id,
+        uploaded_by_username=current.username,
+        uploaded_by_display_name=_display_name(current),
         filename=row.filename,
         file_path=row.file_path,
         duration=row.duration,

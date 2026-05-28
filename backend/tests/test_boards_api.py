@@ -48,12 +48,19 @@ def test_board_project_card_update_and_recording_flow(client):
     assert rec_payload["duration"] == 7
     assert rec_payload["transcription_status"] == "pending"
     assert rec_payload["recorded_at"]
+    assert rec_payload["uploaded_by_user_id"]
+    assert rec_payload["uploaded_by_username"] == "admin"
+    assert rec_payload["uploaded_by_display_name"]
 
     detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
     assert detail.status_code == 200
     assert detail.json()["updates"][0]["message"] == "Update geplaatst"
     assert len(detail.json()["recordings"]) == 1
     assert detail.json()["recordings"][0]["filename"] == "opname.webm"
+    assert detail.json()["recordings"][0]["uploaded_by_username"] == "admin"
+
+    download = client.get(rec_payload["download_url"], headers=headers)
+    assert download.status_code == 200
 
 
 def test_board_access_for_invited_user_only(client):

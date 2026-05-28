@@ -57,6 +57,46 @@ type UpdateEditState = {
   error: string | null;
 };
 
+type CardActivityItem =
+  | {
+    kind: "update";
+    id: string;
+    sortTs: number;
+    createdAt: string;
+    update: {
+      id: string;
+      author_user_id: string;
+      author_username: string;
+      author_display_name: string;
+      message: string;
+      image_url: string | null;
+      edited_from_update_id: string | null;
+      created_at: string;
+    };
+  }
+  | {
+    kind: "recording";
+    id: string;
+    sortTs: number;
+    createdAt: string;
+    recording: {
+      id: string;
+      uploaded_by_user_id?: string | null;
+      uploaded_by_username?: string | null;
+      uploaded_by_display_name?: string | null;
+      filename: string;
+      file_path: string;
+      duration: number | null;
+      recorded_at: string;
+      transcription_status: "pending" | "done" | "failed";
+      transcription_text: string;
+      mime_type: string;
+      size_bytes: number;
+      created_at: string;
+      download_url: string;
+    };
+  };
+
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
 const UNDERLINE_MARKER = "++";
@@ -311,6 +351,28 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     const selected = projects.find((project) => project.id === resolvedProjectId);
     return selected?.name ?? boardQuery.data?.project_name ?? null;
   }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
+
+  const cardActivityItems = useMemo<CardActivityItem[]>(() => {
+    if (!cardQuery.data) return [];
+    const updates: CardActivityItem[] = cardQuery.data.updates.map((u) => ({
+      kind: "update",
+      id: `update-${u.id}`,
+      sortTs: new Date(u.created_at || 0).getTime(),
+      createdAt: u.created_at,
+      update: u
+    }));
+    const recordings: CardActivityItem[] = cardQuery.data.recordings.map((r) => {
+      const sourceTs = r.recorded_at || r.created_at;
+      return {
+        kind: "recording",
+        id: `recording-${r.id}`,
+        sortTs: new Date(sourceTs || 0).getTime(),
+        createdAt: sourceTs,
+        recording: r
+      };
+    });
+    return [...updates, ...recordings].sort((a, b) => b.sortTs - a.sortTs);
+  }, [cardQuery.data]);
 
   const createProjectMutation = useMutation({
     mutationFn: createBoardProject,
@@ -788,13 +850,33 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             </form>
             <section className="board-updates-section" aria-live="polite">
               <h3>Updates</h3>
-              {[...cardQuery.data.updates]
-                .sort((a, b) => {
-                  const aTs = new Date(a.created_at || 0).getTime();
-                  const bTs = new Date(b.created_at || 0).getTime();
-                  return bTs - aTs;
-                })
-                .map((u) => {
+              {cardActivityItems.map((activity) => {
+                  if (activity.kind === "recording") {
+                    const r = activity.recording;
+                    const hasDate = Boolean(activity.createdAt);
+                    const dateLabel = hasDate
+                      ? new Date(activity.createdAt).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
+                      : "Datum onbekend";
+                    const authorLabel = r.uploaded_by_display_name?.trim() || r.uploaded_by_username?.trim() || "Onbekende auteur";
+                    return (
+                      <article key={activity.id} className="board-update-item">
+                        <div className="board-update-header">
+                          <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
+                          <div className="board-update-header-text">
+                            <strong className="board-update-author">{authorLabel}</strong>
+                            <small className="board-update-meta">{dateLabel}</small>
+                          </div>
+                        </div>
+                        <div className="board-update-message">
+                          <p><strong>Audio-opname</strong></p>
+                          <audio controls src={r.download_url} />
+                          <p><a href={r.download_url}>Download opname</a></p>
+                        </div>
+                      </article>
+                    );
+                  }
+
+                  const u = activity.update;
                   const hasDate = Boolean(u.created_at);
                   const dateLabel = hasDate
                     ? new Date(u.created_at).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
@@ -915,7 +997,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     </article>
                   );
                 })}
-              {cardQuery.data.updates.length === 0 && <p className="board-updates-empty">Er zijn nog geen updates geplaatst.</p>}
+              {cardActivityItems.length === 0 && <p className="board-updates-empty">Er zijn nog geen updates geplaatst.</p>}
             </section>
             {cardQuery.data.card.column === "doing" && (
               <div>
@@ -932,15 +1014,6 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 {activeRecordingCardId === cardQuery.data.card.id && <p>Timer: {recordingSeconds}s</p>}
               </div>
             )}
-            <h3>Opnames</h3>
-            {cardQuery.data.recordings.map((r) => (
-              <div key={r.id}>
-                <audio controls src={r.download_url} />
-                <p>
-                  <a href={r.download_url}>Download opname</a> · {new Date(r.recorded_at).toLocaleString("nl-NL")}
-                </p>
-              </div>
-            ))}
           </div>
         </div>
       )}

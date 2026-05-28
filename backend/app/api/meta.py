@@ -568,6 +568,16 @@ def _default_about() -> AboutResponse:
                     "De opnamebediening blijft volledig toegankelijk met Nederlandstalige knoplabels en tooltips voor start en stop.",
                 ],
             },
+            {
+                "iteration": "45",
+                "date": "2026-05-28",
+                "title": "Vergaderborden: audio-opnames nu in dezelfde updates-tijdlijn",
+                "highlights": [
+                    "In kaartdetails staan audio-opnames nu tussen de gewone updates, zodat je één chronologische activiteitenlijst hebt.",
+                    "De aparte sectie 'Opnames' is verwijderd; audio-items tonen nu dezelfde kaartstijl met speler en downloadlink.",
+                    "Updates en opnames worden samen newest-first gesorteerd op datum en tijd, met behoud van bestaande update- en opnameflows.",
+                ],
+            },
         ],
     )
 

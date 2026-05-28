@@ -464,6 +464,58 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.getByText("AG")).toBeInTheDocument();
   });
 
+  it("toont opnames in dezelfde updates-lijst zonder aparte Opnames-sectie en sorteert newest-first", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 1 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        {
+          id: "u1",
+          author_user_id: "u1",
+          author_username: "admin",
+          author_display_name: "Admin",
+          message: "Tekstupdate",
+          image_url: null,
+          edited_from_update_id: null,
+          created_at: "2026-05-28T10:00:00Z"
+        }
+      ],
+      recordings: [
+        {
+          id: "r1",
+          uploaded_by_user_id: "u1",
+          uploaded_by_username: "admin",
+          uploaded_by_display_name: "Admin",
+          filename: "opname.webm",
+          file_path: "/tmp/opname.webm",
+          duration: 7,
+          recorded_at: "2026-05-28T11:00:00Z",
+          transcription_status: "pending",
+          transcription_text: "",
+          mime_type: "audio/webm",
+          size_bytes: 1234,
+          created_at: "2026-05-28T11:00:00Z",
+          download_url: "/api/boards/recordings/r1/download"
+        }
+      ]
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    expect(screen.queryByRole("heading", { name: "Opnames" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Audio-opname")).toBeInTheDocument();
+    expect(screen.getByText("Tekstupdate")).toBeInTheDocument();
+
+    const cards = document.querySelectorAll(".board-update-item");
+    expect(cards[0]).toHaveTextContent("Audio-opname");
+    expect(cards[1]).toHaveTextContent("Tekstupdate");
+    expect(screen.getByText("Download opname")).toHaveAttribute("href", "/api/boards/recordings/r1/download");
+    const audioEl = document.querySelector("audio");
+    expect(audioEl).toHaveAttribute("src", "/api/boards/recordings/r1/download");
+  });
+
   it("rendert markdown-opmaak, lijstjes en escaped html veilig", async () => {
     const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });

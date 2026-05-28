@@ -244,6 +244,9 @@ export type BoardCardDetail = {
   updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; created_at: string }>;
   recordings: Array<{
     id: string;
+    uploaded_by_user_id?: string | null;
+    uploaded_by_username?: string | null;
+    uploaded_by_display_name?: string | null;
     filename: string;
     file_path: string;
     duration: number | null;

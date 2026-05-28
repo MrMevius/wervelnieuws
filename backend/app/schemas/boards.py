@@ -83,6 +83,9 @@ class CardUpdateResponse(BaseModel):
 
 class RecordingResponse(BaseModel):
     id: str
+    uploaded_by_user_id: str | None = None
+    uploaded_by_username: str | None = None
+    uploaded_by_display_name: str | None = None
     filename: str
     file_path: str
     duration: int | None
