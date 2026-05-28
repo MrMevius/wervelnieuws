@@ -291,7 +291,7 @@ def test_move_card_creates_system_update_for_column_change(client):
     assert detail.status_code == 200
     updates = detail.json()["updates"]
     assert len(updates) == 1
-    assert updates[0]["message"] == "Verplaatst van Te doen naar Bezig door admin."
+    assert updates[0]["message"] == "Kaart verplaatst van Te doen naar Bezig."
     assert updates[0]["author_display_name"] == "admin"
 
 
@@ -348,7 +348,7 @@ def test_move_card_creates_system_update_for_doing_to_done(client):
     assert detail.status_code == 200
     updates = detail.json()["updates"]
     assert len(updates) == 1
-    assert updates[0]["message"] == "Verplaatst van Bezig naar Klaar door admin."
+    assert updates[0]["message"] == "Kaart verplaatst van Bezig naar Klaar."
 
 
 def test_board_uses_full_name_with_trimmed_fallback_for_display_labels(client):

@@ -43,11 +43,8 @@ def _display_name(user: User | None) -> str:
     return (user.full_name or "").strip() or user.username
 
 
-def _build_move_update_message(old_column: str, new_column: str, actor_display_name: str) -> str:
-    return (
-        f"Verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)} "
-        f"door {actor_display_name}."
-    )
+def _build_move_update_message(old_column: str, new_column: str) -> str:
+    return f"Kaart verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)}."
 
 
 def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
@@ -138,7 +135,7 @@ def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depen
         repo.create_update(
             moved.id,
             current.id,
-            _build_move_update_message(old_column, moved.column.value, _display_name(current)),
+            _build_move_update_message(old_column, moved.column.value),
         )
     service.touch_activity(service.ensure_project_access(repo.get_project(moved.project_id), current))
     AuditService(db).log("board.card.moved", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, column=payload.column.value, position=payload.position))

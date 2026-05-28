@@ -437,7 +437,7 @@ describe("Vergaderborden drag/drop", () => {
           author_user_id: "u1",
           author_username: "admin",
           author_display_name: "Admin Gebruiker",
-          message: "Verplaatst van Te doen naar Bezig door Admin Gebruiker.",
+          message: "Kaart verplaatst van Te doen naar Bezig.",
           created_at: "2026-05-27T10:00:00Z"
         }
       ],
@@ -448,7 +448,9 @@ describe("Vergaderborden drag/drop", () => {
 
     expect(await screen.findByTitle("Admin Gebruiker")).toBeInTheDocument();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
-    expect(await screen.findByText("Verplaatst van Te doen naar Bezig door Admin Gebruiker.")).toBeInTheDocument();
+    expect(await screen.findByText(/Kaart verplaatst van/)).toBeInTheDocument();
+    expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
     expect(await screen.findByText(/· Admin Gebruiker/)).toBeInTheDocument();
   });
 

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
@@ -46,6 +46,7 @@ type DescriptionEditState = {
 };
 
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
+const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
 
 function displayNameForUser(user: Pick<AdminUser, "full_name" | "username">): string {
   return user.full_name?.trim() || user.username;
@@ -70,6 +71,19 @@ function toDutchMoveError(err: unknown): string {
     if (msg) return `Kaart verplaatsen is mislukt: ${msg}`;
   }
   return MOVE_ERROR_FALLBACK;
+}
+
+function renderBoardUpdateMessage(message: string | null | undefined): ReactNode {
+  const text = message?.trim() || "Update zonder tekst";
+  const match = text.match(MOVE_UPDATE_MESSAGE_REGEX);
+  if (!match) return text;
+
+  const [, oldColumn, newColumn] = match;
+  return (
+    <>
+      Kaart verplaatst van <strong>{oldColumn}</strong> naar <strong>{newColumn}</strong>.
+    </>
+  );
 }
 
 export function VergaderbordenPage({ canManageProjects = false }: { canManageProjects?: boolean }) {
@@ -577,7 +591,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   return (
                     <article key={u.id} className="board-update-item">
-                      <p className="board-update-message">{u.message?.trim() || "Update zonder tekst"}</p>
+                      <p className="board-update-message">{renderBoardUpdateMessage(u.message)}</p>
                       <small className="board-update-meta">{dateLabel} · {authorLabel}</small>
                     </article>
                   );

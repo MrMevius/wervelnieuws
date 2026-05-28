@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "46",
+                "date": "2026-05-28",
+                "title": "Vergaderborden: duidelijke verplaatsingsupdates met kolomnamen",
+                "highlights": [
+                    "Nieuwe automatische kaartverplaatsingen gebruiken nu exact: 'Kaart verplaatst van <oude kolom> naar <nieuwe kolom>.'",
+                    "In kaartdetail-updates worden de oude en nieuwe kolomnaam vet weergegeven voor dit automatische verplaatsingspatroon.",
+                    "Bestaande opgeslagen updates en handmatige updates blijven ongewijzigd; datum, tijd en auteur blijven in de metadataregel staan.",
+                ],
+            },
+            {
                 "iteration": "45",
                 "date": "2026-05-27",
                 "title": "Vergaderbord-opnameknop duidelijker en minimale opnameduur",
