@@ -506,6 +506,8 @@ button:disabled {
 }
 
 .board-update-editor-shell {
+  width: 100%;
+  min-width: 0;
   border: 1px solid color-mix(in srgb, var(--line) 80%, var(--brand-soft) 20%);
   border-radius: 10px;
   background: var(--surface);
@@ -543,6 +545,8 @@ button:disabled {
 }
 
 .board-update-textarea {
+  width: 100%;
+  min-width: 0;
   min-height: 88px;
   resize: vertical;
   border: 0;

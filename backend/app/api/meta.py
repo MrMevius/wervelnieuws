@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "52",
+                "date": "2026-05-28",
+                "title": "Updateveld op vergaderbord-kaarten gebruikt nu de volle breedte",
+                "highlights": [
+                    "Het veld voor een nieuwe kaartupdate vult nu netjes de beschikbare kaartbreedte.",
+                    "De opmaakbalk en het tekstveld blijven gelijk uitgelijnd, zodat langere updates prettiger te schrijven zijn.",
+                    "De bestaande kaartdetailweergave en updateflow blijven verder ongewijzigd.",
+                ],
+            },
+            {
                 "iteration": "51",
                 "date": "2026-05-28",
                 "title": "Vergaderbord-updates editor nu compacter en Trello-achtiger",
