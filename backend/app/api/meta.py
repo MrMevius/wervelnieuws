@@ -29,6 +29,26 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "54",
+                "date": "2026-05-28",
+                "title": "Audio-opnames tonen nulduur nu als onbekend en bewaren duur robuuster",
+                "highlights": [
+                    "Nieuwe opnames op vergaderbord-kaarten gebruiken nu een robuustere duurdoorsturing, zodat geldige opnames niet als 0 seconden worden opgeslagen.",
+                    "Opnames met duur 0 worden nu consequent als onbekend behandeld, zodat je in kaartupdates geen misleidende '0:00' meer ziet.",
+                    "Afspelen en downloaden van audio-opnames blijven ongewijzigd werken via dezelfde speler en downloadlink.",
+                ],
+            },
+            {
+                "iteration": "53",
+                "date": "2026-05-28",
+                "title": "Audio-opnames tonen nu duur en bestandsgrootte in kaartupdates",
+                "highlights": [
+                    "Bij audio-opnames in vergaderbord-kaarten zie je nu direct de opnameduur en bestandsgrootte in een aparte metadataregel.",
+                    "Ook oudere opnames zonder complete metadata blijven netjes zichtbaar met een duidelijke 'onbekend'-weergave.",
+                    "Afspelen en downloaden van opnames werken zoals voorheen via dezelfde speler en downloadlink.",
+                ],
+            },
+            {
                 "iteration": "52",
                 "date": "2026-05-28",
                 "title": "Updateveld op vergaderbord-kaarten gebruikt nu de volle breedte",

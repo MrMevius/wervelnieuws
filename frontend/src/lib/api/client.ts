@@ -249,12 +249,12 @@ export type BoardCardDetail = {
     uploaded_by_display_name?: string | null;
     filename: string;
     file_path: string;
-    duration: number | null;
+    duration?: number | null;
     recorded_at: string;
     transcription_status: "pending" | "done" | "failed";
     transcription_text: string;
     mime_type: string;
-    size_bytes: number;
+    size_bytes?: number | null;
     created_at: string;
     download_url: string;
   }>;
@@ -601,7 +601,7 @@ export function deleteBoardCardUpdate(cardId: string, updateId: string) {
 export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number) {
   const fd = new FormData();
   fd.append("file", blob, "opname.webm");
-  if (typeof duration === "number" && Number.isFinite(duration) && duration >= 0) {
+  if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
     fd.append("duration", String(Math.round(duration)));
   }
   return request<{ id: string }>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });

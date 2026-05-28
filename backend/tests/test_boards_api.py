@@ -104,6 +104,39 @@ def test_upload_recording_allowed_for_all_columns(client):
         assert record.status_code == 200
 
 
+def test_upload_recording_normalizes_zero_duration_to_none(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Duur normalisatie", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    audio = BytesIO(b"RIFF....WEBM")
+    record = client.post(
+        f"/api/boards/cards/{card_id}/recordings",
+        headers=headers,
+        data={"duration": "0"},
+        files={"file": ("opname.webm", audio, "audio/webm")},
+    )
+    assert record.status_code == 200
+    assert record.json()["duration"] is None
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail.status_code == 200
+    assert detail.json()["recordings"][0]["duration"] is None
+
+
 def test_move_card_rejects_negative_position(client):
     headers = _login(client)
     create_project = client.post(

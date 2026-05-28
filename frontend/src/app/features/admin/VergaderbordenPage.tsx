@@ -86,12 +86,12 @@ type CardActivityItem =
       uploaded_by_display_name?: string | null;
       filename: string;
       file_path: string;
-      duration: number | null;
+      duration?: number | null;
       recorded_at: string;
       transcription_status: "pending" | "done" | "failed";
       transcription_text: string;
       mime_type: string;
-      size_bytes: number;
+      size_bytes?: number | null;
       created_at: string;
       download_url: string;
     };
@@ -280,6 +280,29 @@ function initialsFromName(name: string): string {
     .slice(0, 2);
   if (!parts.length) return "?";
   return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
+}
+
+function formatRecordingDuration(durationSeconds: number | null | undefined): string {
+  if (typeof durationSeconds !== "number" || !Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    return "Duur onbekend";
+  }
+  const rounded = Math.round(durationSeconds);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatRecordingSize(sizeBytes: number | null | undefined): string {
+  if (typeof sizeBytes !== "number" || !Number.isFinite(sizeBytes) || sizeBytes < 0) {
+    return "Grootte onbekend";
+  }
+  if (sizeBytes < 1024) return `${Math.round(sizeBytes)} B`;
+  const kb = sizeBytes / 1024;
+  if (kb < 1024) {
+    return `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(kb)} KB`;
+  }
+  const mb = kb / 1024;
+  return `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(mb)} MB`;
 }
 
 export function VergaderbordenPage({ canManageProjects = false }: { canManageProjects?: boolean }) {
@@ -545,7 +568,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           setRecordingError(RECORDING_TOO_SHORT_MESSAGE);
         } else if (blob.size > 0) {
           setRecordingError(null);
-          uploadRecordingMutation.mutate({ cardId: finishedCardId, blob, duration: durationAtStop });
+          uploadRecordingMutation.mutate({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
         } else {
           setRecordingError("Geen audiogegevens opgenomen. Probeer opnieuw.");
         }
@@ -869,6 +892,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         </div>
                         <div className="board-update-message">
                           <p><strong>Audio-opname</strong></p>
+                          <p>Duur: {formatRecordingDuration(r.duration)} · Grootte: {formatRecordingSize(r.size_bytes)}</p>
                           <audio controls src={r.download_url} />
                           <p><a href={r.download_url}>Download opname</a></p>
                         </div>

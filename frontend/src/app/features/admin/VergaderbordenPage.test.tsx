@@ -510,10 +510,47 @@ describe("Vergaderborden drag/drop", () => {
 
     const cards = document.querySelectorAll(".board-update-item");
     expect(cards[0]).toHaveTextContent("Audio-opname");
+    expect(cards[0]).toHaveTextContent("Duur: 0:07 · Grootte: 1,2 KB");
     expect(cards[1]).toHaveTextContent("Tekstupdate");
     expect(screen.getByText("Download opname")).toHaveAttribute("href", "/api/boards/recordings/r1/download");
     const audioEl = document.querySelector("audio");
     expect(audioEl).toHaveAttribute("src", "/api/boards/recordings/r1/download");
+  });
+
+  it("toont nette fallback voor bestaande opnames met nul/onbekende duur of grootte", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 1 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [],
+      recordings: [
+        {
+          id: "r-old",
+          uploaded_by_user_id: "u1",
+          uploaded_by_username: "admin",
+          uploaded_by_display_name: "Admin",
+          filename: "oude-opname.webm",
+          file_path: "/tmp/oude-opname.webm",
+          duration: 0,
+          recorded_at: "2026-05-28T09:00:00Z",
+          transcription_status: "pending",
+          transcription_text: "",
+          mime_type: "audio/webm",
+          size_bytes: undefined,
+          created_at: "2026-05-28T09:00:00Z",
+          download_url: "/api/boards/recordings/r-old/download"
+        }
+      ]
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    expect(await screen.findByText("Audio-opname")).toBeInTheDocument();
+    expect(screen.getByText("Duur: Duur onbekend · Grootte: Grootte onbekend")).toBeInTheDocument();
+    expect(screen.getByText("Download opname")).toHaveAttribute("href", "/api/boards/recordings/r-old/download");
+    const audioEl = document.querySelector("audio");
+    expect(audioEl).toHaveAttribute("src", "/api/boards/recordings/r-old/download");
   });
 
   it("rendert markdown-opmaak, lijstjes en escaped html veilig", async () => {
@@ -724,6 +761,9 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => {
       expect(api.uploadBoardRecording).toHaveBeenCalledWith("c1", expect.any(Blob), expect.any(Number));
     });
+    const uploadDuration = api.uploadBoardRecording.mock.calls[0]?.[2];
+    expect(typeof uploadDuration).toBe("number");
+    expect(uploadDuration).toBeGreaterThan(0);
     await waitFor(() => {
       expect(api.getBoardProject).toHaveBeenCalledTimes(2);
     });

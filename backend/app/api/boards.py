@@ -321,8 +321,9 @@ def upload_recording(
     repo = BoardRepository(db)
     service = BoardService(repo)
     card = service.ensure_card_access(repo.get_card(card_id), current)
+    normalized_duration = duration if (isinstance(duration, int) and duration > 0) else None
     file_path, size_bytes, mime_type, filename = service.store_recording(card, file)
-    row = repo.create_recording(card.id, current.id, filename, file_path, duration, mime_type, size_bytes)
+    row = repo.create_recording(card.id, current.id, filename, file_path, normalized_duration, mime_type, size_bytes)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.recording.created", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, recording_id=row.id))
     return RecordingResponse(
