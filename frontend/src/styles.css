@@ -487,16 +487,76 @@ button:disabled {
 
 .board-update-form {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px;
-  background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface) 55%);
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 52%, var(--surface) 48%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--surface) 85%, transparent 15%);
 }
 
-.board-update-form textarea {
-  min-height: 80px;
+.board-update-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  background: color-mix(in srgb, var(--surface-muted) 65%, var(--surface) 35%);
+  border-bottom: 1px solid var(--line);
+}
+
+.board-update-editor-shell {
+  border: 1px solid color-mix(in srgb, var(--line) 80%, var(--brand-soft) 20%);
+  border-radius: 10px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.board-update-toolbar-button {
+  font-size: 0.78rem;
+  line-height: 1.1;
+  padding: 5px 9px;
+  border-radius: 7px;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, var(--brand) 15%);
+  background: var(--surface);
+  color: var(--text);
+  transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.board-update-toolbar-button:hover {
+  background: color-mix(in srgb, var(--brand-soft) 40%, var(--surface) 60%);
+  border-color: color-mix(in srgb, var(--brand) 35%, var(--line) 65%);
+}
+
+.board-update-toolbar-button:active {
+  background: color-mix(in srgb, var(--brand-soft) 58%, var(--surface) 42%);
+}
+
+.board-update-toolbar-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 65%, #ffffff 35%);
+  outline-offset: 1px;
+}
+
+.board-update-toolbar-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.board-update-textarea {
+  min-height: 88px;
   resize: vertical;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.board-update-textarea:focus {
+  outline: none;
+}
+
+.board-update-editor-shell:focus-within {
+  border-color: color-mix(in srgb, var(--brand) 44%, var(--line) 56%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-soft) 58%, transparent 42%);
 }
 
 .board-updates-section {
@@ -553,6 +613,22 @@ button:disabled {
   margin: 0;
 }
 
+.board-update-message {
+  display: grid;
+  gap: 6px;
+}
+
+.board-update-message p,
+.board-update-message ul,
+.board-update-message ol {
+  margin: 0;
+}
+
+.board-update-message ul,
+.board-update-message ol {
+  padding-left: 1.2rem;
+}
+
 .board-update-image {
   max-width: min(320px, 100%);
   border-radius: 8px;
@@ -580,12 +656,7 @@ button:disabled {
 
 .board-update-editor {
   display: grid;
-  gap: 8px;
-}
-
-.board-update-editor textarea {
-  min-height: 86px;
-  resize: vertical;
+  gap: 10px;
 }
 
 .board-update-editor-image-row {
@@ -678,6 +749,20 @@ button:disabled {
   .vergaderborden-card-add-row button,
   .vergaderborden-card-add-actions button {
     width: 100%;
+  }
+
+  .board-update-form {
+    padding: 10px;
+  }
+
+  .board-update-toolbar {
+    gap: 5px;
+    padding: 7px;
+  }
+
+  .board-update-toolbar-button {
+    font-size: 0.74rem;
+    padding: 5px 8px;
   }
 }
 

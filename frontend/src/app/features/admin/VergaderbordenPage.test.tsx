@@ -464,6 +464,78 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.getByText("AG")).toBeInTheDocument();
   });
 
+  it("rendert markdown-opmaak, lijstjes en escaped html veilig", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        {
+          id: "u1",
+          author_user_id: "u1",
+          author_username: "admin",
+          author_display_name: "Admin",
+          message: "Eerste regel\nTweede met **vet** en *cursief* en ++onderstreept++\n- punt 1\n- punt 2\n1. stap 1\n2. stap 2\n<script>alert(1)</script>",
+          image_url: null,
+          edited_from_update_id: null,
+          created_at: "2026-05-28T10:00:00Z"
+        }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    expect(await screen.findByText("vet", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("cursief", { selector: "em" })).toBeInTheDocument();
+    expect(screen.getByText("onderstreept", { selector: "u" })).toBeInTheDocument();
+    expect(screen.getByText("punt 1", { selector: "li" })).toBeInTheDocument();
+    expect(screen.getByText("stap 2", { selector: "li" })).toBeInTheDocument();
+    expect(screen.getByText("Tweede met", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument();
+    expect(screen.queryByText("alert(1)", { selector: "script" })).not.toBeInTheDocument();
+  });
+
+  it("voegt opmaak via toolbar toe in nieuw- en bewerk-update formulier", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        { id: "u1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Eigen update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T10:00:00Z" }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
+    fireEvent.change(createTextarea, { target: { value: "regel" } });
+    createTextarea.setSelectionRange(0, 5);
+    fireEvent.click(screen.getByRole("button", { name: "B" }));
+    fireEvent.click(screen.getByRole("button", { name: "U" }));
+    fireEvent.click(screen.getByRole("button", { name: "• Lijst" }));
+    fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
+
+    await waitFor(() => {
+      expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", expect.stringContaining("**regel**"));
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
+    const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
+    editTextarea.focus();
+    editTextarea.setSelectionRange(0, 5);
+    const numberButtons = screen.getAllByRole("button", { name: "1. Lijst" });
+    fireEvent.click(numberButtons[numberButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(api.editBoardCardUpdate).toHaveBeenCalledWith("c1", "u1", expect.objectContaining({ message: "1. Eigen update" }));
+    });
+  });
+
   it("toont compacte update-acties alleen voor auteur en ondersteunt save/cancel", async () => {
     const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });

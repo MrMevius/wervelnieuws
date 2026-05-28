@@ -59,6 +59,9 @@ type UpdateEditState = {
 
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
+const UNDERLINE_MARKER = "++";
+
+type UpdateToolbarAction = "bold" | "italic" | "underline" | "bullets" | "numbers";
 
 function displayNameForUser(user: Pick<AdminUser, "full_name" | "username">): string {
   return user.full_name?.trim() || user.username;
@@ -88,13 +91,144 @@ function toDutchMoveError(err: unknown): string {
 function renderBoardUpdateMessage(message: string | null | undefined): ReactNode {
   const text = message?.trim() || "Update zonder tekst";
   const match = text.match(MOVE_UPDATE_MESSAGE_REGEX);
-  if (!match) return text;
+  if (!match) {
+    return <UpdateMessageRenderer message={text} />;
+  }
 
   const [, oldColumn, newColumn] = match;
   return (
     <>
       Kaart verplaatst van <strong>{oldColumn}</strong> naar <strong>{newColumn}</strong>.
     </>
+  );
+}
+
+function applyInlineTokens(text: string): ReactNode[] {
+  const tokens: ReactNode[] = [];
+  const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|\+\+[^+]+\+\+)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push(text.slice(lastIndex, match.index));
+    }
+    const full = match[0];
+    if (full.startsWith("**") && full.endsWith("**")) {
+      tokens.push(<strong key={`b-${match.index}`}>{full.slice(2, -2)}</strong>);
+    } else if (full.startsWith("*") && full.endsWith("*")) {
+      tokens.push(<em key={`i-${match.index}`}>{full.slice(1, -1)}</em>);
+    } else if (full.startsWith(UNDERLINE_MARKER) && full.endsWith(UNDERLINE_MARKER)) {
+      tokens.push(<u key={`u-${match.index}`}>{full.slice(UNDERLINE_MARKER.length, -UNDERLINE_MARKER.length)}</u>);
+    } else {
+      tokens.push(full);
+    }
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    tokens.push(text.slice(lastIndex));
+  }
+  return tokens;
+}
+
+function UpdateMessageRenderer({ message }: { message: string }) {
+  const lines = message.split(/\r?\n/);
+  const nodes: ReactNode[] = [];
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === "") {
+      i += 1;
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*[-*]\s+/, "");
+        items.push(<li key={`ul-${i}`}>{applyInlineTokens(itemText)}</li>);
+        i += 1;
+      }
+      nodes.push(<ul key={`ul-block-${i}`}>{items}</ul>);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items: ReactNode[] = [];
+      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
+        const itemText = lines[i].replace(/^\s*\d+\.\s+/, "");
+        items.push(<li key={`ol-${i}`}>{applyInlineTokens(itemText)}</li>);
+        i += 1;
+      }
+      nodes.push(<ol key={`ol-block-${i}`}>{items}</ol>);
+      continue;
+    }
+
+    const paragraphLines: string[] = [];
+    while (i < lines.length && lines[i].trim() !== "" && !/^\s*[-*]\s+/.test(lines[i]) && !/^\s*\d+\.\s+/.test(lines[i])) {
+      paragraphLines.push(lines[i]);
+      i += 1;
+    }
+
+    nodes.push(
+      <p key={`p-${i}`}>
+        {paragraphLines.map((paragraphLine, idx) => (
+          <span key={`line-${idx}`}>
+            {idx > 0 && <br />}
+            {applyInlineTokens(paragraphLine)}
+          </span>
+        ))}
+      </p>
+    );
+  }
+  return <>{nodes.length ? nodes : <p>Update zonder tekst</p>}</>;
+}
+
+function applyToolbarAction(value: string, selectionStart: number, selectionEnd: number, action: UpdateToolbarAction): { value: string; nextSelectionStart: number; nextSelectionEnd: number } {
+  const before = value.slice(0, selectionStart);
+  const selected = value.slice(selectionStart, selectionEnd);
+  const after = value.slice(selectionEnd);
+
+  if (action === "bold" || action === "italic" || action === "underline") {
+    const marker = action === "bold" ? "**" : action === "italic" ? "*" : UNDERLINE_MARKER;
+    const nextValue = `${before}${marker}${selected}${marker}${after}`;
+    const start = selectionStart + marker.length;
+    const end = start + selected.length;
+    return { value: nextValue, nextSelectionStart: start, nextSelectionEnd: end };
+  }
+
+  const lineStart = value.lastIndexOf("\n", selectionStart - 1) + 1;
+  const lineEndRaw = value.indexOf("\n", selectionEnd);
+  const lineEnd = lineEndRaw === -1 ? value.length : lineEndRaw;
+  const block = value.slice(lineStart, lineEnd);
+  const lines = block.split("\n");
+
+  const prefixed = lines.map((line, idx) => {
+    if (!line.trim()) return line;
+    if (action === "bullets") return `- ${line}`;
+    return `${idx + 1}. ${line}`;
+  }).join("\n");
+
+  const nextValue = `${value.slice(0, lineStart)}${prefixed}${value.slice(lineEnd)}`;
+  return {
+    value: nextValue,
+    nextSelectionStart: lineStart,
+    nextSelectionEnd: lineStart + prefixed.length
+  };
+}
+
+function UpdateFormattingToolbar({
+  onAction
+}: {
+  onAction: (action: UpdateToolbarAction) => void;
+}) {
+  return (
+    <div className="board-update-toolbar" aria-label="Opmaak knoppen">
+      <button className="board-update-toolbar-button" type="button" aria-label="B" onClick={() => onAction("bold")}><strong>B</strong></button>
+      <button className="board-update-toolbar-button" type="button" aria-label="I" onClick={() => onAction("italic")}><em>I</em></button>
+      <button className="board-update-toolbar-button" type="button" aria-label="U" onClick={() => onAction("underline")}><u>U</u></button>
+      <button className="board-update-toolbar-button" type="button" onClick={() => onAction("bullets")}>• Lijst</button>
+      <button className="board-update-toolbar-button" type="button" onClick={() => onAction("numbers")}>1. Lijst</button>
+    </div>
   );
 }
 
@@ -126,8 +260,36 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
   const [descriptionEdit, setDescriptionEdit] = useState<DescriptionEditState | null>(null);
   const [updateEdit, setUpdateEdit] = useState<UpdateEditState | null>(null);
+  const newUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const editUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const skipNextTitleBlurRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
+
+  const handleUpdateToolbarAction = (action: UpdateToolbarAction) => {
+    const textarea = newUpdateTextareaRef.current;
+    if (!textarea) return;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const next = applyToolbarAction(updateMessage, selectionStart, selectionEnd, action);
+    setUpdateMessage(next.value);
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(next.nextSelectionStart, next.nextSelectionEnd);
+    });
+  };
+
+  const handleUpdateEditToolbarAction = (action: UpdateToolbarAction) => {
+    const textarea = editUpdateTextareaRef.current;
+    if (!textarea || !updateEdit) return;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const next = applyToolbarAction(updateEdit.value, selectionStart, selectionEnd, action);
+    setUpdateEdit((current) => (current ? { ...current, value: next.value } : current));
+    window.requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(next.nextSelectionStart, next.nextSelectionEnd);
+    });
+  };
 
   const projectsQuery = useQuery({ queryKey: ["board-projects"], queryFn: listBoardProjects });
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
@@ -606,15 +768,20 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             >
               <label className="vergaderborden-field">
                 <span>Nieuwe update</span>
-                <textarea
-                  name="message"
-                  placeholder="Beschrijf kort de voortgang"
-                  value={updateMessage}
-                  onChange={(evt) => {
-                    setUpdateMessage(evt.target.value);
-                    if (updateError) setUpdateError(null);
-                  }}
-                />
+                <div className="board-update-editor-shell">
+                  <UpdateFormattingToolbar onAction={handleUpdateToolbarAction} />
+                  <textarea
+                    ref={newUpdateTextareaRef}
+                    className="board-update-textarea"
+                    name="message"
+                    placeholder="Beschrijf kort de voortgang"
+                    value={updateMessage}
+                    onChange={(evt) => {
+                      setUpdateMessage(evt.target.value);
+                      if (updateError) setUpdateError(null);
+                    }}
+                  />
+                </div>
               </label>
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
               <button type="submit">Update plaatsen</button>
@@ -644,12 +811,17 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       </div>
                       {updateEdit?.updateId === u.id ? (
                         <div className="board-update-editor">
-                          <textarea
-                            aria-label="Update bewerken"
-                            value={updateEdit.value}
-                            onChange={(evt) => setUpdateEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
-                            disabled={editUpdateMutation.isPending}
-                          />
+                          <div className="board-update-editor-shell">
+                            <UpdateFormattingToolbar onAction={handleUpdateEditToolbarAction} />
+                            <textarea
+                              ref={editUpdateTextareaRef}
+                              className="board-update-textarea"
+                              aria-label="Update bewerken"
+                              value={updateEdit.value}
+                              onChange={(evt) => setUpdateEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
+                              disabled={editUpdateMutation.isPending}
+                            />
+                          </div>
                           <div className="board-update-editor-image-row">
                             <input
                               aria-label="Afbeelding bij update"
@@ -701,7 +873,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         </div>
                       ) : (
                         <>
-                          <p className="board-update-message">{renderBoardUpdateMessage(u.message)}</p>
+                          <div className="board-update-message">{renderBoardUpdateMessage(u.message)}</div>
                           {u.image_url && <img src={u.image_url} alt="Update-afbeelding" className="board-update-image" />}
                           {u.author_user_id === currentUserQuery.data?.id && (
                             <div className="board-update-actions">

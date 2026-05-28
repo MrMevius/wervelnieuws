@@ -29,6 +29,26 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "51",
+                "date": "2026-05-28",
+                "title": "Vergaderbord-updates editor nu compacter en Trello-achtiger",
+                "highlights": [
+                    "De editor voor zowel nieuwe updates als update-bewerking heeft nu een compactere, rustigere opmaak met duidelijke editor-shell en toolbar.",
+                    "Opmaakknoppen reageren duidelijker met hover- en focusstijlen, zodat snelwerken met muis én toetsenbord prettiger is.",
+                    "Op kleinere schermen blijft de toolbar bruikbaar doordat knoppen netjes meewrappen zonder dat acties buiten beeld vallen.",
+                ],
+            },
+            {
+                "iteration": "50",
+                "date": "2026-05-28",
+                "title": "Rijkere update-editor op vergaderbord-kaarten",
+                "highlights": [
+                    "Bij nieuwe en bestaande kaartupdates kun je nu opmaakknoppen gebruiken voor vet, cursief, onderstrepen en lijstjes.",
+                    "Regelafbrekingen en lijstweergave blijven nu zichtbaar in de updatekaart, zodat voortgangsnotities leesbaarder zijn.",
+                    "De updateweergave blijft veilig: HTML uit berichttekst wordt niet als code uitgevoerd en oude platte-tekstupdates blijven gewoon leesbaar.",
+                ],
+            },
+            {
                 "iteration": "49",
                 "date": "2026-05-28",
                 "title": "Compacte update-acties en veilig verwijderen op vergaderbord-kaarten",
