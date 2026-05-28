@@ -29,6 +29,26 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "49",
+                "date": "2026-05-28",
+                "title": "Compacte update-acties en veilig verwijderen op vergaderbord-kaarten",
+                "highlights": [
+                    "Onder je eigen kaartupdates zie je nu compacte acties als kleine tekstlinks: 'Bewerken • Verwijderen'.",
+                    "Updates van andere gebruikers tonen geen acties, zodat alleen de auteur eigen updates kan aanpassen of verwijderen.",
+                    "Bij verwijderen krijg je eerst een bevestiging; na bevestigen verdwijnt de update direct uit de activiteitenlijst.",
+                ],
+            },
+            {
+                "iteration": "48",
+                "date": "2026-05-28",
+                "title": "Vergaderbord-kaartupdates als duidelijke activity cards",
+                "highlights": [
+                    "Updates in kaartdetails worden nu getoond als overzichtelijke activity cards met auteur, datum/tijd en berichttekst.",
+                    "Alleen jouw eigen updates tonen een bewerkactie binnen dezelfde activity card; updates van anderen blijven alleen leesbaar.",
+                    "Afbeeldingen bij updates blijven zichtbaar in de activity card, met behoud van bestaande update- en bewerkflow.",
+                ],
+            },
+            {
                 "iteration": "47",
                 "date": "2026-05-28",
                 "title": "Vergaderbord-updates: eigen update bewerken met revisie",

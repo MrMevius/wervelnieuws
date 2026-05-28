@@ -5,6 +5,7 @@ import {
   AdminUser,
   createBoardCard,
   createBoardProject,
+  deleteBoardCardUpdate,
   editBoardCardUpdate,
   getBoardCard,
   getCurrentUser,
@@ -95,6 +96,16 @@ function renderBoardUpdateMessage(message: string | null | undefined): ReactNode
       Kaart verplaatst van <strong>{oldColumn}</strong> naar <strong>{newColumn}</strong>.
     </>
   );
+}
+
+function initialsFromName(name: string): string {
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+  if (!parts.length) return "?";
+  return parts.map((part) => part[0]?.toUpperCase() ?? "").join("");
 }
 
 export function VergaderbordenPage({ canManageProjects = false }: { canManageProjects?: boolean }) {
@@ -210,6 +221,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     },
     onError: () => {
       setRecordingError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
+    }
+  });
+  const deleteUpdateMutation = useMutation({
+    mutationFn: ({ cardId, updateId }: { cardId: string; updateId: string }) => deleteBoardCardUpdate(cardId, updateId),
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
+      ]);
     }
   });
 
@@ -615,15 +635,22 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   return (
                     <article key={u.id} className="board-update-item">
+                      <div className="board-update-header">
+                        <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
+                        <div className="board-update-header-text">
+                          <strong className="board-update-author">{authorLabel}</strong>
+                          <small className="board-update-meta">{dateLabel}</small>
+                        </div>
+                      </div>
                       {updateEdit?.updateId === u.id ? (
-                        <div>
+                        <div className="board-update-editor">
                           <textarea
                             aria-label="Update bewerken"
                             value={updateEdit.value}
                             onChange={(evt) => setUpdateEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
                             disabled={editUpdateMutation.isPending}
                           />
-                          <div>
+                          <div className="board-update-editor-image-row">
                             <input
                               aria-label="Afbeelding bij update"
                               type="file"
@@ -644,7 +671,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                               </button>
                             )}
                           </div>
-                          <div>
+                          <div className="board-update-actions board-update-actions-editor">
                             <button
                               type="button"
                               disabled={editUpdateMutation.isPending}
@@ -675,27 +702,44 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       ) : (
                         <>
                           <p className="board-update-message">{renderBoardUpdateMessage(u.message)}</p>
-                          {u.image_url && <img src={u.image_url} alt="Update-afbeelding" style={{ maxWidth: "220px", borderRadius: "8px" }} />}
+                          {u.image_url && <img src={u.image_url} alt="Update-afbeelding" className="board-update-image" />}
                           {u.author_user_id === currentUserQuery.data?.id && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setUpdateEdit({
-                                  updateId: u.id,
-                                  value: u.message,
-                                  original: u.message,
-                                  removeImage: false,
-                                  newImage: null,
-                                  error: null
-                                })
-                              }
-                            >
-                              Bewerken
-                            </button>
+                            <div className="board-update-actions">
+                              <button
+                                type="button"
+                                className="board-update-action-link"
+                                onClick={() =>
+                                  setUpdateEdit({
+                                    updateId: u.id,
+                                    value: u.message,
+                                    original: u.message,
+                                    removeImage: false,
+                                    newImage: null,
+                                    error: null
+                                  })
+                                }
+                              >
+                                Bewerken
+                              </button>
+                              <span aria-hidden="true">•</span>
+                              <button
+                                type="button"
+                                className="board-update-action-link"
+                                disabled={deleteUpdateMutation.isPending}
+                                onClick={() => {
+                                  const shouldDelete = window.confirm("Weet je zeker dat je deze update wilt verwijderen?");
+                                  if (!shouldDelete) {
+                                    return;
+                                  }
+                                  deleteUpdateMutation.mutate({ cardId: cardQuery.data!.card.id, updateId: u.id });
+                                }}
+                              >
+                                Verwijderen
+                              </button>
+                            </div>
                           )}
                         </>
                       )}
-                      <small className="board-update-meta">{dateLabel} · {authorLabel}</small>
                     </article>
                   );
                 })}

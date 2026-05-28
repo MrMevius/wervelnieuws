@@ -251,7 +251,7 @@ def edit_own_update(
     service = BoardService(repo)
     card = service.ensure_card_access(repo.get_card(card_id), current)
     update = repo.get_update(update_id)
-    if not update or update.card_id != card.id:
+    if not update or update.card_id != card.id or update.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Update niet gevonden")
     if update.author_user_id != current.id:
         raise HTTPException(status_code=403, detail="Alleen de auteur mag deze update aanpassen")
@@ -279,6 +279,32 @@ def edit_own_update(
         edited_from_update_id=revised.edited_from_update_id,
         created_at=revised.created_at,
     )
+
+
+@router.delete("/cards/{card_id}/updates/{update_id}")
+def delete_own_update(
+    card_id: str,
+    update_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    update = repo.get_update(update_id)
+    if not update or update.card_id != card.id or update.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Update niet gevonden")
+    if update.author_user_id != current.id:
+        raise HTTPException(status_code=403, detail="Alleen de auteur mag deze update verwijderen")
+
+    repo.soft_delete_update(update, current.id)
+    service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
+    AuditService(db).log(
+        "board.card.update_deleted",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=card.id, update_id=update.id),
+    )
+    return {"status": "deleted"}
 
 
 @router.post("/cards/{card_id}/recordings", response_model=RecordingResponse)

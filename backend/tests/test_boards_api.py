@@ -351,6 +351,70 @@ def test_move_card_creates_system_update_for_doing_to_done(client):
     assert updates[0]["message"] == "Kaart verplaatst van Bezig naar Klaar."
 
 
+def test_delete_update_owner_only_and_disappears_from_detail(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    editor = next(item for item in users if item["username"] == "editor")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Delete update", "description": "", "invited_user_ids": [editor["id"]]},
+    )
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    card_id = create_card.json()["id"]
+    update = client.post(
+        f"/api/boards/cards/{card_id}/updates",
+        headers=admin_headers,
+        json={"message": "Te verwijderen"},
+    )
+    update_id = update.json()["id"]
+
+    forbidden = client.delete(f"/api/boards/cards/{card_id}/updates/{update_id}", headers=editor_headers)
+    assert forbidden.status_code == 403
+
+    deleted = client.delete(f"/api/boards/cards/{card_id}/updates/{update_id}", headers=admin_headers)
+    assert deleted.status_code == 200
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=admin_headers)
+    assert detail.status_code == 200
+    assert detail.json()["updates"] == []
+
+
+def test_delete_update_returns_404_for_wrong_card_update_combination(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Delete mismatch", "description": "", "invited_user_ids": []},
+    )
+    project_id = create_project.json()["id"]
+    card_one = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart 1", "description": "", "column": "todo", "assignment_user_ids": []},
+    ).json()["id"]
+    card_two = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart 2", "description": "", "column": "todo", "assignment_user_ids": []},
+    ).json()["id"]
+    update_id = client.post(
+        f"/api/boards/cards/{card_one}/updates",
+        headers=headers,
+        json={"message": "Update"},
+    ).json()["id"]
+
+    resp = client.delete(f"/api/boards/cards/{card_two}/updates/{update_id}", headers=headers)
+    assert resp.status_code == 404
+
+
 def test_board_uses_full_name_with_trimmed_fallback_for_display_labels(client):
     headers = _login(client)
     users = client.get("/api/admin/users", headers=headers)

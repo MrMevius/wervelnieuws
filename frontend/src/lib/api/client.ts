@@ -591,6 +591,10 @@ export function editBoardCardUpdate(cardId: string, updateId: string, payload: {
   return request<{ id: string }>(`/boards/cards/${cardId}/updates/${updateId}`, { method: "PATCH", body: fd });
 }
 
+export function deleteBoardCardUpdate(cardId: string, updateId: string) {
+  return request<{ status: string }>(`/boards/cards/${cardId}/updates/${updateId}`, { method: "DELETE" });
+}
+
 export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number) {
   const fd = new FormData();
   fd.append("file", blob, "opname.webm");

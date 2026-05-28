@@ -166,9 +166,14 @@ class CardUpdate(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
 
     card: Mapped[BoardCard] = relationship(back_populates="updates")
-    author: Mapped[User] = relationship()
+    author: Mapped[User] = relationship(foreign_keys=[author_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
 
 
 class Recording(Base):

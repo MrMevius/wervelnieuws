@@ -501,7 +501,7 @@ button:disabled {
 
 .board-updates-section {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .board-updates-section h3 {
@@ -510,17 +510,93 @@ button:disabled {
 
 .board-update-item {
   display: grid;
-  gap: 4px;
-  padding: 10px;
+  gap: 10px;
+  padding: 12px;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 88%, var(--surface-muted) 12%);
+  background: color-mix(in srgb, var(--surface) 86%, var(--surface-muted) 14%);
+}
+
+.board-update-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.board-update-author-badge {
+  inline-size: 30px;
+  block-size: 30px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: color-mix(in srgb, var(--brand-soft) 70%, var(--surface) 30%);
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--line) 70%);
+  color: var(--text);
+}
+
+.board-update-header-text {
+  display: grid;
+  gap: 2px;
+}
+
+.board-update-author {
+  line-height: 1.2;
 }
 
 .board-update-message,
 .board-update-meta,
 .board-updates-empty {
   margin: 0;
+}
+
+.board-update-image {
+  max-width: min(320px, 100%);
+  border-radius: 8px;
+  border: 1px solid var(--line);
+}
+
+.board-update-actions {
+  display: flex;
+  justify-content: flex-start;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.board-update-action-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.board-update-editor {
+  display: grid;
+  gap: 8px;
+}
+
+.board-update-editor textarea {
+  min-height: 86px;
+  resize: vertical;
+}
+
+.board-update-editor-image-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.board-update-actions-editor {
+  justify-content: flex-end;
 }
 
 .board-update-meta {

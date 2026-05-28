@@ -37,7 +37,15 @@ class BoardRepository:
         )
 
     def count_updates(self, card_id: str) -> int:
-        return int(self.db.scalar(select(func.count(CardUpdate.id)).where(CardUpdate.card_id == card_id)) or 0)
+        return int(
+            self.db.scalar(
+                select(func.count(CardUpdate.id)).where(
+                    CardUpdate.card_id == card_id,
+                    CardUpdate.deleted_at.is_(None),
+                )
+            )
+            or 0
+        )
 
     def count_recordings(self, card_id: str) -> int:
         return int(self.db.scalar(select(func.count(Recording.id)).where(Recording.card_id == card_id)) or 0)
@@ -92,7 +100,13 @@ class BoardRepository:
         return card
 
     def list_updates(self, card_id: str) -> list[CardUpdate]:
-        return list(self.db.scalars(select(CardUpdate).where(CardUpdate.card_id == card_id).order_by(CardUpdate.created_at.desc())).all())
+        return list(
+            self.db.scalars(
+                select(CardUpdate)
+                .where(CardUpdate.card_id == card_id, CardUpdate.deleted_at.is_(None))
+                .order_by(CardUpdate.created_at.desc())
+            ).all()
+        )
 
     def create_update(self, card_id: str, author_user_id: str, message: str) -> CardUpdate:
         row = CardUpdate(card_id=card_id, author_user_id=author_user_id, message=message.strip())
@@ -103,6 +117,14 @@ class BoardRepository:
 
     def get_update(self, update_id: str) -> CardUpdate | None:
         return self.db.get(CardUpdate, update_id)
+
+    def soft_delete_update(self, update: CardUpdate, deleted_by_user_id: str) -> CardUpdate:
+        update.deleted_at = datetime.now(UTC)
+        update.deleted_by_user_id = deleted_by_user_id
+        self.db.add(update)
+        self.db.commit()
+        self.db.refresh(update)
+        return update
 
     def create_update_revision(self, source: CardUpdate, message: str, image_path: str | None) -> CardUpdate:
         row = CardUpdate(
