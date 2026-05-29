@@ -1,3 +1,13 @@
+from io import BytesIO
+
+
+PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05"
+    b"\xfe\x02\xfeA\xe2!\xbc\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
+
 def _login_as(client, username: str, password: str) -> dict[str, str]:
     response = client.post(
         "/api/auth/login", json={"username": username, "password": password}
@@ -14,6 +24,27 @@ def test_admin_users_requires_admin_role(client):
 
     assert response.status_code == 403
     assert response.json()["detail"] == "Admin access required"
+
+
+def test_admin_users_expose_and_fetch_stored_avatar(client):
+    editor_headers = _login_as(client, "editor", "editor12345")
+    upload = client.post(
+        "/api/auth/me/avatar",
+        headers=editor_headers,
+        files={"file": ("avatar.png", BytesIO(PNG_1X1), "image/png")},
+    )
+    assert upload.status_code == 200
+
+    admin_headers = _login_as(client, "admin", "admin12345")
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+
+    assert users_response.status_code == 200
+    editor = next(user for user in users_response.json() if user["username"] == "editor")
+    assert editor["has_avatar"] is True
+
+    image = client.get(f"/api/admin/users/{editor['id']}/avatar", headers=admin_headers)
+    assert image.status_code == 200
+    assert image.headers["content-type"].startswith("image/png")
 
 
 def test_admin_password_change_requires_admin_role(client):

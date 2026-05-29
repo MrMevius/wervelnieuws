@@ -203,6 +203,8 @@ export type AdminUser = {
   email: string | null;
   is_admin: boolean;
   is_active: boolean;
+  has_avatar?: boolean;
+  avatar_url?: string | null;
 };
 
 export type Project = {
@@ -227,7 +229,7 @@ export type BoardCard = {
   description: string;
   column: "todo" | "doing" | "done";
   position: number;
-  assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string }>;
+  assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string; has_avatar?: boolean; avatar_url?: string | null }>;
   updates_count: number;
   recordings_count: number;
 };
@@ -496,6 +498,10 @@ export function getUiSettings() {
 
 export function listAdminUsers() {
   return request<AdminUser[]>("/admin/users");
+}
+
+export function getAdminUserAvatarUrl(userId: string) {
+  return `${API_BASE}/admin/users/${encodeURIComponent(userId)}/avatar`;
 }
 
 export function createAdminUser(username: string, password: string) {

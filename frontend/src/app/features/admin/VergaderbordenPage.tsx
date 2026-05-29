@@ -11,6 +11,7 @@ import {
   getCurrentUser,
   getBoardProject,
   listAdminUsers,
+  getAdminUserAvatarUrl,
   listBoardProjects,
   moveBoardCard,
   postBoardCardUpdate,
@@ -32,6 +33,15 @@ type DragCardMeta = {
   cardId: string;
   sourceColumn: "todo" | "doing" | "done";
   sourcePosition: number;
+};
+
+type BoardAssignment = {
+  id: string;
+  user_id: string;
+  username: string;
+  user_display_name: string;
+  has_avatar?: boolean;
+  avatar_url?: string | null;
 };
 
 type TitleEditState = {
@@ -106,6 +116,39 @@ type UpdateToolbarAction = "bold" | "italic" | "underline" | "bullets" | "number
 
 function displayNameForUser(user: Pick<AdminUser, "full_name" | "username">): string {
   return user.full_name?.trim() || user.username;
+}
+
+function avatarUrlForUser(user: AdminUser): string | null {
+  const maybeUrl = user.avatar_url?.trim();
+  if (maybeUrl) return maybeUrl;
+  return user.has_avatar ? getAdminUserAvatarUrl(user.id) : null;
+}
+
+function avatarUrlForAssignment(assignment: BoardAssignment): string | null {
+  const maybeUrl = assignment.avatar_url?.trim();
+  if (maybeUrl) return maybeUrl;
+  return assignment.has_avatar ? getAdminUserAvatarUrl(assignment.user_id) : null;
+}
+
+function AssignedUserAvatarRow({ assignments, className = "" }: { assignments: BoardAssignment[]; className?: string }) {
+  if (!assignments.length) return null;
+  return (
+    <div className={`chip-row assignment-avatar-row${className ? ` ${className}` : ""}`} aria-label="Toegewezen teamleden">
+      {assignments.map((assn) => {
+        const label = assn.user_display_name;
+        const avatarUrl = avatarUrlForAssignment(assn);
+        return (
+          <span key={assn.id} className="user-chip assignment-avatar" title={label} aria-label={label}>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="" className="assignment-avatar-image" />
+            ) : (
+              <span className="assignment-avatar-initials" aria-hidden="true">{initialsFromName(label)}</span>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 function parseDragCardMeta(raw: string): DragCardMeta | null {
@@ -819,11 +862,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 >
                   <strong>{card.title}</strong>
                   <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
-                  <div className="chip-row">
-                    {card.assignments.map((assn) => (
-                      <span key={assn.id} className="user-chip" title={assn.user_display_name}>{assn.user_display_name.slice(0, 2).toUpperCase()}</span>
-                    ))}
-                  </div>
+                  <AssignedUserAvatarRow assignments={card.assignments} />
                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count}</small>
                   <div className="board-card-recording-controls">
                     <button
@@ -907,6 +946,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               </div>
             )}
             <div className="board-detail-description-edit">
+              <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
               <label className="vergaderborden-field">
                 <span>Beschrijving</span>
                 <DescriptionEditor
@@ -1311,15 +1351,26 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
               {users.map((u) => {
                 const checked = selectedUserIds.includes(u.id);
                 const label = displayNameForUser(u);
+                const initials = initialsFromName(label);
+                const avatarUrl = avatarUrlForUser(u);
                 return (
-                  <label key={u.id} className="vergaderborden-multiselect-option">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleUser(u.id)}
-                    />
-                    <span>{label}</span>
-                  </label>
+                  <button
+                    key={u.id}
+                    type="button"
+                    role="option"
+                    aria-selected={checked}
+                    aria-label={label}
+                    title={label}
+                    className={`vergaderborden-member-tile${checked ? " is-selected" : ""}`}
+                    onClick={() => toggleUser(u.id)}
+                  >
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt="" className="vergaderborden-member-tile-avatar" />
+                    ) : (
+                      <span className="vergaderborden-member-tile-initials" aria-hidden="true">{initials}</span>
+                    )}
+                    <span className="sr-only">{label}</span>
+                  </button>
                 );
               })}
             </div>

@@ -63,6 +63,7 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
                 user_id=row.user_id,
                 username=row.user.username,
                 user_display_name=_display_name(row.user),
+                has_avatar=bool(row.user.avatar_path),
             )
             for row in card.assignments
         ],

@@ -29,6 +29,17 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "56",
+                "date": "2026-05-29",
+                "title": "Teamleden kiezen op vergaderbord-kaarten nu via avatar-tegels",
+                "highlights": [
+                    "Bij het toevoegen van een vergaderbord-kaart kies je teamleden nu via compacte, klikbare avatar-tegels in plaats van checkboxen met namen.",
+                    "Toegewezen teamleden worden op kaartjes en in kaartdetails nu ook met hun profielfoto getoond wanneer die beschikbaar is.",
+                    "Teamleden zonder profielfoto krijgen automatisch een initialen-placeholder, zodat selectie altijd visueel bruikbaar blijft.",
+                    "De selector blijft toetsenbordvriendelijk en toegankelijk met focusstijlen en duidelijke aria-labels/titels per teamlid.",
+                ],
+            },
+            {
                 "iteration": "55",
                 "date": "2026-05-29",
                 "title": "Vergaderbord-kaartbeschrijvingen nu rijker en beter leesbaar",

@@ -1,6 +1,8 @@
 import json
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
@@ -455,6 +457,7 @@ def create_user(
         email=created.email,
         is_admin=created.is_admin,
         is_active=created.is_active,
+        has_avatar=bool(created.avatar_path),
     )
 
 
@@ -473,9 +476,26 @@ def list_users(
             email=user.email,
             is_admin=user.is_admin,
             is_active=user.is_active,
+            has_avatar=bool(user.avatar_path),
         )
         for user in users
     ]
+
+
+@router.get("/users/{user_id}/avatar")
+def get_admin_user_avatar(
+    user_id: str,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> FileResponse:
+    del current
+    user = db.get(User, user_id)
+    if not user or not user.avatar_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
+    avatar = Path(user.avatar_path)
+    if not avatar.exists() or not avatar.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
+    return FileResponse(path=avatar, media_type="image/png")
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -513,6 +533,7 @@ def update_user_admin_status(
         email=updated.email,
         is_admin=updated.is_admin,
         is_active=updated.is_active,
+        has_avatar=bool(updated.avatar_path),
     )
 
 
@@ -545,6 +566,7 @@ def update_user_active_status(
         email=updated.email,
         is_admin=updated.is_admin,
         is_active=updated.is_active,
+        has_avatar=bool(updated.avatar_path),
     )
 
 

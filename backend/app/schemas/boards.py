@@ -68,6 +68,7 @@ class CardAssignmentResponse(BaseModel):
     user_id: str
     username: str
     user_display_name: str
+    has_avatar: bool = False
 
 
 class CardUpdateResponse(BaseModel):

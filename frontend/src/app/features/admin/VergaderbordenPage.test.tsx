@@ -8,6 +8,7 @@ import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./vergaderbordenProject
 const api = vi.hoisted(() => ({
   listBoardProjects: vi.fn(),
   listAdminUsers: vi.fn(),
+  getAdminUserAvatarUrl: vi.fn((userId: string) => `http://localhost:8001/api/admin/users/${userId}/avatar`),
   getBoardProject: vi.fn(),
   getBoardCard: vi.fn(),
   getCurrentUser: vi.fn(),
@@ -385,6 +386,51 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
+  it("selecteert teamleden via avatar-tiles zonder zichtbare namen en met initialen-fallback", async () => {
+    api.listAdminUsers.mockResolvedValue([
+      { id: "u1", username: "admin", full_name: "Admin", has_avatar: true },
+      { id: "u2", username: "els", full_name: "Els van Dijk", has_avatar: false }
+    ]);
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Selecteer teamleden" }));
+
+    const selector = await screen.findByRole("listbox", { name: "Teamleden kiezen" });
+    const adminTile = within(selector).getByRole("option", { name: "Admin" });
+    const elsTile = within(selector).getByRole("option", { name: "Els van Dijk" });
+
+    const visibleLabels = Array.from(selector.querySelectorAll("span:not(.sr-only)"))
+      .map((el) => el.textContent?.trim() ?? "")
+      .filter(Boolean);
+    expect(visibleLabels).not.toContain("Admin");
+    expect(visibleLabels).not.toContain("Els van Dijk");
+    expect(within(elsTile).getByText("EV", { selector: ".vergaderborden-member-tile-initials" })).toBeInTheDocument();
+    const adminAvatar = adminTile.querySelector("img.vergaderborden-member-tile-avatar") as HTMLImageElement | null;
+    expect(adminAvatar).not.toBeNull();
+    expect(adminAvatar?.src).toContain("/api/admin/users/u1/avatar");
+
+    fireEvent.click(adminTile);
+    fireEvent.click(elsTile);
+    fireEvent.change(screen.getByLabelText("Titel") as HTMLInputElement, { target: { value: "Avatar kaart" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    await waitFor(() => {
+      expect(api.createBoardCard).toHaveBeenCalledWith(
+        "p1",
+        expect.objectContaining({ assignment_user_ids: expect.arrayContaining(["u1", "u2"]) })
+      );
+    });
+  });
+
   it("opent kaartdetail vanaf het overzicht en annuleert detailtitelbewerking met Escape", async () => {
     const card = { id: "c1", project_id: "p1", title: "Oude titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
@@ -499,7 +545,7 @@ describe("Vergaderborden drag/drop", () => {
       description: "",
       column: "todo",
       position: 0,
-      assignments: [{ id: "a1", user_id: "u1", username: "admin", user_display_name: "Admin Gebruiker" }],
+      assignments: [{ id: "a1", user_id: "u1", username: "admin", user_display_name: "Admin Gebruiker", has_avatar: true }],
       updates_count: 1,
       recordings_count: 0
     };
@@ -528,9 +574,11 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
 
-    expect(await screen.findByTitle("Admin Gebruiker")).toBeInTheDocument();
+    const overviewAvatar = await screen.findByTitle("Admin Gebruiker");
+    expect(overviewAvatar.querySelector("img.assignment-avatar-image")).not.toBeNull();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     expect(await screen.findByText(/Kaart verplaatst van/)).toBeInTheDocument();
+    expect(screen.getAllByTitle("Admin Gebruiker").some((el) => el.querySelector("img.assignment-avatar-image")?.getAttribute("src")?.includes("/api/admin/users/u1/avatar"))).toBe(true);
     expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
     expect(await screen.findByText("Admin Gebruiker")).toBeInTheDocument();

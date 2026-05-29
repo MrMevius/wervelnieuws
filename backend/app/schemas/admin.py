@@ -8,6 +8,7 @@ class AdminUserResponse(BaseModel):
     email: str | None
     is_admin: bool
     is_active: bool
+    has_avatar: bool = False
 
 
 class UpdateAdminUserRequest(BaseModel):
