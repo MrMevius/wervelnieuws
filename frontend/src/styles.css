@@ -563,6 +563,59 @@ button:disabled {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-soft) 58%, transparent 42%);
 }
 
+.board-description-editor-shell {
+  display: grid;
+}
+
+.board-description-textarea {
+  min-height: 72px;
+  resize: none;
+  overflow: hidden;
+}
+
+.board-description-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-muted) 45%, var(--surface) 55%);
+}
+
+.board-description-char-counter {
+  color: var(--text-muted);
+}
+
+.board-card-description-rich,
+.board-card-description-preview {
+  display: grid;
+  gap: 6px;
+}
+
+.board-card-description-rich p,
+.board-card-description-rich ul,
+.board-card-description-rich ol,
+.board-card-description-preview p,
+.board-card-description-preview ul,
+.board-card-description-preview ol {
+  margin: 0;
+}
+
+.board-card-description-rich ul,
+.board-card-description-rich ol,
+.board-card-description-preview ul,
+.board-card-description-preview ol {
+  padding-left: 1.2rem;
+}
+
+.board-card-description-preview {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 50%, var(--surface) 50%);
+}
+
 .board-updates-section {
   display: grid;
   gap: 10px;

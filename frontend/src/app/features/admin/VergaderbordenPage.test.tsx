@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VergaderbordenPage } from "./VergaderbordenPage";
@@ -275,7 +275,9 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
-    const input = await screen.findByLabelText("Beschrijving");
+    const input = await screen.findByLabelText("Beschrijving") as HTMLTextAreaElement;
+    expect(input).toHaveAttribute("rows", "3");
+    expect(input).toHaveAttribute("maxLength", "2000");
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "Nieuwe beschrijving" } });
     fireEvent.blur(input);
@@ -308,6 +310,78 @@ describe("Vergaderborden drag/drop", () => {
 
     await waitFor(() => {
       expect(api.updateBoardCardDescription).not.toHaveBeenCalled();
+    });
+  });
+
+  it("blokkeert kaartbeschrijving boven 2000 tekens bij opslaan", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "Oud", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const input = await screen.findByLabelText("Beschrijving");
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: "x".repeat(2001) } });
+    fireEvent.blur(input);
+
+    expect(await screen.findByText("Beschrijving mag maximaal 2000 tekens bevatten.")).toBeInTheDocument();
+    expect(api.updateBoardCardDescription).not.toHaveBeenCalled();
+  });
+
+  it("toont rijke beschrijving veilig in kolom en detail", async () => {
+    const description = "Regel met **vet**\n- punt\n<script>alert(1)</script>";
+    const card = { id: "c1", project_id: "p1", title: "Titel", description, column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    const cardEl = await screen.findByTestId("board-card-c1");
+    expect(cardEl.querySelector("strong")?.textContent).toContain("Titel");
+    expect(screen.getByText("vet", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getByText("punt", { selector: "li" })).toBeInTheDocument();
+    expect(screen.getByText("<script>alert(1)</script>")).toBeInTheDocument();
+    expect(cardEl.querySelector("script")).toBeNull();
+
+    fireEvent.click(cardEl);
+    expect(await screen.findByLabelText("Beschrijving preview")).toBeInTheDocument();
+    expect(screen.queryByText("alert(1)", { selector: "script" })).not.toBeInTheDocument();
+  });
+
+  it("biedt rijke beschrijving-editor in nieuw-kaart flow", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+    const textarea = await screen.findByLabelText("Beschrijving nieuwe kaart") as HTMLTextAreaElement;
+    expect(textarea).toHaveAttribute("rows", "3");
+    expect(textarea).toHaveAttribute("maxLength", "2000");
+    fireEvent.change(textarea, { target: { value: "regel" } });
+    textarea.setSelectionRange(0, 5);
+    fireEvent.click(screen.getByRole("button", { name: "B" }));
+    fireEvent.change(screen.getByLabelText("Titel") as HTMLInputElement, { target: { value: "Nieuwe kaart" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    await waitFor(() => {
+      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ description: "**regel**" }));
     });
   });
 
@@ -603,9 +677,12 @@ describe("Vergaderborden drag/drop", () => {
     const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
     fireEvent.change(createTextarea, { target: { value: "regel" } });
     createTextarea.setSelectionRange(0, 5);
-    fireEvent.click(screen.getByRole("button", { name: "B" }));
-    fireEvent.click(screen.getByRole("button", { name: "U" }));
-    fireEvent.click(screen.getByRole("button", { name: "• Lijst" }));
+    const boldButtons = screen.getAllByRole("button", { name: "B" });
+    const underlineButtons = screen.getAllByRole("button", { name: "U" });
+    const bulletButtons = screen.getAllByRole("button", { name: "• Lijst" });
+    fireEvent.click(boldButtons[boldButtons.length - 1]);
+    fireEvent.click(underlineButtons[underlineButtons.length - 1]);
+    fireEvent.click(bulletButtons[bulletButtons.length - 1]);
     fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
 
     await waitFor(() => {

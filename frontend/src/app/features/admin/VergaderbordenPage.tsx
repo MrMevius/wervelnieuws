@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
@@ -100,6 +100,7 @@ type CardActivityItem =
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
 const UNDERLINE_MARKER = "++";
+const CARD_DESCRIPTION_MAX_LENGTH = 2000;
 
 type UpdateToolbarAction = "bold" | "italic" | "underline" | "bullets" | "numbers";
 
@@ -170,8 +171,8 @@ function applyInlineTokens(text: string): ReactNode[] {
   return tokens;
 }
 
-function UpdateMessageRenderer({ message }: { message: string }) {
-  const lines = message.split(/\r?\n/);
+function RichTextRenderer({ text, emptyFallback }: { text: string; emptyFallback: ReactNode }) {
+  const lines = text.split(/\r?\n/);
   const nodes: ReactNode[] = [];
   let i = 0;
   while (i < lines.length) {
@@ -220,7 +221,21 @@ function UpdateMessageRenderer({ message }: { message: string }) {
       </p>
     );
   }
-  return <>{nodes.length ? nodes : <p>Update zonder tekst</p>}</>;
+  return <>{nodes.length ? nodes : emptyFallback}</>;
+}
+
+function UpdateMessageRenderer({ message }: { message: string }) {
+  return <RichTextRenderer text={message} emptyFallback={<p>Update zonder tekst</p>} />;
+}
+
+function CardDescriptionRenderer({ description }: { description: string | null | undefined }) {
+  return <RichTextRenderer text={description?.trim() || ""} emptyFallback={<>Geen beschrijving</>} />;
+}
+
+function autoResizeTextarea(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
 }
 
 function applyToolbarAction(value: string, selectionStart: number, selectionEnd: number, action: UpdateToolbarAction): { value: string; nextSelectionStart: number; nextSelectionEnd: number } {
@@ -268,6 +283,59 @@ function UpdateFormattingToolbar({
       <button className="board-update-toolbar-button" type="button" aria-label="U" onClick={() => onAction("underline")}><u>U</u></button>
       <button className="board-update-toolbar-button" type="button" onClick={() => onAction("bullets")}>• Lijst</button>
       <button className="board-update-toolbar-button" type="button" onClick={() => onAction("numbers")}>1. Lijst</button>
+    </div>
+  );
+}
+
+function DescriptionEditor({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  maxLength,
+  error,
+  textareaRef,
+  onToolbarAction,
+  onBlur,
+  onFocus,
+  ariaLabel
+}: {
+  value: string;
+  onChange: (nextValue: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  maxLength: number;
+  error?: string | null;
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
+  onToolbarAction: (action: UpdateToolbarAction) => void;
+  onBlur?: () => void;
+  onFocus?: () => void;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="board-update-editor-shell board-description-editor-shell">
+      <UpdateFormattingToolbar onAction={onToolbarAction} />
+      <textarea
+        ref={textareaRef}
+        className="board-update-textarea board-description-textarea"
+        rows={3}
+        maxLength={maxLength}
+        aria-label={ariaLabel}
+        placeholder={placeholder}
+        value={value}
+        onFocus={onFocus}
+        onChange={(evt) => {
+          onChange(evt.target.value);
+          autoResizeTextarea(evt.target);
+        }}
+        onInput={(evt) => autoResizeTextarea(evt.currentTarget)}
+        onBlur={onBlur}
+        disabled={disabled}
+      />
+      <div className="board-description-meta-row">
+        <small className="board-description-char-counter">{value.length}/{maxLength}</small>
+        {error && <small className="error">{error}</small>}
+      </div>
     </div>
   );
 }
@@ -325,6 +393,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [updateEdit, setUpdateEdit] = useState<UpdateEditState | null>(null);
   const newUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const detailDescriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const skipNextTitleBlurRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
 
@@ -351,6 +420,32 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     window.requestAnimationFrame(() => {
       textarea.focus();
       textarea.setSelectionRange(next.nextSelectionStart, next.nextSelectionEnd);
+    });
+  };
+
+  const handleDetailDescriptionToolbarAction = (action: UpdateToolbarAction) => {
+    const textarea = detailDescriptionTextareaRef.current;
+    if (!textarea || !cardQuery.data?.card) return;
+    const source = descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description;
+    const selectionStart = textarea.selectionStart ?? 0;
+    const selectionEnd = textarea.selectionEnd ?? selectionStart;
+    const next = applyToolbarAction(source, selectionStart, selectionEnd, action);
+    const boundedValue = next.value.slice(0, CARD_DESCRIPTION_MAX_LENGTH);
+    if (descriptionEdit?.cardId === cardQuery.data.card.id) {
+      setDescriptionEdit((current) => (current ? { ...current, value: boundedValue, error: null } : current));
+    } else {
+      setDescriptionEdit({
+        cardId: cardQuery.data.card.id,
+        value: boundedValue,
+        original: cardQuery.data.card.description,
+        error: null
+      });
+    }
+    window.requestAnimationFrame(() => {
+      autoResizeTextarea(textarea);
+      textarea.focus();
+      const cap = boundedValue.length;
+      textarea.setSelectionRange(Math.min(next.nextSelectionStart, cap), Math.min(next.nextSelectionEnd, cap));
     });
   };
 
@@ -613,6 +708,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const saveDescriptionEdit = async () => {
     if (!descriptionEdit || updateDescriptionMutation.isPending) return;
     const nextDescription = descriptionEdit.value.trim();
+    if (nextDescription.length > CARD_DESCRIPTION_MAX_LENGTH) {
+      setDescriptionEdit((current) => (current ? { ...current, error: `Beschrijving mag maximaal ${CARD_DESCRIPTION_MAX_LENGTH} tekens bevatten.` } : current));
+      return;
+    }
     if (nextDescription === descriptionEdit.original.trim()) {
       setDescriptionEdit(null);
       return;
@@ -625,6 +724,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setDescriptionEdit((current) => (current ? { ...current, error: message } : current));
     }
   };
+
+  useEffect(() => {
+    autoResizeTextarea(detailDescriptionTextareaRef.current);
+  }, [descriptionEdit?.value, cardQuery.data?.card?.id]);
 
   return (
     <section className="panel vergaderborden-page">
@@ -715,7 +818,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   onClick={() => setSelectedCardId(card.id)}
                 >
                   <strong>{card.title}</strong>
-                  <p>{card.description || "Geen beschrijving"}</p>
+                  <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
                   <div className="chip-row">
                     {card.assignments.map((assn) => (
                       <span key={assn.id} className="user-chip" title={assn.user_display_name}>{assn.user_display_name.slice(0, 2).toUpperCase()}</span>
@@ -806,8 +909,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             <div className="board-detail-description-edit">
               <label className="vergaderborden-field">
                 <span>Beschrijving</span>
-                <textarea
-                  aria-label="Beschrijving"
+                <DescriptionEditor
+                  ariaLabel="Beschrijving"
+                  textareaRef={detailDescriptionTextareaRef}
                   value={descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description}
                   onFocus={() => {
                     if (descriptionEdit?.cardId === cardQuery.data!.card.id) return;
@@ -818,26 +922,31 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       error: null
                     });
                   }}
-                  onChange={(evt) => {
+                  onChange={(nextValue) => {
                     if (descriptionEdit?.cardId !== cardQuery.data!.card.id) {
                       setDescriptionEdit({
                         cardId: cardQuery.data!.card.id,
-                        value: evt.target.value,
+                        value: nextValue,
                         original: cardQuery.data!.card.description,
                         error: null
                       });
                       return;
                     }
-                    setDescriptionEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current));
+                    setDescriptionEdit((current) => (current ? { ...current, value: nextValue, error: null } : current));
                   }}
                   onBlur={() => {
                     void saveDescriptionEdit();
                   }}
                   placeholder="Geen beschrijving"
                   disabled={updateDescriptionMutation.isPending}
+                  maxLength={CARD_DESCRIPTION_MAX_LENGTH}
+                  onToolbarAction={handleDetailDescriptionToolbarAction}
+                  error={descriptionEdit?.error}
                 />
               </label>
-              {descriptionEdit?.error && <p className="error vergaderborden-inline-error">{descriptionEdit.error}</p>}
+              <div className="board-card-description-preview" aria-label="Beschrijving preview">
+                <CardDescriptionRenderer description={descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description} />
+              </div>
             </div>
             <form
               className="board-update-form"
@@ -1087,9 +1196,12 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
 
 function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => Promise<boolean>; onCancel: () => void }) {
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [descriptionError, setDescriptionError] = useState<string | null>(null);
+  const [description, setDescription] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const descriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     const onDocClick = (evt: MouseEvent) => {
@@ -1120,15 +1232,21 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
         const form = e.currentTarget as HTMLFormElement;
         const fd = new FormData(e.currentTarget);
         const title = String(fd.get("title") || "").trim();
-        const description = String(fd.get("description") || "").trim();
+        const normalizedDescription = description.trim();
+        if (normalizedDescription.length > CARD_DESCRIPTION_MAX_LENGTH) {
+          setDescriptionError(`Beschrijving mag maximaal ${CARD_DESCRIPTION_MAX_LENGTH} tekens bevatten.`);
+          return;
+        }
         const assignment_user_ids = selectedUserIds;
         if (!title) {
           setTitleError("Titel is verplicht.");
           return;
         }
-        const success = await onCreate({ title, description, assignment_user_ids });
+        const success = await onCreate({ title, description: normalizedDescription, assignment_user_ids });
         if (success) {
           form.reset();
+          setDescription("");
+          setDescriptionError(null);
           setSelectedUserIds([]);
           setDropdownOpen(false);
           setTitleError(null);
@@ -1145,7 +1263,34 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
         {titleError && <p className="error vergaderborden-inline-error vergaderborden-field-full">{titleError}</p>}
         <label className="vergaderborden-field vergaderborden-field-full">
           <span>Beschrijving</span>
-          <input name="description" placeholder="Korte toelichting (optioneel)" />
+          <DescriptionEditor
+            ariaLabel="Beschrijving nieuwe kaart"
+            textareaRef={descriptionTextareaRef}
+            value={description}
+            onChange={(nextValue) => {
+              setDescription(nextValue.slice(0, CARD_DESCRIPTION_MAX_LENGTH));
+              if (descriptionError) setDescriptionError(null);
+            }}
+            placeholder="Korte toelichting (optioneel)"
+            maxLength={CARD_DESCRIPTION_MAX_LENGTH}
+            onToolbarAction={(action) => {
+              const textarea = descriptionTextareaRef.current;
+              if (!textarea) return;
+              const selectionStart = textarea.selectionStart ?? 0;
+              const selectionEnd = textarea.selectionEnd ?? selectionStart;
+              const next = applyToolbarAction(description, selectionStart, selectionEnd, action);
+              const boundedValue = next.value.slice(0, CARD_DESCRIPTION_MAX_LENGTH);
+              setDescription(boundedValue);
+              window.requestAnimationFrame(() => {
+                autoResizeTextarea(textarea);
+                textarea.focus();
+                const cap = boundedValue.length;
+                textarea.setSelectionRange(Math.min(next.nextSelectionStart, cap), Math.min(next.nextSelectionEnd, cap));
+              });
+            }}
+            error={descriptionError}
+          />
+          <input type="hidden" name="description" value={description} />
         </label>
         <div className="vergaderborden-field vergaderborden-field-full" ref={containerRef}>
           <span>Teamleden</span>

@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "55",
+                "date": "2026-05-29",
+                "title": "Vergaderbord-kaartbeschrijvingen nu rijker en beter leesbaar",
+                "highlights": [
+                    "Bij nieuwe kaarten en het bewerken van kaartbeschrijvingen heb je nu een ruimere editor met opmaakknoppen voor vet, cursief, onderstrepen en lijstjes.",
+                    "Beschrijvingen groeien automatisch mee tijdens typen en ondersteunen nu maximaal 2000 tekens met duidelijke teller.",
+                    "Dezelfde opmaak wordt veilig en consistent getoond in zowel kaartdetails als het kolomoverzicht, zonder HTML-uitvoering.",
+                ],
+            },
+            {
                 "iteration": "54",
                 "date": "2026-05-28",
                 "title": "Audio-opnames tonen nulduur nu als onbekend en bewaren duur robuuster",
