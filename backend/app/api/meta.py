@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "60",
+                "date": "2026-06-02",
+                "title": "Update-tijden op vergaderborden tonen nu Amsterdamse tijd",
+                "highlights": [
+                    "De datumregel bij updates en audio-opnames op vergaderbord-kaarten gebruikt nu expliciet de lokale tijdzone Europe/Amsterdam.",
+                    "UTC-tijden uit de backend worden daardoor correct als Nederlandse zomer- of wintertijd getoond.",
+                    "Opgeslagen updates en bestaande update-teksten blijven ongewijzigd; alleen de zichtbare tijdweergave is gecorrigeerd.",
+                ],
+            },
+            {
                 "iteration": "58",
                 "date": "2026-06-02",
                 "title": "Verplaats-updates op vergaderborden compacter weergegeven",

@@ -23,6 +23,7 @@ import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
 } from "./vergaderbordenProjectSelection";
+import { formatAmsterdamDateTime } from "../../../lib/datetime";
 
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
@@ -1032,9 +1033,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   if (activity.kind === "recording") {
                     const r = activity.recording;
                     const hasDate = Boolean(activity.createdAt);
-                    const dateLabel = hasDate
-                      ? new Date(activity.createdAt).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
-                      : "Datum onbekend";
+                    const dateLabel = hasDate ? formatAmsterdamDateTime(activity.createdAt) : "Datum onbekend";
                     const authorLabel = r.uploaded_by_display_name?.trim() || r.uploaded_by_username?.trim() || "Onbekende auteur";
                     return (
                       <article key={activity.id} className="board-update-item">
@@ -1057,9 +1056,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
                   const u = activity.update;
                   const hasDate = Boolean(u.created_at);
-                  const dateLabel = hasDate
-                    ? new Date(u.created_at).toLocaleString("nl-NL", { dateStyle: "short", timeStyle: "short" })
-                    : "Datum onbekend";
+                  const dateLabel = hasDate ? formatAmsterdamDateTime(u.created_at) : "Datum onbekend";
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   return (
                     <article key={u.id} className="board-update-item">
