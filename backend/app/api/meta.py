@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "58",
+                "date": "2026-06-02",
+                "title": "Verplaats-updates op vergaderborden compacter weergegeven",
+                "highlights": [
+                    "Wanneer een kaartje naar een andere kolom wordt verplaatst, toont de update nu compacter als 'Kaart verplaatst: oude kolom → nieuwe kolom'.",
+                    "De datum, auteur en acties bij updates blijven hetzelfde werken, maar de melding breekt minder rommelig over meerdere regels.",
+                ],
+            },
+            {
                 "iteration": "57",
                 "date": "2026-05-29",
                 "title": "Titels in planning en kanaalredactie nu begrensd op 80 tekens",

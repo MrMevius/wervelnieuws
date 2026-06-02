@@ -183,7 +183,7 @@ function renderBoardUpdateMessage(message: string | null | undefined): ReactNode
   const [, oldColumn, newColumn] = match;
   return (
     <>
-      Kaart verplaatst van <strong>{oldColumn}</strong> naar <strong>{newColumn}</strong>.
+      Kaart verplaatst: <strong>{oldColumn}</strong> → <strong>{newColumn}</strong>
     </>
   );
 }

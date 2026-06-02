@@ -623,7 +623,8 @@ describe("Vergaderborden drag/drop", () => {
     const overviewAvatar = await screen.findByTitle("Admin Gebruiker");
     expect(overviewAvatar.querySelector("img.assignment-avatar-image")).not.toBeNull();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
-    expect(await screen.findByText(/Kaart verplaatst van/)).toBeInTheDocument();
+    expect(await screen.findByText(/Kaart verplaatst:/)).toBeInTheDocument();
+    expect(screen.getByText(/→/)).toBeInTheDocument();
     expect(screen.getAllByTitle("Admin Gebruiker").some((el) => el.querySelector("img.assignment-avatar-image")?.getAttribute("src")?.includes("/api/admin/users/u1/avatar"))).toBe(true);
     expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
