@@ -202,11 +202,12 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
     fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" }));
     const input = await screen.findByLabelText("Kaarttitel");
-    fireEvent.change(input, { target: { value: "Nieuwe titel" } });
+    const exactLimitTitle = "A".repeat(80);
+    fireEvent.change(input, { target: { value: exactLimitTitle } });
     fireEvent.keyDown(input, { key: "Enter" });
 
     await waitFor(() => {
-      expect(api.updateBoardCardTitle).toHaveBeenCalledWith("c1", { title: "Nieuwe titel" });
+      expect(api.updateBoardCardTitle).toHaveBeenCalledWith("c1", { title: exactLimitTitle });
     });
   });
 
@@ -260,6 +261,29 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.keyDown(input, { key: "Enter" });
 
     expect(await screen.findByText("Vul een kaarttitel in.")).toBeInTheDocument();
+    expect(api.updateBoardCardTitle).not.toHaveBeenCalled();
+  });
+
+  it("blokkeert kaarttitelbewerking boven 80 tekens", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Oude titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" }));
+    const input = await screen.findByLabelText("Kaarttitel");
+    expect(input).toHaveAttribute("maxLength", "80");
+    fireEvent.change(input, { target: { value: "A".repeat(81) } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByText("Kaarttitel mag maximaal 80 tekens bevatten.")).toBeInTheDocument();
     expect(api.updateBoardCardTitle).not.toHaveBeenCalled();
   });
 
@@ -378,12 +402,34 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.change(textarea, { target: { value: "regel" } });
     textarea.setSelectionRange(0, 5);
     fireEvent.click(screen.getByRole("button", { name: "B" }));
-    fireEvent.change(screen.getByLabelText("Titel") as HTMLInputElement, { target: { value: "Nieuwe kaart" } });
+    const exactLimitTitle = "N".repeat(80);
+    fireEvent.change(screen.getByLabelText("Titel") as HTMLInputElement, { target: { value: exactLimitTitle } });
     fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
 
     await waitFor(() => {
-      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ description: "**regel**" }));
+      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ title: exactLimitTitle, description: "**regel**" }));
     });
+  });
+
+  it("blokkeert nieuwe kaarttitels boven 80 tekens", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+    const input = await screen.findByLabelText("Titel") as HTMLInputElement;
+    expect(input).toHaveAttribute("maxLength", "80");
+    fireEvent.change(input, { target: { value: "A".repeat(81) } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    expect(await screen.findByText("Titel mag maximaal 80 tekens bevatten.")).toBeInTheDocument();
+    expect(api.createBoardCard).not.toHaveBeenCalled();
   });
 
   it("selecteert teamleden via avatar-tiles zonder zichtbare namen en met initialen-fallback", async () => {

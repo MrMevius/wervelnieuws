@@ -88,6 +88,48 @@ def test_topic_creation_rejects_inactive_theme(client):
     assert create_topic.json()["detail"] == "Theme is not active"
 
 
+def test_topic_creation_rejects_title_and_subject_longer_than_80(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+
+    create_topic = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "T" * 81,
+            "subject": "S" * 81,
+            "theme": "Planning",
+            "project_id": project_id,
+            "editorial_notes": "",
+            "planning_at": None,
+            "target_channels": ["website"],
+        },
+    )
+
+    assert create_topic.status_code == 422
+
+
+def test_topic_creation_accepts_title_and_subject_of_80_chars(client):
+    headers = _login(client)
+    project_id = _default_project_id(client, headers)
+
+    create_topic = client.post(
+        "/api/topics",
+        headers=headers,
+        json={
+            "title": "T" * 80,
+            "subject": "S" * 80,
+            "theme": "Planning",
+            "project_id": project_id,
+            "editorial_notes": "",
+            "planning_at": None,
+            "target_channels": ["website"],
+        },
+    )
+
+    assert create_topic.status_code == 200
+
+
 def test_activity_feed_is_available_for_authenticated_user(client):
     headers = _login(client)
     project_id = _default_project_id(client, headers)

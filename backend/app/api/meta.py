@@ -29,6 +29,17 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "57",
+                "date": "2026-05-29",
+                "title": "Titels in planning en kanaalredactie nu begrensd op 80 tekens",
+                "highlights": [
+                    "Bij het aanmaken of bewerken van Vergaderborden-kaarten en planningsregels accepteren titels nu maximaal 80 tekens, met directe melding als je daaroverheen gaat.",
+                    "In de kanaalredactie (Website/Facebook/Nieuwsbrief) geldt nu dezelfde 80-tekensgrens voor handmatig bewerkte titels.",
+                    "Backend-validatie dwingt deze limiet nu ook af op API-niveau, zodat te lange titels consistent worden geweigerd.",
+                    "Bestaande opgeslagen titels blijven ongewijzigd; de limiet geldt voor nieuwe en aangepaste invoer.",
+                ],
+            },
+            {
                 "iteration": "56",
                 "date": "2026-05-29",
                 "title": "Teamleden kiezen op vergaderbord-kaarten nu via avatar-tegels",

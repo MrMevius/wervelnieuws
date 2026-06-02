@@ -56,6 +56,28 @@ def test_channel_variants_flow_and_topic_approval_guard(client):
     assert updated.status_code == 200
     assert updated.json()["approval_state"] == "pending"
 
+    exact_limit_update = client.patch(
+        f"/api/content/{topic['id']}/variants/website",
+        headers=headers,
+        json={
+            "title": "W" * 80,
+            "article_body": "<p>Website artikel</p>",
+            "summary": "<p>Website samenvatting</p>",
+        },
+    )
+    assert exact_limit_update.status_code == 200
+
+    too_long_update = client.patch(
+        f"/api/content/{topic['id']}/variants/website",
+        headers=headers,
+        json={
+            "title": "W" * 81,
+            "article_body": "<p>Website artikel</p>",
+            "summary": "<p>Website samenvatting</p>",
+        },
+    )
+    assert too_long_update.status_code == 422
+
     approve_website = client.post(
         f"/api/content/{topic['id']}/variants/website/approve", headers=headers
     )

@@ -226,6 +226,94 @@ def test_update_card_title_rejects_empty_and_extra_fields(client):
     assert scoped.status_code == 422
 
 
+def test_create_card_rejects_title_over_80_chars(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Titel lengte", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    too_long_title = "A" * 81
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": too_long_title, "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+
+    assert create_card.status_code == 422
+
+
+def test_create_card_accepts_title_of_80_chars(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Titel exact", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    exact_limit_title = "A" * 80
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": exact_limit_title, "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+
+    assert create_card.status_code == 200
+    assert create_card.json()["title"] == exact_limit_title
+
+
+def test_update_card_title_rejects_title_over_80_chars(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Titel update lengte", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    too_long_title = "A" * 81
+    update = client.patch(f"/api/boards/cards/{card_id}/title", headers=headers, json={"title": too_long_title})
+
+    assert update.status_code == 422
+
+
+def test_update_card_title_accepts_title_of_80_chars(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Titel update exact", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    exact_limit_title = "A" * 80
+    update = client.patch(f"/api/boards/cards/{card_id}/title", headers=headers, json={"title": exact_limit_title})
+
+    assert update.status_code == 200
+    assert update.json()["title"] == exact_limit_title
+
+
 def test_update_card_title_returns_404_for_unknown_card(client):
     headers = _login(client)
     update = client.patch(

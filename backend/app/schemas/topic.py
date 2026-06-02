@@ -4,10 +4,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.enums import ChannelName, DocumentStatus, WorkflowState
 
+EDITABLE_TITLE_MAX_LENGTH = 80
+
 
 class TopicCreate(BaseModel):
-    title: str = Field(min_length=3, max_length=255)
-    subject: str = Field(min_length=3, max_length=255)
+    title: str = Field(min_length=3, max_length=EDITABLE_TITLE_MAX_LENGTH)
+    subject: str = Field(min_length=3, max_length=EDITABLE_TITLE_MAX_LENGTH)
     theme: str = Field(min_length=2, max_length=255)
     project_id: str = Field(min_length=1)
     editorial_notes: str = ""
@@ -23,8 +25,8 @@ class TopicCreate(BaseModel):
 
 
 class TopicUpdate(BaseModel):
-    title: str | None = None
-    subject: str | None = None
+    title: str | None = Field(default=None, max_length=EDITABLE_TITLE_MAX_LENGTH)
+    subject: str | None = Field(default=None, max_length=EDITABLE_TITLE_MAX_LENGTH)
     theme: str | None = None
     project_id: str | None = None
     editorial_notes: str | None = None

@@ -1257,8 +1257,9 @@ describe("App", () => {
       expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
     });
 
+    const exactLimitSubject = "P".repeat(80);
     fireEvent.change(screen.getByLabelText("Onderwerp"), {
-      target: { value: "Handmatige regel" }
+      target: { value: exactLimitSubject }
     });
     fireEvent.change(screen.getByLabelText("Thema"), {
       target: { value: "Planning" }
@@ -1273,8 +1274,8 @@ describe("App", () => {
     await waitFor(() => {
         expect(mockApi.createTopic).toHaveBeenCalledWith(
           expect.objectContaining({
-            title: "Handmatige regel",
-            subject: "Handmatige regel",
+            title: exactLimitSubject,
+            subject: exactLimitSubject,
             theme: "Planning",
             editorial_notes: "",
             project_id: "p1",
@@ -1283,6 +1284,35 @@ describe("App", () => {
           expect.any(Object)
       );
       expect(screen.getByText("Planningsregel toegevoegd.")).toBeInTheDocument();
+    });
+  });
+
+  it("blocks manual planning rule submit when onderwerp is longer than 80 chars", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Planning");
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Onderwerp")).toBeInTheDocument();
+    });
+
+    const tooLongSubject = "A".repeat(81);
+    fireEvent.change(screen.getByLabelText("Onderwerp"), {
+      target: { value: tooLongSubject }
+    });
+    fireEvent.change(screen.getByLabelText("Thema"), {
+      target: { value: "Planning" }
+    });
+    fireEvent.change(screen.getByLabelText("Geplande datum en tijd"), {
+      target: { value: "2026-03-20T09:00" }
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Regel toevoegen" }));
+
+    await waitFor(() => {
+      expect(mockApi.createTopic).not.toHaveBeenCalled();
+      expect(screen.getByText("Onderwerp mag maximaal 80 tekens bevatten.")).toBeInTheDocument();
     });
   });
 
@@ -1359,6 +1389,50 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Preview Website" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Preview Facebook" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Preview Nieuwsbrief" })).toBeInTheDocument();
+    });
+  });
+
+  it("blocks variant save when titel is longer than 80 chars", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Planning");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    const titleInput = await screen.findByLabelText("Titel Website");
+    fireEvent.change(titleInput, { target: { value: "B".repeat(81) } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Titel mag maximaal 80 tekens bevatten.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Opslaan" })).toBeDisabled();
+      expect(mockApi.updateVariant).not.toHaveBeenCalled();
+    });
+  });
+
+  it("allows variant save when titel is exactly 80 chars", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Planning");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    const titleInput = await screen.findByLabelText("Titel Website");
+    const exactLimitTitle = "B".repeat(80);
+    fireEvent.change(titleInput, { target: { value: exactLimitTitle } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateVariant).toHaveBeenCalledWith(
+        "abc12345-1111",
+        "website",
+        expect.objectContaining({ title: exactLimitTitle })
+      );
     });
   });
 

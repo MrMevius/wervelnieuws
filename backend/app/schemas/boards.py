@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import BoardColumn
 
+BOARD_CARD_TITLE_MAX_LENGTH = 80
+
 
 class BoardProjectCreateRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
@@ -21,7 +23,7 @@ class BoardProjectSummaryResponse(BaseModel):
 
 
 class BoardCardCreateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=BOARD_CARD_TITLE_MAX_LENGTH)
     description: str = ""
     column: BoardColumn = BoardColumn.todo
     assignment_user_ids: list[str] = Field(default_factory=list)
@@ -33,7 +35,7 @@ class BoardCardMoveRequest(BaseModel):
 
 
 class BoardCardTitleUpdateRequest(BaseModel):
-    title: str = Field(max_length=255)
+    title: str = Field(max_length=BOARD_CARD_TITLE_MAX_LENGTH)
     model_config = ConfigDict(extra="forbid")
 
     @field_validator("title", mode="before")

@@ -83,6 +83,7 @@ import {
 type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
 type SourceTraceDisplayHit = SourceTraceHit & { display_score: number };
+const EDITABLE_TITLE_MAX_LENGTH = 80;
 
 export function App() {
   const queryClient = useQueryClient();
@@ -1033,6 +1034,11 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
   function submitPlanningRule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
+    const normalizedSubject = newSubject.trim();
+    if (normalizedSubject.length > EDITABLE_TITLE_MAX_LENGTH) {
+      setFeedback(`Onderwerp mag maximaal ${EDITABLE_TITLE_MAX_LENGTH} tekens bevatten.`);
+      return;
+    }
     if (newChannels.length === 0) {
       setFeedback("Selecteer minimaal een doelmedium.");
       return;
@@ -1050,8 +1056,8 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       return;
     }
     createTopicMutation.mutate({
-      title: newSubject.trim(),
-      subject: newSubject.trim(),
+      title: normalizedSubject,
+      subject: normalizedSubject,
       theme: newTheme.trim(),
       project_id: newProjectId,
       editorial_notes: newEditorialNotes.trim(),
@@ -1188,6 +1194,7 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
             value={newSubject}
             onChange={(event) => setNewSubject(event.target.value)}
             minLength={3}
+            maxLength={EDITABLE_TITLE_MAX_LENGTH}
             required
           />
           <select
@@ -1660,6 +1667,7 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const selectedDraft = normalizeVariantDraft(variantDrafts[selectedChannel] ?? selectedFallbackDraft, {
     fallbackTitle: topicSubject
   });
+  const selectedTitleTooLong = selectedDraft.title.trim().length > EDITABLE_TITLE_MAX_LENGTH;
   const selectedApprovalState = selectedVariant?.approval_state ?? "pending";
   const selectedApprovalLabel = approvalStateLabel(selectedApprovalState);
 
@@ -1890,8 +1898,12 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
                       }))
                     }
                     aria-label={`Titel ${channelLabel(selectedChannel)}`}
+                    maxLength={EDITABLE_TITLE_MAX_LENGTH}
                   />
                 </label>
+                {selectedTitleTooLong && (
+                  <p className="error">Titel mag maximaal {EDITABLE_TITLE_MAX_LENGTH} tekens bevatten.</p>
+                )}
                 <RichTextEditor
                   label={`Artikel ${channelLabel(selectedChannel)}`}
                   value={selectedDraft.article_body}
@@ -1917,6 +1929,10 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
                   <button
                     type="button"
                     onClick={() => {
+                      if (selectedTitleTooLong) {
+                        setFeedback(`Titel mag maximaal ${EDITABLE_TITLE_MAX_LENGTH} tekens bevatten.`);
+                        return;
+                      }
                       setFeedback(null);
                       saveVariantMutation.mutate({
                         channel: selectedChannel,
@@ -1927,7 +1943,11 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
                         }
                       });
                     }}
-                    disabled={saveVariantMutation.isPending || selectedDraft.title.trim().length < 3}
+                    disabled={
+                      saveVariantMutation.isPending ||
+                      selectedDraft.title.trim().length < 3 ||
+                      selectedTitleTooLong
+                    }
                   >
                     Opslaan
                   </button>

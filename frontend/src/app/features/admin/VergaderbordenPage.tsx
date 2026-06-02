@@ -110,6 +110,7 @@ type CardActivityItem =
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
 const UNDERLINE_MARKER = "++";
+const CARD_TITLE_MAX_LENGTH = 80;
 const CARD_DESCRIPTION_MAX_LENGTH = 2000;
 
 type UpdateToolbarAction = "bold" | "italic" | "underline" | "bullets" | "numbers";
@@ -735,6 +736,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setTitleEdit((current) => (current ? { ...current, error: "Vul een kaarttitel in." } : current));
       return;
     }
+    if (nextTitle.length > CARD_TITLE_MAX_LENGTH) {
+      setTitleEdit((current) => (current ? { ...current, error: `Kaarttitel mag maximaal ${CARD_TITLE_MAX_LENGTH} tekens bevatten.` } : current));
+      return;
+    }
     if (nextTitle === titleEdit.original.trim()) {
       setTitleEdit(null);
       return;
@@ -903,6 +908,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     name="kaarttitel"
                     value={titleEdit.value}
                     onChange={(evt) => setTitleEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
+                    maxLength={CARD_TITLE_MAX_LENGTH}
                     onBlur={() => {
                       if (skipNextTitleBlurRef.current) {
                         skipNextTitleBlurRef.current = false;
@@ -1282,6 +1288,10 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
           setTitleError("Titel is verplicht.");
           return;
         }
+        if (title.length > CARD_TITLE_MAX_LENGTH) {
+          setTitleError(`Titel mag maximaal ${CARD_TITLE_MAX_LENGTH} tekens bevatten.`);
+          return;
+        }
         const success = await onCreate({ title, description: normalizedDescription, assignment_user_ids });
         if (success) {
           form.reset();
@@ -1296,7 +1306,7 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
       <div className="vergaderborden-card-add-grid">
         <label className="vergaderborden-field vergaderborden-field-full">
           <span>Titel</span>
-          <input name="title" placeholder="Titel kaart" required onChange={() => {
+          <input name="title" placeholder="Titel kaart" required maxLength={CARD_TITLE_MAX_LENGTH} onChange={() => {
             if (titleError) setTitleError(null);
           }} />
         </label>

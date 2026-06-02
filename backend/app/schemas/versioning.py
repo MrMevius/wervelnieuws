@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.schemas.topic import EDITABLE_TITLE_MAX_LENGTH
+
 
 class SourceTraceHitResponse(BaseModel):
     source: str
@@ -69,7 +71,7 @@ class ContentChannelVariantResponse(BaseModel):
 
 
 class VariantUpdateRequest(BaseModel):
-    title: str = Field(min_length=3, max_length=255)
+    title: str = Field(min_length=3, max_length=EDITABLE_TITLE_MAX_LENGTH)
     article_body: str = Field(min_length=1)
     summary: str = Field(min_length=1)
 
@@ -79,7 +81,7 @@ class RegenerateRequest(BaseModel):
 
 
 class ManualEditRequest(BaseModel):
-    title: str
+    title: str = Field(min_length=3, max_length=EDITABLE_TITLE_MAX_LENGTH)
     slug: str
     article_body: str
     summary: str
