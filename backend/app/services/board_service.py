@@ -15,7 +15,7 @@ class BoardService:
         self.repo = repo
 
     def ensure_project_access(self, project: Project | None, user: User) -> Project:
-        if not project:
+        if not project or project.is_archived:
             raise HTTPException(status_code=404, detail="Project niet gevonden")
         if user.is_admin:
             return project
@@ -49,6 +49,31 @@ class BoardService:
             if user_id not in normalized:
                 normalized.append(user_id)
         return normalized
+
+    def ensure_active_non_admin_users_exist(self, invited_user_ids: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for user_id in invited_user_ids:
+            found = self.repo.get_user(user_id)
+            if not found or not found.is_active:
+                raise HTTPException(status_code=400, detail=f"Onbekende of inactieve gebruiker: {user_id}")
+            if found.is_admin:
+                continue
+            if user_id not in normalized:
+                normalized.append(user_id)
+        return normalized
+
+    def update_project_access_rights(self, project_id: str, invited_user_ids: list[str]) -> Project:
+        project = self.repo.get_project(project_id)
+        if not project or project.is_archived:
+            raise HTTPException(status_code=404, detail="Project niet gevonden")
+        invited = self.ensure_active_non_admin_users_exist(invited_user_ids)
+        return self.repo.update_project_invited_users(project, invited)
+
+    def archive_project(self, project_id: str) -> Project:
+        project = self.repo.get_project(project_id)
+        if not project or project.is_archived:
+            raise HTTPException(status_code=404, detail="Project niet gevonden")
+        return self.repo.archive_project(project)
 
     def store_recording(self, card: BoardCard, file: UploadFile) -> tuple[str, int, str, str]:
         mime_type = (file.content_type or "").lower().strip()

@@ -54,6 +54,17 @@ const mockApi = vi.hoisted(() => ({
       card_count: 2
     }
   ]),
+  listBoardRights: vi.fn().mockResolvedValue({
+    users: [
+      { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+      { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true }
+    ],
+    projects: [
+      { id: "bp1", name: "Wekelijkse afstemming", description: "Teamplanning en besluiten", invited_user_ids: ["u2"], card_count: 2, last_activity_at: null }
+    ]
+  }),
+  updateBoardRights: vi.fn().mockResolvedValue({ id: "bp1", name: "Wekelijkse afstemming", description: "Teamplanning en besluiten", invited_user_ids: ["u2"], card_count: 2, last_activity_at: null }),
+  archiveBoardProject: vi.fn().mockResolvedValue({ id: "bp1", name: "Wekelijkse afstemming", description: "Teamplanning en besluiten", invited_user_ids: [], card_count: 2, last_activity_at: null }),
   getBoardProject: vi.fn().mockResolvedValue({
     project: {
       id: "bp1",
@@ -917,6 +928,95 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.updateAdminUser).toHaveBeenCalledWith("u2", true);
       expect(screen.getByText("Adminrechten bijgewerkt.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to save vergaderbord access rights", async () => {
+    mockApi.updateBoardRights.mockClear();
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Bordrechten" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rechten opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateBoardRights).toHaveBeenCalledWith("bp1", { invited_user_ids: [] });
+      expect(screen.getByText("Bordrechten opgeslagen.")).toBeInTheDocument();
+    });
+  });
+
+  it("allows admin to archive a vergaderbord from Bordrechten", async () => {
+    mockApi.archiveBoardProject.mockClear();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Verwijder bord" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder bord" }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalled();
+      expect(mockApi.archiveBoardProject.mock.calls[0][0]).toBe("bp1");
+      expect(screen.getByText("Vergaderbord verwijderd.")).toBeInTheDocument();
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it("redirects non-admins away from admin vergaderborden route", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u2",
+      username: "editor",
+      full_name: "Editor",
+      email: "editor@example.com",
+      is_admin: false,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp(["/wervelnieuws/admin/vergaderborden"]);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Nieuw project" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Admin" })).not.toBeInTheDocument();
     });
   });
 

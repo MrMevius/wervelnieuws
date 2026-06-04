@@ -79,6 +79,93 @@ def test_board_access_for_invited_user_only(client):
     assert board_for_editor.status_code == 403
 
 
+def test_admin_can_manage_board_rights_and_visibility(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    editor = next(item for item in users if item["username"] == "editor")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Rechtenbord", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    blocked_list = client.get("/api/boards/projects", headers=editor_headers)
+    assert all(item["id"] != project_id for item in blocked_list.json())
+    blocked_direct = client.get(f"/api/boards/projects/{project_id}", headers=editor_headers)
+    assert blocked_direct.status_code == 403
+
+    overview = client.get("/api/boards/admin/rights", headers=admin_headers)
+    assert overview.status_code == 200
+    assert any(item["id"] == project_id for item in overview.json()["projects"])
+
+    update = client.patch(
+        f"/api/boards/admin/projects/{project_id}/rights",
+        headers=admin_headers,
+        json={"invited_user_ids": [editor["id"]]},
+    )
+    assert update.status_code == 200
+    assert update.json()["invited_user_ids"] == [editor["id"]]
+
+    visible_list = client.get("/api/boards/projects", headers=editor_headers)
+    assert any(item["id"] == project_id for item in visible_list.json())
+    visible_direct = client.get(f"/api/boards/projects/{project_id}", headers=editor_headers)
+    assert visible_direct.status_code == 200
+
+    remove = client.patch(
+        f"/api/boards/admin/projects/{project_id}/rights",
+        headers=admin_headers,
+        json={"invited_user_ids": []},
+    )
+    assert remove.status_code == 200
+    assert remove.json()["invited_user_ids"] == []
+    blocked_again = client.get(f"/api/boards/projects/{project_id}", headers=editor_headers)
+    assert blocked_again.status_code == 403
+
+
+def test_non_admin_cannot_create_or_manage_board_rights(client):
+    editor_headers = _login(client, "editor", "editor12345")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=editor_headers,
+        json={"name": "Niet toegestaan", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 403
+
+    rights = client.get("/api/boards/admin/rights", headers=editor_headers)
+    assert rights.status_code == 403
+
+
+def test_admin_can_soft_delete_board_project(client):
+    admin_headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Archiefbord", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={"title": "Blijvende kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+
+    archive = client.delete(f"/api/boards/admin/projects/{project_id}", headers=admin_headers)
+    assert archive.status_code == 200
+    assert archive.json()["id"] == project_id
+
+    listed = client.get("/api/boards/projects", headers=admin_headers)
+    assert all(item["id"] != project_id for item in listed.json())
+    direct = client.get(f"/api/boards/projects/{project_id}", headers=admin_headers)
+    assert direct.status_code == 404
+
+
 def test_upload_recording_allowed_for_all_columns(client):
     headers = _login(client)
     create_project = client.post(

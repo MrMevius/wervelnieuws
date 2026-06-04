@@ -6,6 +6,7 @@ import {
   AdminUser,
   ActivityFeedItem,
   AboutContent,
+  BoardRightsOverview,
   ContentChannelVariant,
   ContentVersion,
   CurrentUser,
@@ -23,6 +24,7 @@ import {
   createAdminUser,
   createAdminTheme,
   createAdminProject,
+  archiveBoardProject,
   bulkCopyDatabaseDocuments,
   bulkDeleteDatabaseDocuments,
   bulkMoveDatabaseDocuments,
@@ -45,6 +47,7 @@ import {
   listActivityFeed,
   listNotificationFeed,
   listBoardProjects,
+  listBoardRights,
   listCurrentVariants,
   listAdminProjects,
   listDatabaseDocuments,
@@ -67,6 +70,7 @@ import {
   updateAdminProject,
   updateAdminTheme,
   updateAdminUser,
+  updateBoardRights,
   uploadDatabaseDocumentWithProgress,
   uploadCurrentUserAvatar,
   updateCurrentUser
@@ -494,7 +498,10 @@ export function App() {
             path={WERVEL_PATHS.adminScheduler}
             element={<AdminSchedulerPage currentUser={currentUserQuery.data} />}
           />
-          <Route path={WERVEL_PATHS.adminVergaderborden} element={<VergaderbordenPage canManageProjects />} />
+          <Route
+            path={WERVEL_PATHS.adminVergaderborden}
+            element={currentUserQuery.data?.is_admin ? <VergaderbordenPage canManageProjects /> : <Navigate to={WINDWILLY_PATHS.vergaderborden} replace />}
+          />
           <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
 
           <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
@@ -3606,8 +3613,114 @@ function activityDetailsLabel(detailsJson: string): string {
   return "-";
 }
 
+function BoardRightsAdminTab() {
+  const queryClient = useQueryClient();
+  const [drafts, setDrafts] = useState<Record<string, string[]>>({});
+  const [feedback, setFeedback] = useState<string | null>(null);
+  const rightsQuery = useQuery({ queryKey: ["board-rights"], queryFn: listBoardRights });
+  const assignableUsers = useMemo(
+    () => (rightsQuery.data?.users ?? []).filter((user) => !user.is_admin && user.is_active),
+    [rightsQuery.data?.users]
+  );
+
+  useEffect(() => {
+    if (!rightsQuery.data) return;
+    setDrafts((current) => {
+      const next = { ...current };
+      for (const project of rightsQuery.data.projects) {
+        if (!next[project.id]) {
+          next[project.id] = project.invited_user_ids;
+        }
+      }
+      return next;
+    });
+  }, [rightsQuery.data]);
+
+  const updateMutation = useMutation({
+    mutationFn: ({ projectId, invited_user_ids }: { projectId: string; invited_user_ids: string[] }) => updateBoardRights(projectId, { invited_user_ids }),
+    onSuccess: async () => {
+      setFeedback("Bordrechten opgeslagen.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-rights"] }),
+        queryClient.invalidateQueries({ queryKey: ["board-projects"] })
+      ]);
+    },
+    onError: () => setFeedback("Bordrechten opslaan is mislukt.")
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: archiveBoardProject,
+    onSuccess: async () => {
+      setFeedback("Vergaderbord verwijderd.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-rights"] }),
+        queryClient.invalidateQueries({ queryKey: ["board-projects"] })
+      ]);
+    },
+    onError: () => setFeedback("Vergaderbord verwijderen is mislukt.")
+  });
+
+  const toggleUser = (projectId: string, userId: string) => {
+    setDrafts((current) => {
+      const selected = new Set(current[projectId] ?? []);
+      if (selected.has(userId)) selected.delete(userId);
+      else selected.add(userId);
+      return { ...current, [projectId]: Array.from(selected) };
+    });
+  };
+
+  const saveProject = (projectId: string) => {
+    updateMutation.mutate({ projectId, invited_user_ids: drafts[projectId] ?? [] });
+  };
+
+  const deleteProject = (projectId: string, name: string) => {
+    if (!window.confirm(`Vergaderbord '${name}' verwijderen? Het bord wordt gearchiveerd en kan later handmatig hersteld worden.`)) {
+      return;
+    }
+    archiveMutation.mutate(projectId);
+  };
+
+  if (rightsQuery.isLoading) return <p className="muted">Bordrechten laden…</p>;
+  if (rightsQuery.isError) return <p className="error">Bordrechten konden niet worden geladen.</p>;
+
+  const data = rightsQuery.data as BoardRightsOverview;
+  return (
+    <section className="admin-board-rights">
+      <h2>Bordrechten</h2>
+      <p className="muted">Selecteer per vergaderbord welke niet-admin gebruikers toegang hebben. Admins houden automatisch toegang tot alle borden.</p>
+      {feedback && <p role="status" className={feedback.includes("mislukt") ? "error" : "success"}>{feedback}</p>}
+      {!data.projects.length && <p className="muted">Er zijn nog geen vergaderborden.</p>}
+      {data.projects.map((project) => {
+        const selected = new Set(drafts[project.id] ?? project.invited_user_ids);
+        return (
+          <article className="admin-board-rights-card" key={project.id}>
+            <div className="admin-board-rights-card-header">
+              <div>
+                <h3>{project.name}</h3>
+                {project.description && <p className="muted">{project.description}</p>}
+                <p className="muted">{project.card_count} kaarten</p>
+              </div>
+              <button type="button" className="danger-link" onClick={() => deleteProject(project.id, project.name)} disabled={archiveMutation.isPending}>Verwijder bord</button>
+            </div>
+            <div className="admin-board-rights-users">
+              {assignableUsers.map((user) => (
+                <label key={user.id} className="admin-board-rights-user">
+                  <input type="checkbox" checked={selected.has(user.id)} onChange={() => toggleUser(project.id, user.id)} />
+                  <span>{user.full_name?.trim() || user.username}</span>
+                </label>
+              ))}
+              {!assignableUsers.length && <p className="muted">Er zijn geen actieve niet-admin gebruikers om toe te wijzen.</p>}
+            </div>
+            <button type="button" onClick={() => saveProject(project.id)} disabled={updateMutation.isPending}>Rechten opslaan</button>
+          </article>
+        );
+      })}
+    </section>
+  );
+}
+
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
-  type AdminTab = "users" | "projects" | "themes" | "ai" | "scheduler" | "activity";
+  type AdminTab = "users" | "boardRights" | "projects" | "themes" | "ai" | "scheduler" | "activity";
 
   const queryClient = useQueryClient();
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>("users");
@@ -4050,11 +4163,15 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       </div>
       <div className="admin-tab-row" role="tablist" aria-label="Admin onderdelen">
         <button type="button" role="tab" aria-selected={activeAdminTab === "users"} onClick={() => setActiveAdminTab("users")}>Gebruikers</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "boardRights"} onClick={() => setActiveAdminTab("boardRights")}>Bordrechten</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "projects"} onClick={() => setActiveAdminTab("projects")}>Projecten</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "themes"} onClick={() => setActiveAdminTab("themes")}>Thema&apos;s</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "ai"} onClick={() => setActiveAdminTab("ai")}>AI</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "scheduler"} onClick={() => setActiveAdminTab("scheduler")}>Scheduler</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "activity"} onClick={() => setActiveAdminTab("activity")}>Admin log</button>
+      </div>
+      <div hidden={activeAdminTab !== "boardRights"}>
+        <BoardRightsAdminTab />
       </div>
       {feedback && (
         <p

@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "62",
+                "date": "2026-06-03",
+                "title": "Admins beheren toegang tot vergaderborden",
+                "highlights": [
+                    "In Admin is een nieuw onderdeel Bordrechten toegevoegd waarmee admins per vergaderbord gebruikers kunnen selecteren of deselecteren.",
+                    "Niet-admin gebruikers zien en openen alleen nog vergaderborden waarvoor ze toegang hebben gekregen.",
+                    "Admins houden automatisch toegang tot alle vergaderborden en kunnen borden aanmaken of als soft-delete verwijderen.",
+                ],
+            },
+            {
                 "iteration": "60",
                 "date": "2026-06-02",
                 "title": "Update-tijden op vergaderborden tonen nu Amsterdamse tijd",

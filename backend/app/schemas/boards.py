@@ -22,6 +22,34 @@ class BoardProjectSummaryResponse(BaseModel):
     last_activity_at: datetime | None
 
 
+class BoardRightsUserResponse(BaseModel):
+    id: str
+    username: str
+    full_name: str | None
+    email: str | None
+    is_admin: bool
+    is_active: bool
+    has_avatar: bool = False
+
+
+class BoardProjectRightsResponse(BaseModel):
+    id: str
+    name: str
+    description: str
+    invited_user_ids: list[str]
+    card_count: int
+    last_activity_at: datetime | None
+
+
+class BoardRightsOverviewResponse(BaseModel):
+    users: list[BoardRightsUserResponse]
+    projects: list[BoardProjectRightsResponse]
+
+
+class BoardProjectRightsUpdateRequest(BaseModel):
+    invited_user_ids: list[str] = Field(default_factory=list)
+
+
 class BoardCardCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=BOARD_CARD_TITLE_MAX_LENGTH)
     description: str = ""

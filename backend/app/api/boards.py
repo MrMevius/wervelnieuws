@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.entities import Recording, User
 from app.repositories.board_repository import BoardRepository
@@ -15,7 +15,11 @@ from app.schemas.boards import (
     BoardCardResponse,
     BoardCardTitleUpdateRequest,
     BoardProjectCreateRequest,
+    BoardProjectRightsResponse,
+    BoardProjectRightsUpdateRequest,
     BoardProjectSummaryResponse,
+    BoardRightsOverviewResponse,
+    BoardRightsUserResponse,
     CardAssignmentResponse,
     CardDetailResponse,
     CardUpdateCreateRequest,
@@ -99,13 +103,67 @@ def list_projects(current: User = Depends(get_current_user), db: Session = Depen
     return result
 
 
-@router.post("/projects", response_model=BoardProjectSummaryResponse)
-def create_project(payload: BoardProjectCreateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardProjectSummaryResponse:
+def _project_rights_response(repo: BoardRepository, project) -> BoardProjectRightsResponse:
+    return BoardProjectRightsResponse(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        invited_user_ids=project.invited_user_ids,
+        card_count=len(repo.list_project_cards(project.id)),
+        last_activity_at=project.last_activity_at,
+    )
+
+
+@router.get("/admin/rights", response_model=BoardRightsOverviewResponse)
+def list_board_rights(current: User = Depends(require_admin), db: Session = Depends(get_db)) -> BoardRightsOverviewResponse:
+    del current
+    repo = BoardRepository(db)
+    users = [
+        BoardRightsUserResponse(
+            id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            email=user.email,
+            is_admin=user.is_admin,
+            is_active=user.is_active,
+            has_avatar=bool(user.avatar_path),
+        )
+        for user in repo.list_active_users()
+    ]
+    return BoardRightsOverviewResponse(
+        users=users,
+        projects=[_project_rights_response(repo, project) for project in repo.list_projects()],
+    )
+
+
+@router.patch("/admin/projects/{project_id}/rights", response_model=BoardProjectRightsResponse)
+def update_board_rights(
+    project_id: str,
+    payload: BoardProjectRightsUpdateRequest,
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> BoardProjectRightsResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    invited = service.ensure_invited_users_exist(payload.invited_user_ids)
-    if current.id not in invited:
-        invited.append(current.id)
+    project = service.update_project_access_rights(project_id, payload.invited_user_ids)
+    AuditService(db).log("board.project.rights_updated", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id))
+    return _project_rights_response(repo, project)
+
+
+@router.delete("/admin/projects/{project_id}", response_model=BoardProjectRightsResponse)
+def archive_board_project(project_id: str, current: User = Depends(require_admin), db: Session = Depends(get_db)) -> BoardProjectRightsResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    project = service.archive_project(project_id)
+    AuditService(db).log("board.project.archived", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id))
+    return _project_rights_response(repo, project)
+
+
+@router.post("/projects", response_model=BoardProjectSummaryResponse)
+def create_project(payload: BoardProjectCreateRequest, current: User = Depends(require_admin), db: Session = Depends(get_db)) -> BoardProjectSummaryResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    invited = service.ensure_active_non_admin_users_exist(payload.invited_user_ids)
     project = repo.create_project(payload.name, payload.description, invited)
     AuditService(db).log("board.project.created", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id))
     return BoardProjectSummaryResponse(id=project.id, name=project.name, description=project.description, invited_user_ids=project.invited_user_ids, card_count=0, last_activity_at=project.last_activity_at)

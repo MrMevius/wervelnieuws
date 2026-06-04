@@ -2337,6 +2337,38 @@ tbody tr.row-selected {
   background: color-mix(in srgb, var(--accent) 15%, var(--surface) 85%);
 }
 
+.admin-board-rights {
+  display: grid;
+  gap: 1rem;
+}
+
+.admin-board-rights-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  background: color-mix(in srgb, var(--surface-muted) 70%, transparent 30%);
+}
+
+.admin-board-rights-card-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.admin-board-rights-users {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  margin: 1rem 0;
+}
+
+.admin-board-rights-user {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+}
+
 .admin-genai-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

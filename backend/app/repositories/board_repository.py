@@ -14,6 +14,9 @@ class BoardRepository:
     def list_projects(self) -> list[Project]:
         return list(self.db.scalars(select(Project).where(Project.is_archived.is_(False)).order_by(Project.name.asc())).all())
 
+    def list_active_users(self) -> list[User]:
+        return list(self.db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.username.asc())).all())
+
     def create_project(self, name: str, description: str, invited_user_ids: list[str]) -> Project:
         project = Project(name=name.strip(), description=description.strip())
         project.invited_user_ids = invited_user_ids
@@ -25,6 +28,22 @@ class BoardRepository:
 
     def get_project(self, project_id: str) -> Project | None:
         return self.db.get(Project, project_id)
+
+    def update_project_invited_users(self, project: Project, invited_user_ids: list[str]) -> Project:
+        project.invited_user_ids = invited_user_ids
+        project.last_activity_at = datetime.now(UTC)
+        self.db.add(project)
+        self.db.commit()
+        self.db.refresh(project)
+        return project
+
+    def archive_project(self, project: Project) -> Project:
+        project.is_archived = True
+        project.last_activity_at = datetime.now(UTC)
+        self.db.add(project)
+        self.db.commit()
+        self.db.refresh(project)
+        return project
 
     def list_project_cards(self, project_id: str) -> list[BoardCard]:
         return list(

@@ -222,6 +222,13 @@ export type BoardProjectSummary = {
   last_activity_at: string | null;
 };
 
+export type BoardRightsUser = AdminUser;
+
+export type BoardRightsOverview = {
+  users: BoardRightsUser[];
+  projects: BoardProjectSummary[];
+};
+
 export type BoardCard = {
   id: string;
   project_id: string;
@@ -562,6 +569,18 @@ export function listBoardProjects() {
 
 export function createBoardProject(payload: { name: string; description: string; invited_user_ids: string[] }) {
   return request<BoardProjectSummary>("/boards/projects", { method: "POST", body: JSON.stringify(payload) });
+}
+
+export function listBoardRights() {
+  return request<BoardRightsOverview>("/boards/admin/rights");
+}
+
+export function updateBoardRights(projectId: string, payload: { invited_user_ids: string[] }) {
+  return request<BoardProjectSummary>(`/boards/admin/projects/${projectId}/rights`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function archiveBoardProject(projectId: string) {
+  return request<BoardProjectSummary>(`/boards/admin/projects/${projectId}`, { method: "DELETE" });
 }
 
 export function getBoardProject(projectId: string) {
