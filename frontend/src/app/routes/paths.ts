@@ -14,5 +14,6 @@ export const WERVEL_PATHS = {
 export const WINDWILLY_PATHS = {
   landing: "/",
   module: "/windwilly",
+  changelog: "/changelog",
   vergaderborden: "/vergaderborden"
 } as const;

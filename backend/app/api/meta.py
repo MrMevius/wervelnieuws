@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "67",
+                "date": "2026-06-09",
+                "title": "Aparte changelog en duidelijkere previewmeldingen",
+                "highlights": [
+                    "De changelog heeft nu een eigen pagina die vanaf de WindWilly-startpagina bereikbaar is.",
+                    "Wijzigingen worden met de nieuwste update bovenaan getoond.",
+                    "De WindWilly Assistent en Wervelnieuws tonen duidelijker welke onderdelen nog preview of work in progress zijn.",
+                ],
+            },
+            {
                 "iteration": "66",
                 "date": "2026-06-09",
                 "title": "Rustiger startscherm na inloggen",

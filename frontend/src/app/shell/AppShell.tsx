@@ -6,6 +6,7 @@ import {
   AdminUser,
   ActivityFeedItem,
   AboutContent,
+  ChangelogEntry,
   BoardRightsOverview,
   ContentChannelVariant,
   ContentVersion,
@@ -457,6 +458,7 @@ export function App() {
         <Routes>
           <Route path={WINDWILLY_PATHS.landing} element={<WindWillyLandingPage />} />
           <Route path={WINDWILLY_PATHS.module} element={<WindWillyModulePlaceholder />} />
+          <Route path={WINDWILLY_PATHS.changelog} element={<ChangelogPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
           <Route
             path={WERVEL_PATHS.main}
             element={
@@ -554,6 +556,11 @@ function WindWillyLandingPage() {
         <p className="eyebrow">Suite-overzicht</p>
         <h1>Welkom bij WindWilly</h1>
         <p>WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber &amp; Co en Energiek Daarle.</p>
+        <div className="main-hero-actions">
+          <NavLink to={WINDWILLY_PATHS.changelog} className="main-action-link is-secondary">
+            Bekijk changelog
+          </NavLink>
+        </div>
       </header>
     </section>
   );
@@ -566,8 +573,8 @@ function WindWillyModulePlaceholder() {
         <p className="eyebrow">Placeholder · nog niet live</p>
         <h1>WindWilly Assistent</h1>
         <p className="muted">
-          Een chat-achtige omgeving voor vragen over windprojectinformatie, planning en
-          bewonerscommunicatie.
+          Dit is uitsluitend een placeholder/preview van de toekomstige assistent en nog geen
+          werkende assistent. De voorbeeldchat hieronder is statisch en kan nog geen vragen beantwoorden.
         </p>
       </header>
 
@@ -691,6 +698,15 @@ function MainPage({
 
   return (
     <section className="main-dashboard">
+      <article className="panel status-notice" role="status">
+        <p className="eyebrow">Work in progress</p>
+        <h1>Wervelnieuws is nog in ontwikkeling</h1>
+        <p>
+          Deze module wordt stap voor stap opgebouwd. Gebruik de beschikbare functies met extra controle en
+          verwacht dat onderdelen nog wijzigen voordat de volledige workflow stabiel is.
+        </p>
+      </article>
+
       {isLoading && (
         <article className="panel">
           <h2>Dashboard laden</h2>
@@ -3103,28 +3119,84 @@ function AboutPage({
         <p>
           <strong>Ontwikkeld door:</strong> {about.developed_by}
         </p>
-      </article>
-
-      <article>
-        <h2>Changelog</h2>
-        <div className="changelog-list">
-          {about.changelog.map((entry) => (
-            <section className="changelog-item" key={`${entry.iteration}-${entry.date}`}>
-              <h3>
-                Iteratie {entry.iteration} - {entry.title}
-              </h3>
-              <p className="muted">{entry.date}</p>
-              <ul>
-                {entry.highlights.map((highlight) => (
-                  <li key={highlight}>{highlight}</li>
-                ))}
-              </ul>
-            </section>
-          ))}
-        </div>
+        <p>
+          Productwijzigingen staan op de aparte{" "}
+          <NavLink to={WINDWILLY_PATHS.changelog} className="main-inline-link">
+            changelogpagina
+          </NavLink>
+          .
+        </p>
       </article>
     </section>
   );
+}
+
+function ChangelogPage({
+  about,
+  isLoading,
+  hasError
+}: {
+  about: AboutContent | undefined;
+  isLoading: boolean;
+  hasError: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <section className="panel">
+        <h1>Changelog</h1>
+        <p>Laden...</p>
+      </section>
+    );
+  }
+
+  if (hasError || !about) {
+    return (
+      <section className="panel">
+        <h1>Changelog</h1>
+        <p>De changelog kon niet worden geladen. Ververs de pagina of probeer het later opnieuw.</p>
+      </section>
+    );
+  }
+
+  const sortedChangelog = sortChangelogNewestFirst(about.changelog);
+
+  return (
+    <section className="panel changelog-page">
+      <header>
+        <p className="eyebrow">WindWilly</p>
+        <h1>Changelog</h1>
+        <p className="muted">Nieuwste wijzigingen bovenaan.</p>
+      </header>
+
+      <div className="changelog-list">
+        {sortedChangelog.map((entry) => (
+          <section className="changelog-item" key={`${entry.iteration}-${entry.date}`}>
+            <h2>
+              Iteratie {entry.iteration} - {entry.title}
+            </h2>
+            <p className="muted">{entry.date}</p>
+            <ul>
+              {entry.highlights.map((highlight) => (
+                <li key={highlight}>{highlight}</li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function sortChangelogNewestFirst(entries: ChangelogEntry[]): ChangelogEntry[] {
+  return [...entries].sort((left, right) => {
+    const leftTime = new Date(left.date).getTime();
+    const rightTime = new Date(right.date).getTime();
+    const dateCompare = (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
+    if (dateCompare !== 0) {
+      return dateCompare;
+    }
+    return Number(right.iteration) - Number(left.iteration);
+  });
 }
 
 function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefined }) {

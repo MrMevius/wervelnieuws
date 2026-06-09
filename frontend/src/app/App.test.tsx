@@ -493,10 +493,22 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "01",
+        date: "2026-03-01",
+        title: "Eerste basis",
+        highlights: ["Startscherm"]
+      },
+      {
         iteration: "02",
         date: "2026-03-12",
         title: "Nieuwe shell",
         highlights: ["Tabnavigatie", "About API"]
+      },
+      {
+        iteration: "03",
+        date: "2026-04-01",
+        title: "Aparte changelog",
+        highlights: ["Nieuwe changelogpagina"]
       }
     ]
   }),
@@ -617,6 +629,7 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Bekijk changelog" })).toBeInTheDocument();
       expect(
         screen.getByText(
           "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
@@ -814,6 +827,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "WindWilly Assistent" })).toBeInTheDocument();
       expect(screen.getByText(/placeholder · nog niet live/i)).toBeInTheDocument();
+      expect(screen.getByText(/nog geen werkende assistent/i)).toBeInTheDocument();
       expect(screen.getByText(/windpark de boldijk/i)).toBeInTheDocument();
       expect(screen.getByLabelText("Vraag invoeren")).toBeDisabled();
       expect(screen.getByRole("button", { name: "Versturen" })).toBeDisabled();
@@ -833,6 +847,7 @@ describe("App", () => {
           "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
         )
       ).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Bekijk changelog" })).toBeInTheDocument();
       expect(screen.queryByText(/Alles voor planning, content en publicatie/i)).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuur (placeholder)" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 1" })).not.toBeInTheDocument();
@@ -866,7 +881,39 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Workflow overzicht" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wervelnieuws is nog in ontwikkeling" })).toBeInTheDocument();
     });
+  });
+
+  it("shows Wervelnieuws work-in-progress messaging on main page", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Main");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Wervelnieuws is nog in ontwikkeling" })).toBeInTheDocument();
+      expect(screen.getByText(/work in progress/i)).toBeInTheDocument();
+    });
+  });
+
+  it("opens separate changelog page from WindWilly landing with newest items first", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("link", { name: "Bekijk changelog" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
+      expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
+    });
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
+    expect(headings).toEqual([
+      "Iteratie 03 - Aparte changelog",
+      "Iteratie 02 - Nieuwe shell",
+      "Iteratie 01 - Eerste basis"
+    ]);
   });
 
   it("opens user menu and navigates to settings", async () => {
@@ -2068,7 +2115,9 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Wervelnieuws helpt het communicatieteam.")).toBeInTheDocument();
       expect(screen.getByText(/Ontwikkeld door:/)).toBeInTheDocument();
-      expect(screen.getByText("Iteratie 02 - Nieuwe shell")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "changelogpagina" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Changelog" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Iteratie 02 - Nieuwe shell")).not.toBeInTheDocument();
     });
   });
 });
