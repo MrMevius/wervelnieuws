@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "66",
+                "date": "2026-06-09",
+                "title": "Rustiger startscherm na inloggen",
+                "highlights": [
+                    "Het WindWilly-startscherm opent nu direct met een korte introductie over de drie samenwerkende energiecoöperaties.",
+                    "De tijdelijke suitekaarten en Bestuur-placeholder zijn van de startpagina gehaald, terwijl de bestaande navigatie bovenaan gelijk blijft.",
+                ],
+            },
+            {
                 "iteration": "65",
                 "date": "2026-06-09",
                 "title": "Login blijft werken bij tijdelijk Onthoud mij-probleem",

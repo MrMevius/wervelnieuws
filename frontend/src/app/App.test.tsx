@@ -606,7 +606,7 @@ describe("App", () => {
     });
   });
 
-  it("shows WindWilly suite modules after login", async () => {
+  it("shows WindWilly suite navigation and simplified landing after login", async () => {
     renderApp();
     await loginIntoApp();
 
@@ -617,7 +617,17 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
+        )
+      ).toBeInTheDocument();
     });
+
+    expect(screen.queryByText("Komende chatbotmodule voor snelle beantwoording van projectvragen.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Volledige redactie- en publicatieflow voor lokale windparkcommunicatie.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Placeholder voor urenregistratie en teaminzicht per projectfase.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Bestuur (placeholder)" })).not.toBeInTheDocument();
   });
 
   it("opens vergaderborden page from top navigation", async () => {
@@ -818,11 +828,16 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
-      expect(screen.getByText(/Alles voor planning, content en publicatie/i)).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Bestuur (placeholder)" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Bestuurslid 1" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Bestuurslid 2" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Bestuurslid 3" })).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
+        )
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/Alles voor planning, content en publicatie/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Bestuur (placeholder)" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Bestuurslid 1" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Bestuurslid 2" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Bestuurslid 3" })).not.toBeInTheDocument();
       expect(screen.getByText("© 2026 WindWilly · Vibecoded by BJ & MR")).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
     });

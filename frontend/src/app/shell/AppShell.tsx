@@ -550,53 +550,11 @@ function handleLogin(
 function WindWillyLandingPage() {
   return (
     <section className="panel main-dashboard">
-      <div className="panel-grid">
-        <article className="panel feature-card">
-          <h2>WindWilly</h2>
-          <p className="muted">Komende chatbotmodule voor snelle beantwoording van projectvragen.</p>
-        </article>
-        <article className="panel feature-card">
-          <h2>Wervelnieuws</h2>
-          <p className="muted">Volledige redactie- en publicatieflow voor lokale windparkcommunicatie.</p>
-        </article>
-        <article className="panel feature-card">
-          <h2>Urenverantwoording</h2>
-          <p className="muted">Placeholder voor urenregistratie en teaminzicht per projectfase.</p>
-        </article>
-        <article className="panel feature-card">
-          <h2>Vergaderborden</h2>
-          <p className="muted">Beheer projectborden met kaarten, updates en opnames voor samenwerking binnen het team.</p>
-          <NavLink to={WINDWILLY_PATHS.vergaderborden}>Open Vergaderborden</NavLink>
-        </article>
-        <article className="panel feature-card">
-          <h2>Participatiemomenten</h2>
-          <p className="muted">Placeholder voor planning en verslaglegging van bewonersmomenten.</p>
-        </article>
-      </div>
-
       <header className="main-hero windwilly-hero suite-overview-banner">
         <p className="eyebrow">Suite-overzicht</p>
         <h1>Welkom bij WindWilly</h1>
-        <p>Alles voor planning, content en publicatie in één overzichtelijke omgeving.</p>
+        <p>WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber &amp; Co en Energiek Daarle.</p>
       </header>
-
-      <section className="panel cooperatives-section" aria-labelledby="cooperatives-heading">
-        <h2 id="cooperatives-heading">Bestuur (placeholder)</h2>
-        <div className="board-placeholder-grid" aria-label="Bestuursleden placeholders">
-          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 1">
-            <span className="member-avatar" aria-hidden="true">👤</span>
-            <h3>Bestuurslid 1</h3>
-          </article>
-          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 2">
-            <span className="member-avatar" aria-hidden="true">👤</span>
-            <h3>Bestuurslid 2</h3>
-          </article>
-          <article className="panel board-member-card" aria-label="Bestuurslid placeholder 3">
-            <span className="member-avatar" aria-hidden="true">👤</span>
-            <h3>Bestuurslid 3</h3>
-          </article>
-        </div>
-      </section>
     </section>
   );
 }
