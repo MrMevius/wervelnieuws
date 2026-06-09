@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "63",
+                "date": "2026-06-09",
+                "title": "Vergaderbord-kaartbeschrijving direct bewerken",
+                "highlights": [
+                    "In het kaartdetail van vergaderborden wordt de beschrijving nu nog maar één keer getoond.",
+                    "Je kunt de zichtbare beschrijving direct aanklikken om deze inline te bewerken en op te slaan.",
+                    "Kaarten zonder beschrijving tonen een duidelijke knop om meteen een beschrijving toe te voegen.",
+                ],
+            },
+            {
                 "iteration": "62",
                 "date": "2026-06-03",
                 "title": "Admins beheren toegang tot vergaderborden",

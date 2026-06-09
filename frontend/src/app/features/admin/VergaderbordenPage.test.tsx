@@ -300,10 +300,10 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving bewerken" }));
     const input = await screen.findByLabelText("Beschrijving") as HTMLTextAreaElement;
     expect(input).toHaveAttribute("rows", "3");
     expect(input).toHaveAttribute("maxLength", "2000");
-    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "Nieuwe beschrijving" } });
     fireEvent.blur(input);
 
@@ -329,8 +329,8 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving bewerken" }));
     const input = await screen.findByLabelText("Beschrijving");
-    fireEvent.focus(input);
     fireEvent.blur(input);
 
     await waitFor(() => {
@@ -350,8 +350,8 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving bewerken" }));
     const input = await screen.findByLabelText("Beschrijving");
-    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "x".repeat(2001) } });
     fireEvent.blur(input);
 
@@ -359,7 +359,29 @@ describe("Vergaderborden drag/drop", () => {
     expect(api.updateBoardCardDescription).not.toHaveBeenCalled();
   });
 
-  it("toont rijke beschrijving veilig in kolom en detail", async () => {
+  it("toont foutmelding en houdt editor open als kaartbeschrijving opslaan mislukt", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "Oud", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+    api.updateBoardCardDescription.mockRejectedValueOnce(new Error("Opslaan niet gelukt"));
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving bewerken" }));
+    const input = await screen.findByLabelText("Beschrijving");
+    fireEvent.change(input, { target: { value: "Nieuwe beschrijving" } });
+    fireEvent.blur(input);
+
+    expect(await screen.findByText("Opslaan niet gelukt")).toBeInTheDocument();
+    expect(screen.getByLabelText("Beschrijving")).toBeInTheDocument();
+  });
+
+  it("toont rijke beschrijving veilig in kolom en detail maximaal één keer", async () => {
     const description = "Regel met **vet**\n- punt\n<script>alert(1)</script>";
     const card = { id: "c1", project_id: "p1", title: "Titel", description, column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
@@ -380,8 +402,28 @@ describe("Vergaderborden drag/drop", () => {
     expect(cardEl.querySelector("script")).toBeNull();
 
     fireEvent.click(cardEl);
-    expect(await screen.findByLabelText("Beschrijving preview")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("button", { name: "Beschrijving bewerken" })).toBeInTheDocument();
+    expect(within(dialog).getAllByText("Regel met")).toHaveLength(1);
     expect(screen.queryByText("alert(1)", { selector: "script" })).not.toBeInTheDocument();
+  });
+
+  it("toont een klikbare placeholder voor lege kaartbeschrijving", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving toevoegen" }));
+
+    expect(await screen.findByLabelText("Beschrijving")).toBeInTheDocument();
   });
 
   it("biedt rijke beschrijving-editor in nieuw-kaart flow", async () => {

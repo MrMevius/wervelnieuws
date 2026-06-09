@@ -691,6 +691,20 @@ button:disabled {
   background: color-mix(in srgb, var(--surface-muted) 50%, var(--surface) 50%);
 }
 
+.board-card-description-edit-trigger {
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.board-card-description-edit-trigger:hover,
+.board-card-description-edit-trigger:focus-visible {
+  border-color: color-mix(in srgb, var(--brand) 44%, var(--line) 56%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-soft) 58%, transparent 42%);
+  outline: none;
+}
+
 .board-updates-section {
   display: grid;
   gap: 10px;

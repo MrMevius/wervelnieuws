@@ -273,8 +273,14 @@ function UpdateMessageRenderer({ message }: { message: string }) {
   return <RichTextRenderer text={message} emptyFallback={<p>Update zonder tekst</p>} />;
 }
 
-function CardDescriptionRenderer({ description }: { description: string | null | undefined }) {
-  return <RichTextRenderer text={description?.trim() || ""} emptyFallback={<>Geen beschrijving</>} />;
+function CardDescriptionRenderer({
+  description,
+  emptyFallback = <>Geen beschrijving</>
+}: {
+  description: string | null | undefined;
+  emptyFallback?: ReactNode;
+}) {
+  return <RichTextRenderer text={description?.trim() || ""} emptyFallback={emptyFallback} />;
 }
 
 function autoResizeTextarea(el: HTMLTextAreaElement | null) {
@@ -730,6 +736,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     setTitleEdit({ cardId, value: title, original: title, error: null });
   };
 
+  const startDescriptionEdit = (cardId: string, description: string) => {
+    setDescriptionEdit({ cardId, value: description, original: description, error: null });
+    window.requestAnimationFrame(() => {
+      autoResizeTextarea(detailDescriptionTextareaRef.current);
+      detailDescriptionTextareaRef.current?.focus();
+    });
+  };
+
   const saveTitleEdit = async () => {
     if (!titleEdit || updateTitleMutation.isPending) return;
     const nextTitle = titleEdit.value.trim();
@@ -954,46 +968,46 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             )}
             <div className="board-detail-description-edit">
               <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
-              <label className="vergaderborden-field">
-                <span>Beschrijving</span>
-                <DescriptionEditor
-                  ariaLabel="Beschrijving"
-                  textareaRef={detailDescriptionTextareaRef}
-                  value={descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description}
-                  onFocus={() => {
-                    if (descriptionEdit?.cardId === cardQuery.data!.card.id) return;
-                    setDescriptionEdit({
-                      cardId: cardQuery.data!.card.id,
-                      value: cardQuery.data!.card.description,
-                      original: cardQuery.data!.card.description,
-                      error: null
-                    });
-                  }}
-                  onChange={(nextValue) => {
-                    if (descriptionEdit?.cardId !== cardQuery.data!.card.id) {
-                      setDescriptionEdit({
-                        cardId: cardQuery.data!.card.id,
-                        value: nextValue,
-                        original: cardQuery.data!.card.description,
-                        error: null
-                      });
-                      return;
-                    }
-                    setDescriptionEdit((current) => (current ? { ...current, value: nextValue, error: null } : current));
-                  }}
-                  onBlur={() => {
-                    void saveDescriptionEdit();
-                  }}
-                  placeholder="Geen beschrijving"
-                  disabled={updateDescriptionMutation.isPending}
-                  maxLength={CARD_DESCRIPTION_MAX_LENGTH}
-                  onToolbarAction={handleDetailDescriptionToolbarAction}
-                  error={descriptionEdit?.error}
-                />
-              </label>
-              <div className="board-card-description-preview" aria-label="Beschrijving preview">
-                <CardDescriptionRenderer description={descriptionEdit?.cardId === cardQuery.data.card.id ? descriptionEdit.value : cardQuery.data.card.description} />
-              </div>
+              {descriptionEdit?.cardId === cardQuery.data.card.id ? (
+                <label className="vergaderborden-field">
+                  <span>Beschrijving</span>
+                  <DescriptionEditor
+                    ariaLabel="Beschrijving"
+                    textareaRef={detailDescriptionTextareaRef}
+                    value={descriptionEdit.value}
+                    onChange={(nextValue) => {
+                      setDescriptionEdit((current) => (current ? { ...current, value: nextValue, error: null } : current));
+                    }}
+                    onBlur={() => {
+                      void saveDescriptionEdit();
+                    }}
+                    placeholder="Beschrijving toevoegen"
+                    disabled={updateDescriptionMutation.isPending}
+                    maxLength={CARD_DESCRIPTION_MAX_LENGTH}
+                    onToolbarAction={handleDetailDescriptionToolbarAction}
+                    error={descriptionEdit.error}
+                  />
+                </label>
+              ) : (
+                <div className="vergaderborden-field">
+                  <span>Beschrijving</span>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="board-card-description-preview board-card-description-edit-trigger"
+                    aria-label={cardQuery.data.card.description.trim() ? "Beschrijving bewerken" : "Beschrijving toevoegen"}
+                    onClick={() => startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description)}
+                    onKeyDown={(evt) => {
+                      if (evt.key === "Enter" || evt.key === " ") {
+                        evt.preventDefault();
+                        startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description);
+                      }
+                    }}
+                  >
+                    <CardDescriptionRenderer description={cardQuery.data.card.description} emptyFallback={<>Beschrijving toevoegen</>} />
+                  </div>
+                </div>
+              )}
             </div>
             <form
               className="board-update-form"
