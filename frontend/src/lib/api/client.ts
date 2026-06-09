@@ -451,10 +451,10 @@ async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   return res.blob();
 }
 
-export async function login(username: string, password: string) {
+export async function login(username: string, password: string, rememberMe = false) {
   await request<{ access_token: string }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ username, password })
+    body: JSON.stringify({ username, password, remember_me: rememberMe })
   });
 }
 

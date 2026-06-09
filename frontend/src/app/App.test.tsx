@@ -583,6 +583,16 @@ describe("App", () => {
   it("shows login form first", () => {
     renderApp();
     expect(screen.getByRole("button", { name: "Inloggen" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Onthoud mij")).toBeInTheDocument();
+  });
+
+  it("sends remember me flag when checkbox is checked", async () => {
+    renderApp();
+
+    fireEvent.click(screen.getByLabelText("Onthoud mij"));
+    await loginIntoApp();
+
+    expect(mockApi.login).toHaveBeenCalledWith("admin", "admin12345", true);
   });
 
   it("shows login error when credentials are invalid", async () => {

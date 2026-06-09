@@ -8,6 +8,7 @@ from app.models.enums import ThemePreference
 class LoginRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
     password: str = Field(min_length=4, max_length=128)
+    remember_me: bool = False
 
 
 class TokenResponse(BaseModel):

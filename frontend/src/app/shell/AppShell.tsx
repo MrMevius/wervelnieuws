@@ -155,7 +155,8 @@ export function App() {
   }, []);
 
   const loginMutation = useMutation({
-    mutationFn: async (input: { username: string; password: string }) => login(input.username, input.password),
+    mutationFn: async (input: { username: string; password: string; rememberMe: boolean }) =>
+      login(input.username, input.password, input.rememberMe),
     onMutate: () => setLoginError(null),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["current-user"] });
@@ -326,6 +327,10 @@ export function App() {
           <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
             <input name="username" placeholder="Gebruikersnaam" defaultValue="admin" required />
             <input name="password" type="password" placeholder="Wachtwoord" defaultValue="admin12345" required />
+            <label className="remember-me-option">
+              <input name="rememberMe" type="checkbox" />
+              <span>Onthoud mij</span>
+            </label>
             <button type="submit" disabled={loginMutation.isPending}>
               {loginMutation.isPending ? "Bezig..." : "Inloggen"}
             </button>
@@ -531,13 +536,14 @@ export function App() {
 
 function handleLogin(
   e: FormEvent<HTMLFormElement>,
-  submit: (input: { username: string; password: string }) => void
+  submit: (input: { username: string; password: string; rememberMe: boolean }) => void
 ) {
   e.preventDefault();
   const data = new FormData(e.currentTarget);
   submit({
     username: String(data.get("username") ?? ""),
-    password: String(data.get("password") ?? "")
+    password: String(data.get("password") ?? ""),
+    rememberMe: data.get("rememberMe") === "on"
   });
 }
 

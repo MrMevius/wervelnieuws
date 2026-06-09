@@ -3,6 +3,10 @@ import time
 from io import BytesIO
 
 from jose import jwt
+from sqlalchemy import text
+
+from app.core.security import hash_remember_token
+from app.models.entities import RememberSession
 
 
 PNG_1X1 = (
@@ -11,6 +15,16 @@ PNG_1X1 = (
     b"\x00\x00\x00\x0bIDATx\x9cc`\x00\x02\x00\x00\x05\x00\x01"
     b"\x0d\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+
+
+def _test_db(client):
+    override = next(iter(client.app.dependency_overrides.values()))  # type: ignore[attr-defined]
+    generator = override()
+    db = next(generator)
+    try:
+        yield db
+    finally:
+        generator.close()
 
 
 def _login(client):
@@ -57,6 +71,71 @@ def test_login_sets_http_only_cookie_with_expected_ttl(client):
     assert "Max-Age=2592000" in set_cookie
 
 
+def test_remembered_login_sets_secure_cookie_and_stores_only_hash(client):
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+
+    assert response.status_code == 200
+    set_cookies = response.headers.get_list("set-cookie")
+    remember_cookie = next(cookie for cookie in set_cookies if cookie.startswith("wervel_remember="))
+    assert "HttpOnly" in remember_cookie
+    assert "Secure" in remember_cookie
+    assert "SameSite=lax" in remember_cookie
+    remember_token = client.cookies.get("wervel_remember")
+    assert remember_token is not None
+    assert len(remember_token) >= 64
+
+    db_generator = _test_db(client)
+    db = next(db_generator)
+    try:
+        sessions = db.query(RememberSession).all()
+        assert len(sessions) == 1
+        assert sessions[0].token_hash == hash_remember_token(remember_token)
+        assert sessions[0].token_hash != remember_token
+        assert sessions[0].revoked_at is None
+    finally:
+        db_generator.close()
+
+
+def test_remembered_login_persistence_failure_falls_back_to_normal_session(
+    client, caplog, monkeypatch
+):
+    sensitive_remember_token = "SENSITIVE_REMEMBER_TOKEN_SHOULD_NOT_APPEAR_IN_LOGS"
+    monkeypatch.setattr(
+        "app.api.auth.create_remember_token", lambda: sensitive_remember_token
+    )
+
+    db_generator = _test_db(client)
+    db = next(db_generator)
+    try:
+        db.execute(text("DROP TABLE remember_sessions"))
+        db.commit()
+    finally:
+        db_generator.close()
+
+    response = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access_token"]
+    set_cookies = response.headers.get_list("set-cookie")
+    assert any(cookie.startswith("wervel_session=") for cookie in set_cookies)
+    assert not any(cookie.startswith("wervel_remember=") for cookie in set_cookies)
+    assert client.cookies.get("wervel_remember") is None
+
+    log_output = "\n".join(record.getMessage() for record in caplog.records)
+    assert "Remember-session persistence failed during login" in log_output
+    assert "migration 20260609_0022" in log_output
+    assert "remember_sessions" in log_output
+    assert sensitive_remember_token not in caplog.text
+    assert hash_remember_token(sensitive_remember_token) not in caplog.text
+    assert "admin12345" not in caplog.text
+
+
 def test_login_token_expiry_aligns_with_cookie_ttl_by_default(client):
     response = client.post(
         "/api/auth/login", json={"username": "admin", "password": "admin12345"}
@@ -84,6 +163,41 @@ def test_auth_me_accepts_cookie_without_bearer_header(client):
     response = client.get("/api/auth/me")
     assert response.status_code == 200
     assert response.json()["username"] == "admin"
+
+
+def test_auth_me_accepts_remember_cookie_without_access_cookie(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+    assert login.status_code == 200
+    remember_token = client.cookies.get("wervel_remember")
+    assert remember_token
+    client.cookies.clear()
+
+    response = client.get(
+        "/api/auth/me", headers={"Cookie": f"wervel_remember={remember_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["username"] == "admin"
+
+
+def test_protected_endpoint_accepts_remember_cookie(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+    assert login.status_code == 200
+    remember_token = client.cookies.get("wervel_remember")
+    client.cookies.clear()
+
+    response = client.get(
+        "/api/meta/about", headers={"Cookie": f"wervel_remember={remember_token}"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["changelog"]
 
 
 def test_auth_me_keeps_bearer_fallback_when_cookie_missing(client):
@@ -134,6 +248,67 @@ def test_logout_clears_cookie_and_auth_me_becomes_unauthenticated(client):
 
     me = client.get("/api/auth/me")
     assert me.status_code == 401
+
+
+def test_logout_revokes_current_remember_session_and_rejects_replay(client):
+    login = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+    assert login.status_code == 200
+    remember_token = client.cookies.get("wervel_remember")
+
+    logout = client.post("/api/auth/logout")
+    assert logout.status_code == 200
+    set_cookies = logout.headers.get_list("set-cookie")
+    assert any(cookie.startswith("wervel_remember=") and "Max-Age=0" in cookie for cookie in set_cookies)
+
+    client.cookies.clear()
+    replay = client.get(
+        "/api/auth/me", headers={"Cookie": f"wervel_remember={remember_token}"}
+    )
+    assert replay.status_code == 401
+
+    db_generator = _test_db(client)
+    db = next(db_generator)
+    try:
+        session = db.query(RememberSession).filter_by(token_hash=hash_remember_token(remember_token)).one()
+        assert session.revoked_at is not None
+    finally:
+        db_generator.close()
+
+
+def test_logout_keeps_second_device_remember_session_active(client):
+    first = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+    assert first.status_code == 200
+    first_token = client.cookies.get("wervel_remember")
+    client.cookies.clear()
+
+    second = client.post(
+        "/api/auth/login",
+        json={"username": "admin", "password": "admin12345", "remember_me": True},
+    )
+    assert second.status_code == 200
+    second_token = client.cookies.get("wervel_remember")
+    assert first_token != second_token
+
+    logout = client.post("/api/auth/logout")
+    assert logout.status_code == 200
+
+    client.cookies.clear()
+    still_active = client.get(
+        "/api/auth/me", headers={"Cookie": f"wervel_remember={first_token}"}
+    )
+    assert still_active.status_code == 200
+    assert still_active.json()["username"] == "admin"
+
+    revoked = client.get(
+        "/api/auth/me", headers={"Cookie": f"wervel_remember={second_token}"}
+    )
+    assert revoked.status_code == 401
 
 
 def test_auth_me_for_non_admin_returns_is_admin_false(client):

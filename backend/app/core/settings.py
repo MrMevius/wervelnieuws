@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     auth_cookie_ttl_days: int = 30
     auth_cookie_secure: bool = False
     auth_cookie_samesite: str = "lax"
+    remember_cookie_name: str = "wervel_remember"
+    remember_cookie_max_age_days: int = 400
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000

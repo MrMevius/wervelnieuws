@@ -65,6 +65,29 @@ class User(Base, TimestampMixin):
     )
 
 
+class RememberSession(Base):
+    __tablename__ = "remember_sessions"
+    __table_args__ = (
+        Index("ix_remember_sessions_token_hash", "token_hash", unique=True),
+        Index("ix_remember_sessions_user_revoked", "user_id", "revoked_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_agent: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    last_used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    user: Mapped[User] = relationship()
+
+
 class Project(Base, TimestampMixin):
     __tablename__ = "projects"
 

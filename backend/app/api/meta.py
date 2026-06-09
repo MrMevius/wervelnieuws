@@ -29,6 +29,26 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "65",
+                "date": "2026-06-09",
+                "title": "Login blijft werken bij tijdelijk Onthoud mij-probleem",
+                "highlights": [
+                    "Als de onthouden-sessie niet kan worden opgeslagen, lukt inloggen met geldige gegevens nu alsnog als normale sessie.",
+                    "Er wordt dan geen Onthoud mij-cookie gezet, zodat de langere sessie niet half wordt geactiveerd.",
+                    "Beheerders krijgen een veilige logmelding om ontbrekende migraties of tabelproblemen te herkennen zonder gevoelige tokens te loggen.",
+                ],
+            },
+            {
+                "iteration": "64",
+                "date": "2026-06-09",
+                "title": "Ingelogd blijven per apparaat met Onthoud mij",
+                "highlights": [
+                    "Op het inlogscherm kun je nu Onthoud mij aanvinken om op dit apparaat ingelogd te blijven.",
+                    "De langere sessie gebruikt een veilige HTTP-only cookie en kan per apparaat worden ingetrokken door uit te loggen.",
+                    "Uitloggen op één browser laat andere apparaten met hun eigen onthouden sessie ongemoeid.",
+                ],
+            },
+            {
                 "iteration": "63",
                 "date": "2026-06-09",
                 "title": "Vergaderbord-kaartbeschrijving direct bewerken",

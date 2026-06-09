@@ -17,3 +17,9 @@ class AuthService:
         ):
             return None
         return create_access_token(user.id)
+
+    def get_user_id(self, username: str) -> str:
+        user = self.user_repo.get_by_username(username)
+        if not user:
+            raise ValueError("User not found")
+        return user.id

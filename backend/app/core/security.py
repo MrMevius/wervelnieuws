@@ -1,4 +1,7 @@
 from datetime import UTC, datetime, timedelta
+import hashlib
+import hmac
+import secrets
 
 from jose import jwt
 from passlib.context import CryptContext
@@ -21,3 +24,16 @@ def create_access_token(subject: str) -> str:
     expires = datetime.now(UTC) + timedelta(minutes=settings.access_token_ttl_minutes)
     payload = {"sub": subject, "exp": expires}
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
+
+
+def create_remember_token() -> str:
+    return secrets.token_urlsafe(64)
+
+
+def hash_remember_token(token: str) -> str:
+    settings = get_settings()
+    return hmac.new(
+        settings.secret_key.encode("utf-8"),
+        token.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
