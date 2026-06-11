@@ -1,3 +1,5 @@
+import re
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -12,9 +14,9 @@ class AdminUserResponse(BaseModel):
 
 
 class UpdateAdminUserRequest(BaseModel):
-    is_admin: bool
-    full_name: str | None = None
-    email: str | None = None
+    is_admin: bool | None = None
+    full_name: str | None = Field(default=None, max_length=160)
+    email: str | None = Field(default=None, max_length=255)
     is_active: bool | None = None
 
     @field_validator("full_name", mode="before")
@@ -24,6 +26,19 @@ class UpdateAdminUserRequest(BaseModel):
             return None
         normalized = value.strip()
         return normalized or None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_optional_email(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            return None
+        lowered = normalized.lower()
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", lowered):
+            raise ValueError("Invalid email format")
+        return lowered
 
 
 class UpdateAdminUserPasswordRequest(BaseModel):

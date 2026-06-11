@@ -29,6 +29,56 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "72",
+                "date": "2026-06-11",
+                "title": "Compactere bewerkmodal voor gebruikers",
+                "highlights": [
+                    "De bewerkmodal in Admin > Gebruikers gebruikt minder witruimte, kortere uitleg en compactere velden.",
+                    "Profielgegevens, avatarupload en accountacties blijven bij elkaar zichtbaar, zodat minder scrollen nodig is.",
+                    "Alle bestaande beheeracties en bevestigingen blijven behouden, inclusief bescherming bij onopgeslagen wijzigingen.",
+                ],
+            },
+            {
+                "iteration": "71",
+                "date": "2026-06-11",
+                "title": "Rustigere gebruikersmodal met veilig sluiten",
+                "highlights": [
+                    "De bewerkmodal in Admin > Gebruikers sluit nu ook via de overlay of Escape wanneer er geen wijzigingen openstaan.",
+                    "Bij gewijzigde profielvelden of een gekozen avatar vraagt de modal eerst bevestiging voordat wijzigingen worden weggegooid.",
+                    "Profielgegevens, avatarupload en accountacties zijn duidelijker gegroepeerd met herkenbare risicovolle acties.",
+                ],
+            },
+            {
+                "iteration": "70",
+                "date": "2026-06-11",
+                "title": "Overzichtelijkere gebruikersacties voor admins",
+                "highlights": [
+                    "In Admin > Gebruikers toont de tabel per gebruiker alleen nog de actie Bewerken.",
+                    "Adminrechten, status, verwijderen en wachtwoord resetten staan nu overzichtelijk bij Accountacties in de bewerkmodal.",
+                    "Bevestigingen en bescherming tegen riskante acties op je eigen account blijven duidelijk zichtbaar aanwezig.",
+                ],
+            },
+            {
+                "iteration": "69",
+                "date": "2026-06-11",
+                "title": "Admins kunnen gebruikersprofielen direct bewerken",
+                "highlights": [
+                    "De actieknoppen in Admin > Gebruikers zijn compacter en staan rustiger uitgelijnd in de tabel.",
+                    "Elke gebruiker heeft nu een duidelijke Bewerken-actie waarmee naam, e-mailadres en avatar in een modal aangepast kunnen worden.",
+                    "Bestaande bevestigingen en bescherming tegen riskante eigen-accountacties blijven behouden.",
+                ],
+            },
+            {
+                "iteration": "68",
+                "date": "2026-06-11",
+                "title": "Veiliger gebruikersbeheer voor admins",
+                "highlights": [
+                    "De Gebruikers-tab heeft nu duidelijke beheeruitleg, labels en gescheiden secties voor toevoegen en beheren.",
+                    "Risicovolle acties zoals uitschakelen, verwijderen, adminrechten verwijderen en wachtwoord resetten vragen eerst bevestiging.",
+                    "Admins worden beter beschermd tegen het per ongeluk uitschakelen, verwijderen of degraderen van hun eigen account.",
+                ],
+            },
+            {
                 "iteration": "67",
                 "date": "2026-06-09",
                 "title": "Aparte changelog en duidelijkere previewmeldingen",

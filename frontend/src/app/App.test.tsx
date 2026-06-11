@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -110,6 +110,24 @@ const mockApi = vi.hoisted(() => ({
     email: "editor@example.com",
     is_admin: true,
     is_active: true
+  }),
+  updateAdminUserProfile: vi.fn().mockResolvedValue({
+    id: "u2",
+    username: "editor",
+    full_name: "Editor Nieuw",
+    email: "nieuw@example.com",
+    is_admin: false,
+    is_active: true,
+    has_avatar: false
+  }),
+  uploadAdminUserAvatar: vi.fn().mockResolvedValue({
+    id: "u2",
+    username: "editor",
+    full_name: "Editor Nieuw",
+    email: "nieuw@example.com",
+    is_admin: false,
+    is_active: true,
+    has_avatar: true
   }),
   updateAdminUserActive: vi.fn().mockResolvedValue({
     id: "u2",
@@ -969,7 +987,7 @@ describe("App", () => {
     expect(screen.queryByRole("menuitem", { name: "Admin" })).not.toBeInTheDocument();
   });
 
-  it("opens admin page and toggles admin rights", async () => {
+  it("shows only edit in user table actions and toggles admin rights from the modal", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -991,9 +1009,18 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Gebruikers beheren" })).toBeInTheDocument();
+      expect(screen.getByText("Beheer accounts, tijdelijke wachtwoorden, actieve status en adminrechten voor het team.")).toBeInTheDocument();
       expect(screen.getByText("editor")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Maak admin" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
     });
+
+    const editorActions = screen.getByLabelText("Acties voor editor");
+    expect(within(editorActions).getAllByRole("button")).toHaveLength(1);
+    expect(within(editorActions).getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Maak admin" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Maak admin" }));
 
@@ -1001,6 +1028,222 @@ describe("App", () => {
       expect(mockApi.updateAdminUser).toHaveBeenCalledWith("u2", true);
       expect(screen.getByText("Adminrechten bijgewerkt.")).toBeInTheDocument();
     });
+  });
+
+  it("opens and closes the admin user edit modal without saving", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    expect(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Naam")).toHaveValue("Editor");
+    expect(screen.getByText("Bewerk profiel of account. Onopgeslagen wijzigingen blijven beschermd.")).toBeInTheDocument();
+    expect(screen.getByText("Avatar kiezen")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+
+    expect(screen.queryByRole("dialog", { name: "Profiel en account beheren: editor" })).not.toBeInTheDocument();
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("closes the admin user edit modal on overlay click and not on inside click", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    const dialog = screen.getByRole("dialog", { name: "Profiel en account beheren: editor" });
+
+    fireEvent.mouseDown(screen.getByLabelText("Naam"));
+    expect(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" })).toBeInTheDocument();
+
+    fireEvent.mouseDown(dialog);
+    expect(screen.queryByRole("dialog", { name: "Profiel en account beheren: editor" })).not.toBeInTheDocument();
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("asks confirmation before discarding dirty profile changes from close routes", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "Editor concept" } });
+
+    fireEvent.click(screen.getByLabelText("Profielbewerking sluiten"));
+    expect(confirmSpy).toHaveBeenCalledWith("Er zijn onopgeslagen profielwijzigingen. Wil je deze wijzigingen weggooien?");
+    expect(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+    expect(screen.queryByRole("dialog", { name: "Profiel en account beheren: editor" })).not.toBeInTheDocument();
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("asks confirmation before discarding selected avatar with overlay and Escape close", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Avatar"), { target: { files: [file] } });
+    expect(screen.getByText("Gekozen bestand: avatar.png")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" }));
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Profiel en account beheren: editor" })).not.toBeInTheDocument();
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+    confirmSpy.mockRestore();
+  });
+
+  it("allows admin to save user name, email and avatar", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    mockApi.uploadAdminUserAvatar.mockClear();
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "Editor Nieuw" } });
+    fireEvent.change(screen.getByLabelText("E-mailadres"), { target: { value: "nieuw@example.com" } });
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Avatar"), { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.uploadAdminUserAvatar).toHaveBeenCalledWith("u2", file);
+      expect(mockApi.updateAdminUserProfile).toHaveBeenCalledWith("u2", {
+        full_name: "Editor Nieuw",
+        email: "nieuw@example.com"
+      });
+      expect(mockApi.uploadAdminUserAvatar.mock.invocationCallOrder[0]).toBeLessThan(
+        mockApi.updateAdminUserProfile.mock.invocationCallOrder[0]
+      );
+      expect(screen.getByText("Gebruikersprofiel bijgewerkt.")).toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Profiel en account beheren: editor" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not patch profile fields when admin avatar upload fails", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    mockApi.uploadAdminUserAvatar.mockClear();
+    mockApi.uploadAdminUserAvatar.mockRejectedValueOnce(new Error("Avatar content does not match the selected image type"));
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.change(screen.getByLabelText("Naam"), { target: { value: "Editor Niet Opslaan" } });
+    fireEvent.change(screen.getByLabelText("E-mailadres"), { target: { value: "niet-opslaan@example.com" } });
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    fireEvent.change(screen.getByLabelText("Avatar"), { target: { files: [file] } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.uploadAdminUserAvatar).toHaveBeenCalledWith("u2", file);
+      expect(screen.getByRole("alert")).toHaveTextContent("Avatar opslaan is mislukt");
+    });
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Profiel en account beheren: editor" })).toBeInTheDocument();
+  });
+
+  it("shows validation and server feedback in the admin user edit modal", async () => {
+    mockApi.updateAdminUserProfile.mockClear();
+    mockApi.updateAdminUserProfile.mockRejectedValueOnce(new Error("Email already in use"));
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.change(screen.getByLabelText("E-mailadres"), { target: { value: "ongeldig" } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Vul een geldig e-mailadres in.");
+    expect(mockApi.updateAdminUserProfile).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("E-mailadres"), { target: { value: "admin@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Dit e-mailadres is al in gebruik.");
+    });
+  });
+
+  it("keeps the admin user edit modal structured for compact profile and account sections", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    const dialog = screen.getByRole("dialog", { name: "Profiel en account beheren: editor" });
+
+    expect(dialog.querySelector(".admin-user-profile-modal")).toBeInTheDocument();
+    expect(dialog.querySelectorAll(".admin-user-modal-section")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "Profielgegevens" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Accountacties" })).toBeInTheDocument();
+    expect(dialog.querySelector(".admin-avatar-upload-row")).toBeInTheDocument();
+    expect(dialog.querySelectorAll(".admin-account-actions-stack")).toHaveLength(2);
   });
 
   it("allows admin to save vergaderbord access rights", async () => {
@@ -1092,7 +1335,7 @@ describe("App", () => {
     });
   });
 
-  it("shows 'Nieuw vergaderbord aanmaken' in Admin and removes old dropdown action", async () => {
+  it("shows 'Nieuw vergaderbord aanmaken' only on board-related Admin tabs and removes old dropdown action", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -1113,6 +1356,13 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Nieuw vergaderbord aanmaken" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
       expect(screen.getByRole("link", { name: "Nieuw vergaderbord aanmaken" })).toBeInTheDocument();
     });
 
@@ -1144,6 +1394,9 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
+      expect(screen.getByRole("form", { name: "Nieuwe gebruiker toevoegen" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Gebruikersnaam")).toBeInTheDocument();
+      expect(screen.getByLabelText("Tijdelijk wachtwoord")).toBeInTheDocument();
       expect(screen.getByLabelText("Nieuwe gebruikersnaam")).toBeInTheDocument();
     });
 
@@ -1164,6 +1417,7 @@ describe("App", () => {
   });
 
   it("allows admin to change another user password", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -1188,6 +1442,8 @@ describe("App", () => {
       expect(screen.getByText("editor")).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    expect(screen.getByRole("heading", { name: "Accountacties" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Reset wachtwoord voor editor" }));
 
     fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), {
@@ -1200,12 +1456,16 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Wijzig wachtwoord voor editor" }));
 
     await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith("Weet je zeker dat je het wachtwoord van editor wilt resetten?");
       expect(mockApi.changeAdminUserPassword).toHaveBeenCalledWith("u2", "nieuw5678");
       expect(screen.getByText("Wachtwoord bijgewerkt.")).toBeInTheDocument();
     });
+
+    confirmSpy.mockRestore();
   });
 
   it("allows admin to disable a user", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderApp();
     await loginIntoApp();
 
@@ -1217,19 +1477,20 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Disable gebruiker editor" })
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Disable gebruiker editor" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    expect(screen.getByRole("heading", { name: "Accountacties" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Uitschakelen gebruiker editor" }));
 
     await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith("Weet je zeker dat je editor wilt uitschakelen?");
       expect(mockApi.updateAdminUserActive).toHaveBeenCalledWith("u2", false);
       expect(screen.getByText("Gebruikersstatus bijgewerkt.")).toBeInTheDocument();
     });
+
+    confirmSpy.mockRestore();
   });
 
   it("allows admin to delete a user", async () => {
@@ -1254,18 +1515,16 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Verwijder gebruiker editor" })
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Verwijder gebruiker editor" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    expect(screen.getByRole("heading", { name: "Accountacties" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder gebruiker editor" }));
 
     await waitFor(() => {
       expect(confirmSpy).toHaveBeenCalledWith(
-        "Wilt u deze gebruiker echt verwijderen?"
+        "Wilt u gebruiker editor echt verwijderen?"
       );
       expect(mockApi.deleteAdminUser).toHaveBeenCalledWith("u2");
       expect(screen.getByText("Gebruiker verwijderd.")).toBeInTheDocument();
@@ -1289,19 +1548,148 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Verwijder gebruiker editor" })
-      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
     });
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Verwijder gebruiker editor" })
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder gebruiker editor" }));
 
     expect(confirmSpy).toHaveBeenCalledWith(
-      "Wilt u deze gebruiker echt verwijderen?"
+      "Wilt u gebruiker editor echt verwijderen?"
     );
     expect(mockApi.deleteAdminUser).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not call risky admin APIs when confirmations are rejected", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockApi.updateAdminUserActive.mockClear();
+    mockApi.changeAdminUserPassword.mockClear();
+
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Uitschakelen gebruiker editor" }));
+    expect(mockApi.updateAdminUserActive).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset wachtwoord voor editor" }));
+    fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), {
+      target: { value: "nieuw5678" }
+    });
+    fireEvent.change(screen.getByLabelText("Bevestig wachtwoord voor editor"), {
+      target: { value: "nieuw5678" }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Wijzig wachtwoord voor editor" }));
+
+    expect(confirmSpy).toHaveBeenCalled();
+    expect(mockApi.changeAdminUserPassword).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it("confirms removing admin rights and blocks self-lockout actions", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockApi.updateAdminUser.mockClear();
+    mockApi.updateAdminUserActive.mockClear();
+    mockApi.deleteAdminUser.mockClear();
+    mockApi.listAdminUsers.mockResolvedValueOnce([
+      { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+      { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: true, is_active: true }
+    ]);
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker admin" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker admin" }));
+    expect(screen.getByText(/Eigen account beschermd:/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eigen adminrol behouden" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Uitschakelen gebruiker admin" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Verwijder gebruiker admin" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Annuleren" }));
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder admin" }));
+
+    await waitFor(() => {
+      expect(confirmSpy).toHaveBeenCalledWith("Weet je zeker dat je adminrechten van editor wilt verwijderen?");
+      expect(mockApi.updateAdminUser).toHaveBeenCalledWith("u2", false);
+      expect(mockApi.updateAdminUserActive).not.toHaveBeenCalled();
+      expect(mockApi.deleteAdminUser).not.toHaveBeenCalled();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it("does not update admin rights when removing admin confirmation is rejected", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockApi.updateAdminUser.mockClear();
+    mockApi.listAdminUsers.mockResolvedValueOnce([
+      { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+      { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: true, is_active: true }
+    ]);
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+
+    renderApp();
+    await loginIntoApp();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Bewerk gebruiker editor" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Verwijder admin" }));
+
+    expect(confirmSpy).toHaveBeenCalledWith("Weet je zeker dat je adminrechten van editor wilt verwijderen?");
+    expect(mockApi.updateAdminUser).not.toHaveBeenCalled();
 
     confirmSpy.mockRestore();
   });

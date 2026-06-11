@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import require_admin
 from app.core.db import get_db
 from app.core.security import hash_password
+from app.core.settings import get_settings
 from app.models.entities import AuditEvent, Project, SystemSetting, Topic, User
 from app.repositories.database_repository import DatabaseRepository
 from app.repositories.user_repository import UserRepository
@@ -81,6 +82,46 @@ DEFAULT_SCHEDULE_TEMPLATES = [
 ]
 
 DEFAULT_UI_SETTINGS = {"wind_theme_enabled": True}
+
+AVATAR_CONTENT_TYPES = {
+    "image/png": {"extension": ".png", "magic": (b"\x89PNG\r\n\x1a\n",)},
+    "image/jpeg": {"extension": ".jpg", "magic": (b"\xff\xd8\xff",)},
+    "image/gif": {"extension": ".gif", "magic": (b"GIF87a", b"GIF89a")},
+    "image/webp": {"extension": ".webp", "magic": (b"RIFF",)},
+}
+
+
+def _validate_avatar_upload(content: bytes, content_type: str | None) -> str:
+    if len(content) == 0:
+        raise HTTPException(status_code=400, detail="Empty upload is not allowed")
+
+    avatar_type = AVATAR_CONTENT_TYPES.get(content_type or "")
+    if avatar_type is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Avatar must be a PNG, JPEG, GIF or WebP image",
+        )
+
+    magic_values = avatar_type["magic"]
+    has_matching_magic = any(content.startswith(magic) for magic in magic_values)
+    if content_type == "image/webp":
+        has_matching_magic = len(content) >= 12 and content.startswith(b"RIFF") and content[8:12] == b"WEBP"
+    if not has_matching_magic:
+        raise HTTPException(
+            status_code=400,
+            detail="Avatar content does not match the selected image type",
+        )
+    return str(avatar_type["extension"])
+
+
+def _avatar_media_type(path: Path) -> str:
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+    }.get(path.suffix.lower(), "image/png")
 
 
 def _slugify_theme_id(name: str) -> str:
@@ -495,7 +536,49 @@ def get_admin_user_avatar(
     avatar = Path(user.avatar_path)
     if not avatar.exists() or not avatar.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
-    return FileResponse(path=avatar, media_type="image/png")
+    return FileResponse(path=avatar, media_type=_avatar_media_type(avatar))
+
+
+@router.post("/users/{user_id}/avatar", response_model=AdminUserResponse)
+async def upload_admin_user_avatar(
+    user_id: str,
+    file: UploadFile = File(...),
+    current: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> AdminUserResponse:
+    del current
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    settings = get_settings()
+    content = await file.read(settings.avatar_max_bytes + 1)
+    if len(content) > settings.avatar_max_bytes:
+        raise HTTPException(status_code=400, detail="Avatar file too large")
+    extension = _validate_avatar_upload(content, file.content_type)
+
+    avatars_dir = settings.storage_root / settings.uploads_dir / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    for existing_path in avatars_dir.glob(f"{user.id}.*"):
+        if existing_path.is_file():
+            existing_path.unlink()
+    avatar_path = avatars_dir / f"{user.id}{extension}"
+    avatar_path.write_bytes(content)
+
+    user.avatar_path = str(avatar_path)
+    updated = UserRepository(db).save_user(user)
+    return AdminUserResponse(
+        id=updated.id,
+        username=updated.username,
+        full_name=updated.full_name,
+        email=updated.email,
+        is_admin=updated.is_admin,
+        is_active=updated.is_active,
+        has_avatar=True,
+    )
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -505,7 +588,6 @@ def update_user_admin_status(
     current: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> AdminUserResponse:
-    del current
     user_repo = UserRepository(db)
     user = db.get(User, user_id)
     if not user:
@@ -513,11 +595,29 @@ def update_user_admin_status(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    if user.is_admin and not payload.is_admin and user_repo.count_admins() <= 1:
+    if payload.is_admin is not None and user.is_admin and not payload.is_admin and user_repo.count_admins() <= 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot remove admin rights from the last admin user",
         )
+    if current.id == user.id and payload.is_admin is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin users cannot remove their own admin rights",
+        )
+    if current.id == user.id and payload.is_active is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin users cannot disable their own account",
+        )
+
+    if payload.email:
+        user_with_email = user_repo.get_by_email(payload.email)
+        if user_with_email and user_with_email.id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already in use",
+            )
 
     if "full_name" in payload.model_fields_set:
         user.full_name = payload.full_name
@@ -525,7 +625,9 @@ def update_user_admin_status(
         user.email = payload.email
     if payload.is_active is not None:
         user.is_active = payload.is_active
-    updated = user_repo.update_admin_status(user, is_admin=payload.is_admin)
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
+    updated = user_repo.save_user(user)
     return AdminUserResponse(
         id=updated.id,
         username=updated.username,
@@ -556,6 +658,11 @@ def update_user_active_status(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot disable the last admin user",
+        )
+    if current.id == user.id and not payload.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admin users cannot disable their own account",
         )
 
     updated = user_repo.update_active_status(user, is_active=payload.is_active)

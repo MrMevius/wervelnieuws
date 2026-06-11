@@ -207,6 +207,11 @@ export type AdminUser = {
   avatar_url?: string | null;
 };
 
+export type UpdateAdminUserProfilePayload = {
+  full_name: string | null;
+  email: string | null;
+};
+
 export type Project = {
   id: string;
   name: string;
@@ -522,6 +527,22 @@ export function updateAdminUser(userId: string, is_admin: boolean) {
   return request<AdminUser>(`/admin/users/${userId}`, {
     method: "PATCH",
     body: JSON.stringify({ is_admin })
+  });
+}
+
+export function updateAdminUserProfile(userId: string, payload: UpdateAdminUserProfilePayload) {
+  return request<AdminUser>(`/admin/users/${userId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function uploadAdminUserAvatar(userId: string, file: Blob) {
+  const fd = new FormData();
+  fd.append("file", file, "avatar.png");
+  return request<AdminUser>(`/admin/users/${userId}/avatar`, {
+    method: "POST",
+    body: fd
   });
 }
 

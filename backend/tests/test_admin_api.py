@@ -6,6 +6,7 @@ PNG_1X1 = (
     b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\xf8\xff\xff?\x00\x05"
     b"\xfe\x02\xfeA\xe2!\xbc\x00\x00\x00\x00IEND\xaeB`\x82"
 )
+JPEG_MINIMAL = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00\x01\x00\x01\x00\x00\xff\xd9"
 
 
 def _login_as(client, username: str, password: str) -> dict[str, str]:
@@ -93,6 +94,105 @@ def test_admin_can_toggle_user_admin_rights(client):
     assert demote.json()["is_admin"] is False
 
 
+def test_admin_can_update_user_profile_and_avatar(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    editor = next(user for user in users_response.json() if user["username"] == "editor")
+
+    update = client.patch(
+        f"/api/admin/users/{editor['id']}",
+        headers=admin_headers,
+        json={"full_name": "Nieuwe Editor", "email": "NIEUW@example.com"},
+    )
+    assert update.status_code == 200
+    updated = update.json()
+    assert updated["full_name"] == "Nieuwe Editor"
+    assert updated["email"] == "nieuw@example.com"
+    assert updated["is_admin"] is False
+
+    upload = client.post(
+        f"/api/admin/users/{editor['id']}/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.png", BytesIO(PNG_1X1), "image/png")},
+    )
+    assert upload.status_code == 200
+    assert upload.json()["has_avatar"] is True
+
+
+def test_admin_user_profile_rejects_invalid_or_duplicate_email_and_avatar(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    editor = next(user for user in users if user["username"] == "editor")
+    admin_user = next(user for user in users if user["username"] == "admin")
+    admin_email = "admin-duplicate@example.com"
+    set_admin_email = client.patch(
+        f"/api/admin/users/{admin_user['id']}",
+        headers=admin_headers,
+        json={"email": admin_email},
+    )
+    assert set_admin_email.status_code == 200
+
+    invalid_email = client.patch(
+        f"/api/admin/users/{editor['id']}",
+        headers=admin_headers,
+        json={"email": "geen-email"},
+    )
+    assert invalid_email.status_code == 422
+
+    duplicate_email = client.patch(
+        f"/api/admin/users/{editor['id']}",
+        headers=admin_headers,
+        json={"email": admin_email},
+    )
+    assert duplicate_email.status_code == 409
+    assert duplicate_email.json()["detail"] == "Email already in use"
+
+    invalid_avatar = client.post(
+        f"/api/admin/users/{editor['id']}/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.txt", BytesIO(b"not-png"), "text/plain")},
+    )
+    assert invalid_avatar.status_code == 400
+    assert invalid_avatar.json()["detail"] == "Avatar must be a PNG, JPEG, GIF or WebP image"
+
+
+def test_admin_avatar_upload_rejects_empty_and_spoofed_content(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    editor = next(user for user in users_response.json() if user["username"] == "editor")
+
+    empty_avatar = client.post(
+        f"/api/admin/users/{editor['id']}/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.png", BytesIO(b""), "image/png")},
+    )
+    assert empty_avatar.status_code == 400
+    assert empty_avatar.json()["detail"] == "Empty upload is not allowed"
+
+    spoofed_avatar = client.post(
+        f"/api/admin/users/{editor['id']}/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.png", BytesIO(b"not-really-a-png"), "image/png")},
+    )
+    assert spoofed_avatar.status_code == 400
+    assert spoofed_avatar.json()["detail"] == "Avatar content does not match the selected image type"
+
+    jpeg_avatar = client.post(
+        f"/api/admin/users/{editor['id']}/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.jpg", BytesIO(JPEG_MINIMAL), "image/jpeg")},
+    )
+    assert jpeg_avatar.status_code == 200
+    assert jpeg_avatar.json()["has_avatar"] is True
+
+
 def test_admin_cannot_demote_last_admin(client):
     admin_headers = _login_as(client, "admin", "admin12345")
 
@@ -111,6 +211,56 @@ def test_admin_cannot_demote_last_admin(client):
     assert (
         demote.json()["detail"] == "Cannot remove admin rights from the last admin user"
     )
+
+
+def test_admin_cannot_demote_or_disable_self_even_with_other_admin(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    users_response = client.get("/api/admin/users", headers=admin_headers)
+    assert users_response.status_code == 200
+    users = users_response.json()
+    admin_user = next(user for user in users if user["username"] == "admin")
+    editor = next(user for user in users if user["username"] == "editor")
+
+    promote = client.patch(
+        f"/api/admin/users/{editor['id']}",
+        headers=admin_headers,
+        json={"is_admin": True},
+    )
+    assert promote.status_code == 200
+
+    demote_self = client.patch(
+        f"/api/admin/users/{admin_user['id']}",
+        headers=admin_headers,
+        json={"is_admin": False},
+    )
+    assert demote_self.status_code == 400
+    assert demote_self.json()["detail"] == "Admin users cannot remove their own admin rights"
+
+    disable_self_via_profile = client.patch(
+        f"/api/admin/users/{admin_user['id']}",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert disable_self_via_profile.status_code == 400
+    assert disable_self_via_profile.json()["detail"] == "Admin users cannot disable their own account"
+
+    disable_self = client.patch(
+        f"/api/admin/users/{admin_user['id']}/active",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert disable_self.status_code == 400
+    assert disable_self.json()["detail"] == "Admin users cannot disable their own account"
+
+    update_own_profile = client.patch(
+        f"/api/admin/users/{admin_user['id']}",
+        headers=admin_headers,
+        json={"full_name": "Admin Zelf", "email": "admin-zelf@example.com"},
+    )
+    assert update_own_profile.status_code == 200
+    assert update_own_profile.json()["full_name"] == "Admin Zelf"
+    assert update_own_profile.json()["email"] == "admin-zelf@example.com"
 
 
 def test_admin_can_change_user_password(client):

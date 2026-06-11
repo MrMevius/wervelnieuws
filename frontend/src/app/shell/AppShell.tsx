@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DragEvent, FormEvent, Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import {
   AdminTheme,
@@ -71,11 +71,14 @@ import {
   updateAdminProject,
   updateAdminTheme,
   updateAdminUser,
+  updateAdminUserProfile,
   updateBoardRights,
+  uploadAdminUserAvatar,
   uploadDatabaseDocumentWithProgress,
   uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../../lib/api/client";
+
 import { WERVEL_PATHS, WINDWILLY_PATHS } from "../routes/paths";
 import { useMainDashboardData } from "../features/main/hooks/useMainDashboardData";
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
@@ -84,6 +87,25 @@ import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
 } from "../features/admin/vergaderbordenProjectSelection";
+
+const ADMIN_AVATAR_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
+const ADMIN_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+
+function validateAdminAvatarFile(file: File | null): string | null {
+  if (!file) {
+    return null;
+  }
+  if (!ADMIN_AVATAR_ALLOWED_TYPES.has(file.type)) {
+    return "Gebruik een PNG-, JPEG-, GIF- of WebP-bestand als avatar.";
+  }
+  if (file.size === 0) {
+    return "Gebruik geen leeg bestand als avatar.";
+  }
+  if (file.size > ADMIN_AVATAR_MAX_BYTES) {
+    return "Avatarbestand is te groot. Gebruik een bestand van maximaal 5 MB.";
+  }
+  return null;
+}
 
 type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
@@ -3762,6 +3784,10 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>("users");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [passwordEditorUserId, setPasswordEditorUserId] = useState<string | null>(null);
+  const [profileEditorUser, setProfileEditorUser] = useState<AdminUser | null>(null);
+  const [profileDraft, setProfileDraft] = useState({ fullName: "", email: "" });
+  const [profileAvatarFile, setProfileAvatarFile] = useState<File | null>(null);
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
@@ -3912,6 +3938,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         existing ? existing.filter((user) => user.id !== deletedUserId) : existing
       );
       setPasswordEditorUserId((current) => (current === deletedUserId ? null : current));
+      setProfileEditorUser((current) => (current?.id === deletedUserId ? null : current));
       setFeedback("Gebruiker verwijderd.");
     },
     onError: (error) => {
@@ -4110,6 +4137,49 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     }
   });
 
+  const profileMutation = useMutation({
+    mutationFn: async ({ user, fullName, email, avatar }: { user: AdminUser; fullName: string; email: string; avatar: File | null }) => {
+      if (avatar) {
+        await uploadAdminUserAvatar(user.id, avatar);
+      }
+      return updateAdminUserProfile(user.id, {
+        full_name: fullName.trim() || null,
+        email: email.trim() || null
+      });
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData<AdminUser[] | undefined>(["admin-users"], (existing) => {
+        if (!existing) {
+          return existing;
+        }
+        return existing.map((user) => (user.id === updated.id ? updated : user));
+      });
+      setProfileEditorUser(null);
+      setProfileAvatarFile(null);
+      setProfileError(null);
+      setFeedback("Gebruikersprofiel bijgewerkt.");
+      if (updated.id === currentUser?.id) {
+        queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      }
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("Email already in use")) {
+        setProfileError("Dit e-mailadres is al in gebruik.");
+        return;
+      }
+      if (message.includes("422") || message.toLowerCase().includes("email")) {
+        setProfileError("Vul een geldig e-mailadres in.");
+        return;
+      }
+      if (message.includes("Avatar") || message.includes("Empty upload") || message.includes("image type")) {
+        setProfileError("Avatar opslaan is mislukt. Gebruik een geldig PNG-, JPEG-, GIF- of WebP-bestand van maximaal 5 MB.");
+        return;
+      }
+      setProfileError("Gebruikersprofiel opslaan is mislukt.");
+    }
+  });
+
   function updatePasswordDraft(userId: string, field: "password" | "confirm", value: string) {
     setPasswordDrafts((current) => {
       const existing = current[userId] ?? { password: "", confirm: "" };
@@ -4151,6 +4221,167 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       };
     });
   }
+
+  function isCurrentUser(user: AdminUser): boolean {
+    return Boolean(currentUser?.id && user.id === currentUser.id);
+  }
+
+  function confirmUserAction(message: string): boolean {
+    return window.confirm(message);
+  }
+
+  function openProfileEditor(user: AdminUser) {
+    setFeedback(null);
+    setProfileError(null);
+    setProfileEditorUser(user);
+    setProfileDraft({ fullName: user.full_name ?? "", email: user.email ?? "" });
+    setProfileAvatarFile(null);
+  }
+
+  function hasProfileEditorChanges(): boolean {
+    if (!profileEditorUser) {
+      return false;
+    }
+    return (
+      profileDraft.fullName !== (profileEditorUser.full_name ?? "") ||
+      profileDraft.email !== (profileEditorUser.email ?? "") ||
+      Boolean(profileAvatarFile)
+    );
+  }
+
+  function closeProfileEditor() {
+    if (profileMutation.isPending) {
+      return;
+    }
+    if (
+      hasProfileEditorChanges() &&
+      !window.confirm("Er zijn onopgeslagen profielwijzigingen. Wil je deze wijzigingen weggooien?")
+    ) {
+      return;
+    }
+    setProfileEditorUser(null);
+    setProfileAvatarFile(null);
+    setProfileError(null);
+  }
+
+  useEffect(() => {
+    if (!profileEditorUser) {
+      return undefined;
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeProfileEditor();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [profileEditorUser, profileDraft.fullName, profileDraft.email, profileAvatarFile, profileMutation.isPending]);
+
+  function saveProfileEditor() {
+    if (!profileEditorUser) {
+      return;
+    }
+    const normalizedEmail = profileDraft.email.trim();
+    if (normalizedEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
+      setProfileError("Vul een geldig e-mailadres in.");
+      return;
+    }
+    const avatarError = validateAdminAvatarFile(profileAvatarFile);
+    if (avatarError) {
+      setProfileError(avatarError);
+      return;
+    }
+    setFeedback(null);
+    setProfileError(null);
+    profileMutation.mutate({
+      user: profileEditorUser,
+      fullName: profileDraft.fullName,
+      email: profileDraft.email,
+      avatar: profileAvatarFile
+    });
+  }
+
+  function toggleAdminRoleForUser(user: AdminUser) {
+    const blockSelfLockout = isCurrentUser(user) && user.is_admin;
+    setFeedback(null);
+    if (user.is_admin) {
+      if (blockSelfLockout) {
+        setFeedback("Je kunt je eigen adminrechten niet verwijderen.");
+        return;
+      }
+      if (!confirmUserAction(`Weet je zeker dat je adminrechten van ${user.username} wilt verwijderen?`)) {
+        return;
+      }
+    }
+    updateMutation.mutate({ userId: user.id, isAdmin: !user.is_admin });
+  }
+
+  function toggleActiveForUser(user: AdminUser) {
+    const blockSelfLockout = isCurrentUser(user) && user.is_admin;
+    setFeedback(null);
+    if (user.is_active) {
+      if (blockSelfLockout) {
+        setFeedback("Je kunt je eigen account niet uitschakelen.");
+        return;
+      }
+      if (!confirmUserAction(`Weet je zeker dat je ${user.username} wilt uitschakelen?`)) {
+        return;
+      }
+    }
+    activeMutation.mutate({
+      userId: user.id,
+      isActive: !user.is_active
+    });
+  }
+
+  function deleteUser(user: AdminUser) {
+    const blockSelfLockout = isCurrentUser(user) && user.is_admin;
+    setFeedback(null);
+    if (blockSelfLockout) {
+      setFeedback("Je kunt jezelf niet verwijderen.");
+      return;
+    }
+    const confirmed = window.confirm(`Wilt u gebruiker ${user.username} echt verwijderen?`);
+    if (!confirmed) {
+      return;
+    }
+    deleteMutation.mutate(user.id);
+  }
+
+  function changePasswordForUser(user: AdminUser) {
+    const draft = passwordDrafts[user.id] ?? { password: "", confirm: "" };
+    setFeedback(null);
+    if (draft.password !== draft.confirm) {
+      setFeedback("Wachtwoorden komen niet overeen.");
+      return;
+    }
+    if (!confirmUserAction(`Weet je zeker dat je het wachtwoord van ${user.username} wilt resetten?`)) {
+      return;
+    }
+    passwordMutation.mutate({
+      userId: user.id,
+      password: draft.password
+    });
+  }
+
+  const modalUser = profileEditorUser
+    ? (usersQuery.data ?? []).find((user) => user.id === profileEditorUser.id) ?? profileEditorUser
+    : null;
+  const profileAvatarPreviewUrl = useMemo(
+    () => (profileAvatarFile && typeof URL.createObjectURL === "function" ? URL.createObjectURL(profileAvatarFile) : null),
+    [profileAvatarFile]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (profileAvatarPreviewUrl) {
+        URL.revokeObjectURL(profileAvatarPreviewUrl);
+      }
+    };
+  }, [profileAvatarPreviewUrl]);
 
   if (!currentUser?.is_admin) {
     return (
@@ -4194,9 +4425,11 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   return (
     <section className="panel">
       <h1>Admin</h1>
-      <div className="admin-primary-actions">
-        <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
-      </div>
+      {activeAdminTab === "boardRights" && (
+        <div className="admin-primary-actions">
+          <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
+        </div>
+      )}
       <div className="admin-tab-row" role="tablist" aria-label="Admin onderdelen">
         <button type="button" role="tab" aria-selected={activeAdminTab === "users"} onClick={() => setActiveAdminTab("users")}>Gebruikers</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "boardRights"} onClick={() => setActiveAdminTab("boardRights")}>Bordrechten</button>
@@ -4226,9 +4459,13 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       )}
 
       <div hidden={activeAdminTab !== "users"}>
-      <p className="muted">Geef gebruikers adminrechten of haal ze weer weg.</p>
+      <header className="admin-users-header">
+        <h2>Gebruikers beheren</h2>
+        <p className="muted">Beheer accounts, tijdelijke wachtwoorden, actieve status en adminrechten voor het team.</p>
+      </header>
       <form
-        className="admin-create-user"
+        className="admin-create-user admin-create-user-card"
+        aria-label="Nieuwe gebruiker toevoegen"
         onSubmit={(event) => {
           event.preventDefault();
           setFeedback(null);
@@ -4238,33 +4475,49 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           });
         }}
       >
-        <input
-          type="text"
-          value={newUsername}
-          onChange={(event) => setNewUsername(event.target.value)}
-          placeholder="Nieuwe gebruikersnaam"
-          aria-label="Nieuwe gebruikersnaam"
-          minLength={3}
-          maxLength={80}
-          required
-        />
-        <input
-          type="password"
-          value={newPassword}
-          onChange={(event) => setNewPassword(event.target.value)}
-          placeholder="Tijdelijk wachtwoord"
-          aria-label="Tijdelijk wachtwoord"
-          minLength={4}
-          maxLength={128}
-          required
-        />
+        <div className="admin-create-user-intro">
+          <h3>Nieuwe gebruiker toevoegen</h3>
+          <p className="muted">Maak een account met een tijdelijk wachtwoord. De gebruiker kan dit later zelf wijzigen.</p>
+        </div>
+        <label className="admin-field">
+          <span>Gebruikersnaam</span>
+          <input
+            type="text"
+            value={newUsername}
+            onChange={(event) => setNewUsername(event.target.value)}
+            placeholder="Bijv. redacteur"
+            aria-label="Nieuwe gebruikersnaam"
+            minLength={3}
+            maxLength={80}
+            required
+          />
+        </label>
+        <label className="admin-field">
+          <span>Tijdelijk wachtwoord</span>
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+            placeholder="Minimaal 4 tekens"
+            aria-label="Tijdelijk wachtwoord"
+            minLength={4}
+            maxLength={128}
+            required
+          />
+        </label>
         <button
           type="submit"
+          className="button-primary"
           disabled={createMutation.isPending || newUsername.trim().length < 3 || newPassword.length < 4}
         >
           Gebruiker toevoegen
         </button>
       </form>
+      <section className="admin-users-table-section" aria-labelledby="admin-users-table-heading">
+        <div className="admin-users-table-heading-row">
+          <h3 id="admin-users-table-heading">Bestaande gebruikers</h3>
+          <p className="muted">Status, rol en accountacties per gebruiker.</p>
+        </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -4274,153 +4527,234 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
               <th>E-mail</th>
               <th>Status</th>
               <th>Rol</th>
-              <th>Rolbeheer</th>
-              <th>Account</th>
-              <th>Wachtwoord</th>
+              <th>Acties</th>
             </tr>
           </thead>
           <tbody>
-            {(usersQuery.data ?? []).map((user) => {
-              const nextIsAdmin = !user.is_admin;
-              const nextIsActive = !user.is_active;
-              const draft = passwordDrafts[user.id] ?? { password: "", confirm: "" };
-              const isPasswordEditorOpen = passwordEditorUserId === user.id;
-              return (
-                <Fragment key={user.id}>
-                  <tr>
-                    <td>{user.username}</td>
-                    <td>{user.full_name ?? "-"}</td>
-                    <td>{user.email ?? "-"}</td>
-                    <td>{user.is_active ? "actief" : "disabled"}</td>
-                    <td>{user.is_admin ? "admin" : "user"}</td>
-                    <td>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setFeedback(null);
-                          updateMutation.mutate({ userId: user.id, isAdmin: nextIsAdmin });
-                        }}
-                        disabled={updateMutation.isPending}
-                      >
-                        {user.is_admin ? "Verwijder admin" : "Maak admin"}
-                      </button>
-                    </td>
-                    <td>
-                      <div className="admin-account-actions">
-                        <button
-                          type="button"
-                          aria-label={`${user.is_active ? "Disable" : "Enable"} gebruiker ${user.username}`}
-                          onClick={() => {
-                            setFeedback(null);
-                            activeMutation.mutate({
-                              userId: user.id,
-                              isActive: nextIsActive
-                            });
-                          }}
-                          disabled={activeMutation.isPending || deleteMutation.isPending}
-                        >
-                          {user.is_active ? "Disable" : "Enable"}
-                        </button>
-                        <button
-                          type="button"
-                          aria-label={`Verwijder gebruiker ${user.username}`}
-                          onClick={() => {
-                            setFeedback(null);
-                            const confirmed = window.confirm(
-                              "Wilt u deze gebruiker echt verwijderen?"
-                            );
-                            if (!confirmed) {
-                              return;
-                            }
-                            deleteMutation.mutate(user.id);
-                          }}
-                          disabled={deleteMutation.isPending || activeMutation.isPending}
-                        >
-                          Verwijder
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        aria-expanded={isPasswordEditorOpen}
-                        aria-label={`Reset wachtwoord voor ${user.username}`}
-                        onClick={() => {
-                          setFeedback(null);
-                          setPasswordEditorUserId((current) =>
-                            current === user.id ? null : user.id
-                          );
-                        }}
-                      >
-                        {isPasswordEditorOpen ? "Verberg" : "Reset wachtwoord"}
-                      </button>
-                    </td>
-                  </tr>
-                  {isPasswordEditorOpen && (
-                    <tr className="admin-password-row">
-                      <td colSpan={8}>
-                        <div className="admin-password-editor">
-                          <input
-                            type="password"
-                            value={draft.password}
-                            onChange={(e) =>
-                              updatePasswordDraft(user.id, "password", e.target.value)
-                            }
-                            minLength={4}
-                            placeholder="Nieuw wachtwoord"
-                            aria-label={`Nieuw wachtwoord voor ${user.username}`}
-                          />
-                          <input
-                            type="password"
-                            value={draft.confirm}
-                            onChange={(e) =>
-                              updatePasswordDraft(user.id, "confirm", e.target.value)
-                            }
-                            minLength={4}
-                            placeholder="Bevestig"
-                            aria-label={`Bevestig wachtwoord voor ${user.username}`}
-                          />
-                          <div className="admin-password-actions">
-                            <button
-                              type="button"
-                              aria-label={`Wijzig wachtwoord voor ${user.username}`}
-                              onClick={() => {
-                                setFeedback(null);
-                                if (draft.password !== draft.confirm) {
-                                  setFeedback("Wachtwoorden komen niet overeen.");
-                                  return;
-                                }
-                                passwordMutation.mutate({
-                                  userId: user.id,
-                                  password: draft.password
-                                });
-                              }}
-                              disabled={
-                                passwordMutation.isPending ||
-                                draft.password.length < 4 ||
-                                draft.confirm.length < 4
-                              }
-                            >
-                              Wijzig wachtwoord
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setPasswordEditorUserId(null)}
-                              disabled={passwordMutation.isPending}
-                            >
-                              Annuleer
-                            </button>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              );
-            })}
+            {(usersQuery.data ?? []).map((user) => (
+              <tr key={user.id}>
+                <td>{user.username}</td>
+                <td>{user.full_name ?? "-"}</td>
+                <td>{user.email ?? "-"}</td>
+                <td><span className={`status-badge ${user.is_active ? "status-badge-active" : "status-badge-inactive"}`}>{user.is_active ? "Actief" : "Inactief"}</span></td>
+                <td><span className={`role-badge ${user.is_admin ? "role-badge-admin" : "role-badge-user"}`}>{user.is_admin ? "Admin" : "Gebruiker"}</span></td>
+                <td>
+                  <div className="admin-user-actions" aria-label={`Acties voor ${user.username}`}>
+                    <button
+                      type="button"
+                      className="button-neutral admin-user-action-compact"
+                      aria-label={`Bewerk gebruiker ${user.username}`}
+                      onClick={() => openProfileEditor(user)}
+                    >
+                      Bewerken
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
+      </section>
+      {modalUser && (
+        <div
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="admin-user-profile-title"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              closeProfileEditor();
+            }
+          }}
+        >
+          <div className="admin-user-profile-modal">
+            <button
+              type="button"
+              className="board-detail-close"
+              aria-label="Profielbewerking sluiten"
+              onClick={closeProfileEditor}
+              disabled={profileMutation.isPending}
+            >
+              ×
+            </button>
+            <header className="admin-user-modal-header">
+              <p className="eyebrow">Gebruikersbeheer</p>
+              <h3 id="admin-user-profile-title">Profiel en account beheren: {modalUser.username}</h3>
+              <p className="muted">Bewerk profiel of account. Onopgeslagen wijzigingen blijven beschermd.</p>
+            </header>
+            {profileError && <p className="error" role="alert">{profileError}</p>}
+            <section className="admin-user-modal-section" aria-labelledby="admin-user-profile-fields-title">
+              <div className="admin-user-modal-section-heading">
+                <h4 id="admin-user-profile-fields-title">Profielgegevens</h4>
+                <p className="muted">Zichtbare naam, e-mail en avatar.</p>
+              </div>
+              <label className="admin-field">
+                <span>Naam</span>
+                <input
+                  type="text"
+                  value={profileDraft.fullName}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, fullName: event.target.value }))}
+                  maxLength={160}
+                  aria-label="Naam"
+                />
+              </label>
+              <label className="admin-field">
+                <span>E-mailadres</span>
+                <input
+                  type="email"
+                  value={profileDraft.email}
+                  onChange={(event) => setProfileDraft((current) => ({ ...current, email: event.target.value }))}
+                  maxLength={255}
+                  aria-label="E-mailadres"
+                />
+              </label>
+              <div className="admin-field admin-avatar-upload-field">
+                <span>Avatar</span>
+                <div className="admin-avatar-upload-row">
+                  {profileAvatarPreviewUrl ? (
+                    <img src={profileAvatarPreviewUrl} alt="Nieuwe avatar preview" className="admin-avatar-preview" />
+                  ) : (
+                    <span aria-hidden="true" className="admin-avatar-preview admin-avatar-preview-placeholder">
+                      {initialsForName(modalUser.full_name || modalUser.username)}
+                    </span>
+                  )}
+                  <div className="admin-avatar-upload-copy">
+                    <label className="admin-avatar-upload-button">
+                      <span>Avatar kiezen</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/gif,image/webp"
+                        aria-label="Avatar"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] ?? null;
+                          const avatarError = validateAdminAvatarFile(file);
+                          if (avatarError) {
+                            setProfileAvatarFile(null);
+                            setProfileError(avatarError);
+                            return;
+                          }
+                          setProfileError(null);
+                          setProfileAvatarFile(file);
+                        }}
+                      />
+                    </label>
+                    <small className="muted">{profileAvatarFile ? `Gekozen bestand: ${profileAvatarFile.name}` : "PNG/JPEG/GIF/WebP tot 5 MB; leeg laten behoudt de huidige avatar."}</small>
+                  </div>
+                </div>
+              </div>
+              <div className="admin-user-profile-actions">
+                <button type="button" className="button-primary" onClick={saveProfileEditor} disabled={profileMutation.isPending}>
+                  {profileMutation.isPending ? "Opslaan..." : "Opslaan"}
+                </button>
+                <button type="button" className="button-neutral" onClick={closeProfileEditor} disabled={profileMutation.isPending}>
+                  Annuleren
+                </button>
+              </div>
+            </section>
+            <section className="admin-user-modal-section" aria-labelledby="admin-user-account-actions-title">
+              <div className="admin-user-modal-section-heading">
+                <h4 id="admin-user-account-actions-title">Accountacties</h4>
+                <p className="muted">Toegang en beveiliging; risicovolle acties vragen bevestiging.</p>
+              </div>
+              {isCurrentUser(modalUser) && modalUser.is_admin && (
+                <p className="self-protection-note admin-user-modal-note">
+                  Eigen account beschermd: je kunt jezelf niet uitschakelen, verwijderen of je eigen adminrol afnemen.
+                </p>
+              )}
+              <div className="admin-account-actions admin-account-actions-stack admin-account-actions-neutral" aria-label="Neutrale accountacties">
+                <button
+                  type="button"
+                  className="button-neutral"
+                  aria-expanded={passwordEditorUserId === modalUser.id}
+                  aria-label={`Reset wachtwoord voor ${modalUser.username}`}
+                  onClick={() => {
+                    setFeedback(null);
+                    setPasswordEditorUserId((current) =>
+                      current === modalUser.id ? null : modalUser.id
+                    );
+                  }}
+                >
+                  {passwordEditorUserId === modalUser.id ? "Verberg wachtwoordreset" : "Reset wachtwoord"}
+                </button>
+                <button
+                  type="button"
+                  className="button-neutral"
+                  title={isCurrentUser(modalUser) && modalUser.is_admin ? "Je kunt je eigen adminrechten niet verwijderen." : undefined}
+                  onClick={() => toggleAdminRoleForUser(modalUser)}
+                  disabled={updateMutation.isPending || (isCurrentUser(modalUser) && modalUser.is_admin)}
+                >
+                  {modalUser.is_admin ? (isCurrentUser(modalUser) ? "Eigen adminrol behouden" : "Verwijder admin") : "Maak admin"}
+                </button>
+              </div>
+              <div className="admin-account-actions admin-account-actions-stack admin-account-actions-danger" aria-label="Risicovolle accountacties">
+                <button
+                  type="button"
+                  className={modalUser.is_active ? "button-danger" : "button-neutral"}
+                  aria-label={`${modalUser.is_active ? "Uitschakelen" : "Inschakelen"} gebruiker ${modalUser.username}`}
+                  title={isCurrentUser(modalUser) && modalUser.is_admin ? "Je kunt je eigen account niet uitschakelen." : undefined}
+                  onClick={() => toggleActiveForUser(modalUser)}
+                  disabled={activeMutation.isPending || deleteMutation.isPending || (modalUser.is_active && isCurrentUser(modalUser) && modalUser.is_admin)}
+                >
+                  {modalUser.is_active ? "Uitschakelen" : "Inschakelen"}
+                </button>
+                <button
+                  type="button"
+                  className="button-danger"
+                  aria-label={`Verwijder gebruiker ${modalUser.username}`}
+                  title={isCurrentUser(modalUser) && modalUser.is_admin ? "Je kunt je eigen account niet verwijderen." : undefined}
+                  onClick={() => deleteUser(modalUser)}
+                  disabled={deleteMutation.isPending || activeMutation.isPending || (isCurrentUser(modalUser) && modalUser.is_admin)}
+                >
+                  Verwijder
+                </button>
+              </div>
+              {passwordEditorUserId === modalUser.id && (() => {
+                const draft = passwordDrafts[modalUser.id] ?? { password: "", confirm: "" };
+                return (
+                  <div className="admin-password-editor admin-password-editor-modal">
+                    <input
+                      type="password"
+                      value={draft.password}
+                      onChange={(e) => updatePasswordDraft(modalUser.id, "password", e.target.value)}
+                      minLength={4}
+                      placeholder="Nieuw wachtwoord"
+                      aria-label={`Nieuw wachtwoord voor ${modalUser.username}`}
+                    />
+                    <input
+                      type="password"
+                      value={draft.confirm}
+                      onChange={(e) => updatePasswordDraft(modalUser.id, "confirm", e.target.value)}
+                      minLength={4}
+                      placeholder="Bevestig"
+                      aria-label={`Bevestig wachtwoord voor ${modalUser.username}`}
+                    />
+                    <div className="admin-password-actions">
+                      <button
+                        type="button"
+                        className="button-danger"
+                        aria-label={`Wijzig wachtwoord voor ${modalUser.username}`}
+                        onClick={() => changePasswordForUser(modalUser)}
+                        disabled={passwordMutation.isPending || draft.password.length < 4 || draft.confirm.length < 4}
+                      >
+                        Wijzig wachtwoord
+                      </button>
+                      <button
+                        type="button"
+                        className="button-neutral"
+                        onClick={() => setPasswordEditorUserId(null)}
+                        disabled={passwordMutation.isPending}
+                      >
+                        Annuleer wachtwoordreset
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </section>
+          </div>
+        </div>
+      )}
       </div>
 
       <div hidden={activeAdminTab !== "projects"}>
