@@ -338,6 +338,24 @@ function UpdateFormattingToolbar({
   );
 }
 
+function RecordIcon({ active }: { active: boolean }) {
+  if (active) {
+    return (
+      <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="record-icon-glyph">
+        <rect x="4.5" y="4.5" width="7" height="7" rx="1.2" fill="currentColor" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="record-icon-glyph">
+      <rect x="6.25" y="1.75" width="3.5" height="7.5" rx="1.75" fill="none" stroke="currentColor" strokeWidth="1.35" />
+      <path d="M4.5 7.75a3.5 3.5 0 0 0 7 0" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.35" />
+      <path d="M8 11.25v2.25" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
+    </svg>
+  );
+}
+
 function DescriptionEditor({
   value,
   onChange,
@@ -880,11 +898,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   onDragEnd={() => setDragOverColumn(null)}
                   onClick={() => setSelectedCardId(card.id)}
                 >
-                  <strong>{card.title}</strong>
+                  <strong className="vergaderborden-card-title">{card.title}</strong>
                   <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
                   <AssignedUserAvatarRow assignments={card.assignments} />
                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count}</small>
                   <div className="board-card-recording-controls">
+                    {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
                     <button
                       type="button"
                       className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
@@ -896,9 +915,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
                       title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
                     >
-                      <span aria-hidden="true">{activeRecordingCardId === card.id ? "⏹" : "🎤"}</span>
+                      <RecordIcon active={activeRecordingCardId === card.id} />
                     </button>
-                    {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
                   </div>
                 </article>
               ))}

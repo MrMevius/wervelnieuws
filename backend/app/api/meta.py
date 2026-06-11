@@ -749,6 +749,16 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
+                "iteration": "46",
+                "date": "2026-06-11",
+                "title": "Vergaderborden: recordicoon subtieler en rechtsonder",
+                "highlights": [
+                    "De recordknop op Vergaderborden-kaarten is nu kleiner, subtieler en rechtsonder gepositioneerd voor een rustigere kaartlayout.",
+                    "De knop gebruikt nu een compact SVG-icoon in plaats van een opvallende glyph, terwijl start/stop-opname hetzelfde blijft werken.",
+                    "Kaartruimte is minimaal aangepast met extra padding en titelclamping, zodat tekst en opnameknop elkaar niet overlappen.",
+                ],
+            },
+            {
                 "iteration": "45",
                 "date": "2026-05-28",
                 "title": "Vergaderborden: audio-opnames nu in dezelfde updates-tijdlijn",

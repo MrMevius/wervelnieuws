@@ -936,8 +936,11 @@ describe("Vergaderborden drag/drop", () => {
     await screen.findByTestId("board-card-c2");
     await screen.findByTestId("board-card-c3");
     expect(screen.getAllByRole("button", { name: /Start opname voor/ })).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "Start opname voor Todo kaart" })).toHaveAttribute("title", "Start opname voor Todo kaart");
-    expect(screen.getByRole("button", { name: "Start opname voor Todo kaart" })).toHaveClass("record-icon-button");
+    const recordButton = screen.getByRole("button", { name: "Start opname voor Todo kaart" });
+    expect(recordButton).toHaveAttribute("title", "Start opname voor Todo kaart");
+    expect(recordButton).toHaveClass("record-icon-button");
+    expect(recordButton.querySelector("svg.record-icon-glyph")).toBeInTheDocument();
+    expect(todoCard.lastElementChild).toHaveClass("board-card-recording-controls");
     expect(screen.queryByText("Start opname")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Start opname voor Todo kaart" }));
