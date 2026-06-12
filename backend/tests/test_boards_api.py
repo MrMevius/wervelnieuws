@@ -126,6 +126,37 @@ def test_admin_can_manage_board_rights_and_visibility(client):
     assert blocked_again.status_code == 403
 
 
+def test_board_rights_overview_includes_inactive_non_admin_users(client):
+    admin_headers = _login(client)
+
+    create_user = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "reviewer", "password": "reviewer12345"},
+    )
+    assert create_user.status_code == 200
+    reviewer_id = create_user.json()["id"]
+
+    deactivate_user = client.patch(
+        f"/api/admin/users/{reviewer_id}/active",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert deactivate_user.status_code == 200
+    assert deactivate_user.json()["is_active"] is False
+
+    overview = client.get("/api/boards/admin/rights", headers=admin_headers)
+    assert overview.status_code == 200
+
+    users = overview.json()["users"]
+    admin = next(item for item in users if item["username"] == "admin")
+    reviewer = next(item for item in users if item["username"] == "reviewer")
+
+    assert admin["is_admin"] is True
+    assert reviewer["is_admin"] is False
+    assert reviewer["is_active"] is False
+
+
 def test_non_admin_cannot_create_or_manage_board_rights(client):
     editor_headers = _login(client, "editor", "editor12345")
 

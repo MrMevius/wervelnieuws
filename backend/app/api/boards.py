@@ -128,7 +128,7 @@ def list_board_rights(current: User = Depends(require_admin), db: Session = Depe
             is_active=user.is_active,
             has_avatar=bool(user.avatar_path),
         )
-        for user in repo.list_active_users()
+        for user in repo.list_users()
     ]
     return BoardRightsOverviewResponse(
         users=users,

@@ -918,6 +918,24 @@ button:disabled {
     grid-template-columns: 1fr;
   }
 
+  .admin-board-rights-header,
+  .admin-board-rights-toolbar,
+  .admin-board-rights-card-header {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .admin-board-rights-card-actions,
+  .admin-board-rights-empty-actions {
+    width: 100%;
+  }
+
+  .admin-board-rights-card-actions button,
+  .admin-board-rights-empty-actions button,
+  .admin-board-rights-empty-actions a {
+    width: 100%;
+  }
+
   .vergaderborden-card-add-row,
   .vergaderborden-card-add-row-secondary,
   .vergaderborden-form-grid {
@@ -2812,12 +2830,242 @@ tbody tr.row-selected {
 
 .admin-tab-row button[aria-selected="true"] {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, var(--surface) 85%);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface) 78%);
+  box-shadow: inset 0 -3px 0 var(--accent), 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent 72%);
+  font-weight: 700;
+}
+
+:root[data-theme="dark"] .admin-tab-row button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--brand) 28%, var(--surface) 72%);
+  box-shadow: inset 0 -3px 0 var(--brand), 0 0 0 1px color-mix(in srgb, var(--brand) 30%, transparent 70%);
 }
 
 .admin-board-rights {
   display: grid;
-  gap: 1rem;
+  gap: 0.85rem;
+}
+
+.admin-board-rights-header {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.admin-board-rights-count {
+  display: grid;
+  gap: 1px;
+  justify-items: end;
+  margin-top: 2px;
+  white-space: normal;
+  font-size: 0.86rem;
+}
+
+.admin-board-rights-toolbar {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)) auto;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent 18%);
+}
+
+.admin-board-rights-field {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-board-rights-field > span {
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.admin-board-rights-field input,
+.admin-board-rights-field select {
+  min-height: 40px;
+}
+
+.admin-board-rights-reset {
+  min-height: 40px;
+}
+
+.admin-board-rights-empty {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 16px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 86%, var(--surface-muted) 14%);
+}
+
+.admin-board-rights-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-board-rights-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-muted) 78%, transparent 22%);
+}
+
+.admin-board-rights-dirty {
+  margin: 0;
+}
+
+.admin-board-rights-matrix-shell {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent 40%);
+}
+
+.admin-board-rights-matrix {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+  width: max-content;
+}
+
+.admin-board-rights-matrix th,
+.admin-board-rights-matrix td {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 0.55rem 0.7rem;
+  background: var(--surface);
+  vertical-align: middle;
+}
+
+.admin-board-rights-matrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-muted);
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+.admin-board-rights-sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface-muted) !important;
+}
+
+.admin-board-rights-sticky-corner {
+  z-index: 4;
+}
+
+.admin-board-rights-matrix thead th span {
+  display: block;
+}
+
+.admin-board-rights-column-description,
+.admin-board-rights-user-state {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.admin-board-rights-column-description {
+  margin-top: 1px;
+}
+
+.admin-board-rights-user-state {
+  margin-top: 2px;
+}
+
+.admin-board-rights-user-row {
+  display: grid;
+  gap: 2px;
+}
+
+.admin-board-rights-user-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.admin-board-rights-user-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--brand) 32%, var(--line) 68%);
+  background: color-mix(in srgb, var(--brand-soft) 42%, var(--surface) 58%);
+  color: var(--text);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.admin-board-rights-cell {
+  display: grid;
+  place-items: center;
+  min-height: 36px;
+  min-width: 36px;
+  cursor: pointer;
+}
+
+.admin-board-rights-cell input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.admin-board-rights-admin-row .admin-board-rights-cell {
+  cursor: default;
+}
+
+.admin-board-rights-admin-row .admin-board-rights-cell input:disabled {
+  opacity: 1;
+}
+
+.admin-board-rights-cell:focus-within {
+  outline: 2px solid color-mix(in srgb, var(--brand) 45%, transparent 55%);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.admin-board-rights-empty-cell {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1rem;
+}
+
+.admin-board-rights-boards {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-board-rights-boards-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: end;
+}
+
+.admin-board-rights-boards-header h3 {
+  margin-bottom: 4px;
+}
+
+.admin-board-rights-boards-list {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .admin-board-rights-card {
@@ -2825,26 +3073,100 @@ tbody tr.row-selected {
   border-radius: 12px;
   padding: 1rem;
   background: color-mix(in srgb, var(--surface-muted) 70%, transparent 30%);
+  display: grid;
+  gap: 12px;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent 40%);
+}
+
+.admin-board-rights-card:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line) 55%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent 82%);
+}
+
+.admin-board-rights-card.tone-active {
+  background: color-mix(in srgb, var(--brand-soft) 22%, var(--surface-muted) 78%);
+}
+
+.admin-board-rights-card.tone-empty {
+  background: color-mix(in srgb, var(--brand-soft) 12%, var(--surface-muted) 88%);
 }
 
 .admin-board-rights-card-header {
-  align-items: flex-start;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 1rem;
-  justify-content: space-between;
+  align-items: start;
+}
+
+.admin-board-rights-card-header h3 {
+  margin-bottom: 4px;
+}
+
+.admin-board-rights-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.admin-board-rights-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent 35%);
+  background: color-mix(in srgb, var(--surface) 78%, var(--brand-soft) 22%);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.admin-board-rights-helper {
+  margin-top: 8px;
+}
+
+.admin-board-rights-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  align-self: start;
+}
+
+.admin-board-rights-card-actions .button-primary,
+.admin-board-rights-card-actions .button-danger {
+  min-height: 40px;
 }
 
 .admin-board-rights-users {
   display: grid;
   gap: 0.5rem;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  margin: 1rem 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
 }
 
 .admin-board-rights-user {
   align-items: center;
   display: flex;
   gap: 0.5rem;
+  min-height: 40px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent 18%);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent 12%);
+}
+
+.admin-board-rights-user:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line) 55%);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent 82%);
+}
+
+.admin-board-rights-user input {
+  margin: 0;
 }
 
 .admin-genai-form {

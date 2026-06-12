@@ -29,6 +29,36 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "77",
+                "date": "2026-06-12",
+                "title": "Compacte bordrechtenmatrix met admins",
+                "highlights": [
+                    "Admins zijn nu zichtbaar in Admin > Bordrechten als read-only rijen met een duidelijke Admin-badge.",
+                    "De matrix is compacter opgebouwd met kleinere spacing, zodat de rechtenpagina rustiger en beter scanbaar is.",
+                    "Opslaan blijft beperkt tot niet-admin wijzigingen, terwijl admins automatisch overal toegang houden.",
+                ],
+            },
+            {
+                "iteration": "76",
+                "date": "2026-06-12",
+                "title": "Bordrechten werken nu als matrix",
+                "highlights": [
+                    "In Admin > Bordrechten zie je nu direct welke niet-admin gebruiker toegang heeft tot welk bord.",
+                    "Wijzigingen sla je pas op met één centrale knop, zodat je eerst een duidelijk overzicht hebt van alle aanpassingen.",
+                    "De bordbeheeracties blijven beschikbaar op dezelfde pagina, zodat aanmaken en archiveren gewoon doorwerken.",
+                ],
+            },
+            {
+                "iteration": "75",
+                "date": "2026-06-12",
+                "title": "Bordrechtenbeheer is overzichtelijker geworden",
+                "highlights": [
+                    "De actieve tab op de pagina Admin > Bordrechten valt nu ook in donkere weergave duidelijker op.",
+                    "Bordkaarten zijn rustiger opgebouwd, zodat status, rechten en acties sneller te scannen zijn.",
+                    "Zoeken, filters en feedback maken het makkelijker om bordrechten aan te passen met minder misclicks.",
+                ],
+            },
+            {
                 "iteration": "74",
                 "date": "2026-06-12",
                 "title": "WindWilly-startpagina verder versoberd",

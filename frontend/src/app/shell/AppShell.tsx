@@ -111,6 +111,123 @@ type ThemePreference = "light" | "dark" | "system";
 type VariantDraft = Pick<ContentChannelVariant, "title" | "article_body" | "summary">;
 type SourceTraceDisplayHit = SourceTraceHit & { display_score: number };
 const EDITABLE_TITLE_MAX_LENGTH = 80;
+type BoardRightsStatusFilter = "all" | "active" | "idle" | "empty";
+type BoardRightsAccessFilter = "all" | "shared" | "private";
+
+function displayNameForBoardRightsUser(user: Pick<AdminUser, "full_name" | "username">) {
+  return user.full_name?.trim() || user.username;
+}
+
+function boardRightsAccessLabel(project: BoardRightsOverview["projects"][number]) {
+  const sharedCount = project.invited_user_ids.length;
+  if (!sharedCount) {
+    return "Alleen admins";
+  }
+  return sharedCount === 1 ? "Gedeeld met 1 gebruiker" : `Gedeeld met ${sharedCount} gebruikers`;
+}
+
+function boardRightsActivityAgeHours(project: BoardRightsOverview["projects"][number]) {
+  if (!project.last_activity_at) {
+    return Number.POSITIVE_INFINITY;
+  }
+  const timestamp = new Date(project.last_activity_at).getTime();
+  if (Number.isNaN(timestamp)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return (Date.now() - timestamp) / (1000 * 60 * 60);
+}
+
+function boardRightsStatusLabel(project: BoardRightsOverview["projects"][number]) {
+  if (project.card_count === 0) {
+    return { label: "Leeg bord", tone: "empty" as const };
+  }
+
+  if (!project.last_activity_at) {
+    return { label: "Nog geen activiteit", tone: "idle" as const };
+  }
+
+  if (Number.isNaN(new Date(project.last_activity_at).getTime())) {
+    return { label: "Activiteit onbekend", tone: "idle" as const };
+  }
+
+  const ageLabel = formatRelativeAge(project.last_activity_at);
+  const ageHours = boardRightsActivityAgeHours(project);
+  if (Number.isFinite(ageHours) && ageHours < 24) {
+    return { label: `Actief · ${ageLabel}`, tone: "active" as const };
+  }
+
+  return { label: `Stil · ${formatAmsterdamDateTime(project.last_activity_at)}`, tone: "idle" as const };
+}
+
+function boardRightsStatusFilterValue(project: BoardRightsOverview["projects"][number]): Exclude<BoardRightsStatusFilter, "all"> {
+  if (project.card_count === 0) {
+    return "empty";
+  }
+  if (!project.last_activity_at) {
+    return "idle";
+  }
+  const ageHours = boardRightsActivityAgeHours(project);
+  return Number.isFinite(ageHours) && ageHours < 24 ? "active" : "idle";
+}
+
+function sameBoardRightsAssignments(left: string[], right: string[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+  const normalizedLeft = [...left].sort();
+  const normalizedRight = [...right].sort();
+  return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function boardRightsChangedCellCount(left: string[], right: string[]) {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  let changes = 0;
+  for (const value of leftSet) {
+    if (!rightSet.has(value)) {
+      changes += 1;
+    }
+  }
+  for (const value of rightSet) {
+    if (!leftSet.has(value)) {
+      changes += 1;
+    }
+  }
+  return changes;
+}
+
+function boardRightsCellLabel(
+  user: BoardRightsOverview["users"][number],
+  project: BoardRightsOverview["projects"][number],
+  checked: boolean
+) {
+  const userName = displayNameForBoardRightsUser(user);
+  return user.is_admin
+    ? `Beheerder ${userName} heeft automatisch toegang tot ${project.name}`
+    : !user.is_active
+      ? `Inactieve gebruiker ${userName} heeft ${checked ? "bestaande" : "geen"} toegang tot ${project.name} en is niet bewerkbaar`
+      : `Geef ${userName} toegang tot ${project.name}`;
+}
+
+function boardRightsMatchesFilters(
+  project: BoardRightsOverview["projects"][number],
+  searchTerm: string,
+  statusFilter: BoardRightsStatusFilter,
+  accessFilter: BoardRightsAccessFilter
+) {
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const matchesSearch =
+    !normalizedSearch ||
+    project.name.toLowerCase().includes(normalizedSearch) ||
+    project.description.toLowerCase().includes(normalizedSearch);
+
+  const matchesStatus = statusFilter === "all" || boardRightsStatusFilterValue(project) === statusFilter;
+  const matchesAccess =
+    accessFilter === "all" ||
+    (accessFilter === "shared" ? project.invited_user_ids.length > 0 : project.invited_user_ids.length === 0);
+
+  return matchesSearch && matchesStatus && matchesAccess;
+}
 
 export function App() {
   const queryClient = useQueryClient();
@@ -3701,50 +3818,76 @@ function BoardRightsAdminTab() {
   const queryClient = useQueryClient();
   const [drafts, setDrafts] = useState<Record<string, string[]>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
+  const [archivingProjectId, setArchivingProjectId] = useState<string | null>(null);
   const rightsQuery = useQuery({ queryKey: ["board-rights"], queryFn: listBoardRights });
-  const assignableUsers = useMemo(
-    () => (rightsQuery.data?.users ?? []).filter((user) => !user.is_admin && user.is_active),
-    [rightsQuery.data?.users]
-  );
+  const boardRightsData = rightsQuery.data;
+  const users = boardRightsData?.users ?? [];
+  const projects = boardRightsData?.projects ?? [];
+  const editableUsers = useMemo(() => users.filter((user) => !user.is_admin && user.is_active), [users]);
+  const inactiveUsers = useMemo(() => users.filter((user) => !user.is_admin && !user.is_active), [users]);
+  const adminUsers = useMemo(() => users.filter((user) => user.is_admin), [users]);
+  const editableUserIds = useMemo(() => new Set(editableUsers.map((user) => user.id)), [editableUsers]);
 
   useEffect(() => {
-    if (!rightsQuery.data) return;
+    if (!boardRightsData) return;
     setDrafts((current) => {
-      const next = { ...current };
-      for (const project of rightsQuery.data.projects) {
-        if (!next[project.id]) {
-          next[project.id] = project.invited_user_ids;
-        }
+      const next: Record<string, string[]> = {};
+      for (const project of boardRightsData.projects) {
+        const baseDraft = current[project.id] ?? project.invited_user_ids;
+        next[project.id] = baseDraft.filter((userId) => editableUserIds.has(userId));
       }
       return next;
     });
-  }, [rightsQuery.data]);
-
-  const updateMutation = useMutation({
-    mutationFn: ({ projectId, invited_user_ids }: { projectId: string; invited_user_ids: string[] }) => updateBoardRights(projectId, { invited_user_ids }),
-    onSuccess: async () => {
-      setFeedback("Bordrechten opgeslagen.");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["board-rights"] }),
-        queryClient.invalidateQueries({ queryKey: ["board-projects"] })
-      ]);
-    },
-    onError: () => setFeedback("Bordrechten opslaan is mislukt.")
-  });
+  }, [boardRightsData, editableUserIds]);
 
   const archiveMutation = useMutation({
     mutationFn: archiveBoardProject,
     onSuccess: async () => {
       setFeedback("Vergaderbord verwijderd.");
+      setArchivingProjectId(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["board-rights"] }),
         queryClient.invalidateQueries({ queryKey: ["board-projects"] })
       ]);
     },
-    onError: () => setFeedback("Vergaderbord verwijderen is mislukt.")
+    onError: () => {
+      setArchivingProjectId(null);
+      setFeedback("Vergaderbord verwijderen is mislukt.");
+    }
   });
 
+  const dirtyProjects = useMemo(
+    () =>
+      projects.filter((project) => {
+        const currentDraft = drafts[project.id] ?? [];
+        const currentSaved = project.invited_user_ids.filter((userId) => editableUserIds.has(userId));
+        return !sameBoardRightsAssignments(currentDraft, currentSaved);
+      }),
+    [drafts, editableUserIds, projects]
+  );
+
+  const dirtyChangeCount = useMemo(
+    () =>
+      dirtyProjects.reduce((count, project) => {
+        const currentDraft = drafts[project.id] ?? [];
+        const currentSaved = project.invited_user_ids.filter((userId) => editableUserIds.has(userId));
+        return count + boardRightsChangedCellCount(currentDraft, currentSaved);
+      }, 0),
+    [dirtyProjects, drafts, editableUserIds]
+  );
+
+  const dirtySummary =
+    dirtyProjects.length === 0
+      ? "Geen onopgeslagen wijzigingen."
+      : `${dirtyProjects.length} ${dirtyProjects.length === 1 ? "bord" : "borden"} gewijzigd · ${dirtyChangeCount} ${dirtyChangeCount === 1 ? "checkbox" : "checkboxen"} aangepast`;
+  const matrixLocked = savingAll;
+
   const toggleUser = (projectId: string, userId: string) => {
+    if (matrixLocked || !editableUserIds.has(userId)) {
+      return;
+    }
+    setFeedback(null);
     setDrafts((current) => {
       const selected = new Set(current[projectId] ?? []);
       if (selected.has(userId)) selected.delete(userId);
@@ -3753,52 +3896,220 @@ function BoardRightsAdminTab() {
     });
   };
 
-  const saveProject = (projectId: string) => {
-    updateMutation.mutate({ projectId, invited_user_ids: drafts[projectId] ?? [] });
+  const saveRights = async () => {
+    if (!dirtyProjects.length || savingAll) {
+      return;
+    }
+
+    setFeedback(null);
+    setSavingAll(true);
+    const payloads = dirtyProjects.map((project) => ({
+      projectId: project.id,
+      invited_user_ids: (drafts[project.id] ?? []).filter((userId) => editableUserIds.has(userId))
+    }));
+
+    try {
+      const results = await Promise.allSettled(
+        payloads.map((payload) => updateBoardRights(payload.projectId, { invited_user_ids: payload.invited_user_ids }))
+      );
+      const succeededProjectIds = payloads.filter((_, index) => results[index].status === "fulfilled").map((payload) => payload.projectId);
+      if (succeededProjectIds.length > 0) {
+        setDrafts((current) => {
+          const next = { ...current };
+          for (const projectId of succeededProjectIds) {
+            delete next[projectId];
+          }
+          return next;
+        });
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-rights"] }),
+        queryClient.invalidateQueries({ queryKey: ["board-projects"] })
+      ]);
+      setFeedback(results.every((result) => result.status === "fulfilled") ? "Bordrechten opgeslagen." : "Bordrechten opslaan is mislukt.");
+    } finally {
+      setSavingAll(false);
+    }
   };
 
   const deleteProject = (projectId: string, name: string) => {
     if (!window.confirm(`Vergaderbord '${name}' verwijderen? Het bord wordt gearchiveerd en kan later handmatig hersteld worden.`)) {
       return;
     }
+    setFeedback(null);
+    setArchivingProjectId(projectId);
     archiveMutation.mutate(projectId);
   };
 
   if (rightsQuery.isLoading) return <p className="muted">Bordrechten laden…</p>;
   if (rightsQuery.isError) return <p className="error">Bordrechten konden niet worden geladen.</p>;
 
-  const data = rightsQuery.data as BoardRightsOverview;
   return (
     <section className="admin-board-rights">
-      <h2>Bordrechten</h2>
-      <p className="muted">Selecteer per vergaderbord welke niet-admin gebruikers toegang hebben. Admins houden automatisch toegang tot alle borden.</p>
-      {feedback && <p role="status" className={feedback.includes("mislukt") ? "error" : "success"}>{feedback}</p>}
-      {!data.projects.length && <p className="muted">Er zijn nog geen vergaderborden.</p>}
-      {data.projects.map((project) => {
-        const selected = new Set(drafts[project.id] ?? project.invited_user_ids);
-        return (
-          <article className="admin-board-rights-card" key={project.id}>
-            <div className="admin-board-rights-card-header">
-              <div>
-                <h3>{project.name}</h3>
-                {project.description && <p className="muted">{project.description}</p>}
-                <p className="muted">{project.card_count} kaarten</p>
-              </div>
-              <button type="button" className="danger-link" onClick={() => deleteProject(project.id, project.name)} disabled={archiveMutation.isPending}>Verwijder bord</button>
+      <div className="admin-board-rights-header">
+        <div>
+          <h2>Bordrechten</h2>
+          <p className="muted">
+            Selecteer per actieve niet-admin gebruiker welke vergaderborden toegankelijk zijn. Admins en inactieve
+            niet-admins staan read-only in de matrix.
+          </p>
+        </div>
+        <div className="admin-board-rights-count muted">
+          <p>{editableUsers.length} actieve niet-admin gebruikers</p>
+          {inactiveUsers.length > 0 && <p>{inactiveUsers.length} inactieve gebruikers read-only</p>}
+          <p>{projects.length} borden</p>
+          <p>{adminUsers.length} admins read-only zichtbaar</p>
+        </div>
+      </div>
+
+      <div className="admin-board-rights-summary">
+        <button type="button" className="button-primary" onClick={saveRights} disabled={!dirtyProjects.length || matrixLocked}>
+          {savingAll ? "Opslaan..." : "Rechten opslaan"}
+        </button>
+        <p className="admin-board-rights-dirty muted" role="status" aria-live="polite" aria-atomic="true">
+          {dirtySummary}
+        </p>
+        {savingAll && (
+          <p className="admin-board-rights-saving muted" role="status" aria-live="polite" aria-atomic="true">
+            Wijzigingen worden opgeslagen; de matrix is tijdelijk vergrendeld.
+          </p>
+        )}
+      </div>
+
+      {feedback && (
+        <p role="status" aria-live="polite" aria-atomic="true" className={feedback.includes("mislukt") ? "error" : "success"}>
+          {feedback}
+        </p>
+      )}
+
+      {!projects.length && (
+        <div className="admin-board-rights-empty">
+          <p>Er zijn nog geen vergaderborden.</p>
+          <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
+        </div>
+      )}
+
+      {projects.length > 0 && (
+        <div className="admin-board-rights-matrix-shell" role="region" aria-label="Bordrechten matrix" aria-busy={matrixLocked}>
+          <table className="admin-board-rights-matrix">
+            <thead>
+              <tr>
+                <th scope="col" className="admin-board-rights-sticky-col admin-board-rights-sticky-corner">
+                  Gebruiker
+                </th>
+                {projects.map((project) => (
+                  <th key={project.id} scope="col">
+                    <span>{project.name}</span>
+                    {project.description && <span className="admin-board-rights-column-description">{project.description}</span>}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {users.length > 0 ? (
+                users.map((user) => {
+                  const userLabel = displayNameForBoardRightsUser(user);
+                  const isEditableUser = !user.is_admin && user.is_active;
+                  return (
+                    <tr key={user.id} className={user.is_admin ? "admin-board-rights-admin-row" : undefined}>
+                      <th scope="row" className="admin-board-rights-sticky-col">
+                        <div className="admin-board-rights-user-row">
+                          <span>{userLabel}</span>
+                          <div className="admin-board-rights-user-meta">
+                            {user.is_admin ? (
+                              <span className="admin-board-rights-user-badge">Admin</span>
+                            ) : (
+                              !user.is_active && <span className="admin-board-rights-user-state muted">Inactief</span>
+                            )}
+                          </div>
+                        </div>
+                      </th>
+                      {projects.map((project) => {
+                        const currentDraft = drafts[project.id] ?? [];
+                        const checked = user.is_admin
+                          ? true
+                          : isEditableUser
+                            ? currentDraft.includes(user.id)
+                            : project.invited_user_ids.includes(user.id);
+                        const inputId = `board-rights-${project.id}-${user.id}`;
+                        return (
+                          <td key={`${project.id}-${user.id}`}>
+                            <label className="admin-board-rights-cell" htmlFor={inputId}>
+                              <input
+                                id={inputId}
+                                type="checkbox"
+                                checked={checked}
+                                disabled={matrixLocked || !isEditableUser}
+                                aria-label={boardRightsCellLabel(user, project, checked)}
+                                onChange={isEditableUser ? () => toggleUser(project.id, user.id) : undefined}
+                              />
+                              <span className="sr-only">{boardRightsCellLabel(user, project, checked)}</span>
+                            </label>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={projects.length + 1} className="admin-board-rights-empty-cell">
+                    Er zijn nog geen gebruikers om toegang toe te wijzen.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {projects.length > 0 && (
+        <div className="admin-board-rights-boards">
+          <div className="admin-board-rights-boards-header">
+            <div>
+              <h3>Vergaderborden beheren</h3>
+              <p className="muted">Borden aanmaken en archiveren blijft hier beschikbaar.</p>
             </div>
-            <div className="admin-board-rights-users">
-              {assignableUsers.map((user) => (
-                <label key={user.id} className="admin-board-rights-user">
-                  <input type="checkbox" checked={selected.has(user.id)} onChange={() => toggleUser(project.id, user.id)} />
-                  <span>{user.full_name?.trim() || user.username}</span>
-                </label>
-              ))}
-              {!assignableUsers.length && <p className="muted">Er zijn geen actieve niet-admin gebruikers om toe te wijzen.</p>}
-            </div>
-            <button type="button" onClick={() => saveProject(project.id)} disabled={updateMutation.isPending}>Rechten opslaan</button>
-          </article>
-        );
-      })}
+            <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
+          </div>
+          <div className="admin-board-rights-boards-list">
+            {projects.map((project) => {
+              const isArchiving = archivingProjectId === project.id && archiveMutation.isPending;
+              const status = boardRightsStatusLabel(project);
+              const currentDraft = drafts[project.id] ?? [];
+              const currentSaved = project.invited_user_ids.filter((userId) => editableUserIds.has(userId));
+              const isDirty = !sameBoardRightsAssignments(currentDraft, currentSaved);
+              return (
+                <article className={`admin-board-rights-card tone-${status.tone}`} key={project.id} aria-busy={isArchiving}>
+                  <div className="admin-board-rights-card-header">
+                    <div>
+                      <h4>{project.name}</h4>
+                      {project.description && <p className="muted">{project.description}</p>}
+                      <div className="admin-board-rights-meta" aria-label={`Samenvatting van ${project.name}`}>
+                        <span className="admin-board-rights-chip">Status: {status.label}</span>
+                        <span className="admin-board-rights-chip">Rechten: {boardRightsAccessLabel(project)}</span>
+                        <span className="admin-board-rights-chip">{project.card_count} kaarten</span>
+                      </div>
+                      <p className="admin-board-rights-helper muted">{isDirty ? "Niet-opgeslagen rechten staan nog in de matrix." : "Rechten zijn gesynchroniseerd."}</p>
+                    </div>
+                    <div className="admin-board-rights-card-actions">
+                      <button
+                        type="button"
+                        className="button-danger"
+                        onClick={() => deleteProject(project.id, project.name)}
+                        disabled={isArchiving}
+                      >
+                        {isArchiving ? "Verwijderen..." : "Verwijder bord"}
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

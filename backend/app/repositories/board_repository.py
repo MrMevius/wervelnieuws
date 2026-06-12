@@ -14,8 +14,8 @@ class BoardRepository:
     def list_projects(self) -> list[Project]:
         return list(self.db.scalars(select(Project).where(Project.is_archived.is_(False)).order_by(Project.name.asc())).all())
 
-    def list_active_users(self) -> list[User]:
-        return list(self.db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.username.asc())).all())
+    def list_users(self) -> list[User]:
+        return list(self.db.scalars(select(User).order_by(User.username.asc())).all())
 
     def create_project(self, name: str, description: str, invited_user_ids: list[str]) -> Project:
         project = Project(name=name.strip(), description=description.strip())

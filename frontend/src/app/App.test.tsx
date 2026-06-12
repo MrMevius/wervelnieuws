@@ -60,7 +60,22 @@ const mockApi = vi.hoisted(() => ({
       { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true }
     ],
     projects: [
-      { id: "bp1", name: "Wekelijkse afstemming", description: "Teamplanning en besluiten", invited_user_ids: ["u2"], card_count: 2, last_activity_at: null }
+      {
+        id: "bp1",
+        name: "Wekelijkse afstemming",
+        description: "Teamplanning en besluiten",
+        invited_user_ids: ["u2"],
+        card_count: 2,
+        last_activity_at: "2026-06-12T08:00:00Z"
+      },
+      {
+        id: "bp2",
+        name: "Stille notities",
+        description: "",
+        invited_user_ids: [],
+        card_count: 0,
+        last_activity_at: null
+      }
     ]
   }),
   updateBoardRights: vi.fn().mockResolvedValue({ id: "bp1", name: "Wekelijkse afstemming", description: "Teamplanning en besluiten", invited_user_ids: ["u2"], card_count: 2, last_activity_at: null }),
@@ -1286,8 +1301,232 @@ describe("App", () => {
     expect(dialog.querySelectorAll(".admin-account-actions-stack")).toHaveLength(2);
   });
 
-  it("allows admin to save vergaderbord access rights", async () => {
+  it("renders the board-rights matrix and saves checkbox changes", async () => {
     mockApi.updateBoardRights.mockClear();
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+        { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true }
+      ],
+      projects: [
+        {
+          id: "bp1",
+          name: "Wekelijkse afstemming",
+          description: "Teamplanning en besluiten",
+          invited_user_ids: [],
+          card_count: 2,
+          last_activity_at: "2026-06-12T08:00:00Z"
+        },
+        {
+          id: "bp2",
+          name: "Stille notities",
+          description: "",
+          invited_user_ids: [],
+          card_count: 0,
+          last_activity_at: null
+        }
+      ]
+    });
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Bordrechten" })).toBeInTheDocument();
+      expect(screen.getByRole("region", { name: "Bordrechten matrix" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole("rowheader", { name: /Editor/ })).toBeInTheDocument();
+    expect(screen.getByRole("rowheader", { name: /Admin/ })).toBeInTheDocument();
+
+    const adminAccess = screen.getByRole("checkbox", {
+      name: "Beheerder Admin heeft automatisch toegang tot Wekelijkse afstemming"
+    });
+    expect(adminAccess).toBeChecked();
+    expect(adminAccess).toBeDisabled();
+
+    const editorAccess = screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" });
+    expect(editorAccess).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+
+    fireEvent.click(adminAccess);
+    expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+    expect(screen.getByText("Geen onopgeslagen wijzigingen.")).toBeInTheDocument();
+
+    fireEvent.click(editorAccess);
+
+    expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeEnabled();
+    expect(screen.getByText("1 bord gewijzigd · 1 checkbox aangepast")).toBeInTheDocument();
+
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+        { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true }
+      ],
+      projects: [
+        {
+          id: "bp1",
+          name: "Wekelijkse afstemming",
+          description: "Teamplanning en besluiten",
+          invited_user_ids: ["u2"],
+          card_count: 2,
+          last_activity_at: "2026-06-12T08:00:00Z"
+        },
+        {
+          id: "bp2",
+          name: "Stille notities",
+          description: "",
+          invited_user_ids: [],
+          card_count: 0,
+          last_activity_at: null
+        }
+      ]
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rechten opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateBoardRights).toHaveBeenCalledWith("bp1", { invited_user_ids: ["u2"] });
+      expect(screen.getByText("Bordrechten opgeslagen.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+      expect(screen.getByText("Geen onopgeslagen wijzigingen.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows inactive non-admin users read-only and excludes them from dirty state and save payloads", async () => {
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+        { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true },
+        { id: "u3", username: "reviewer", full_name: "Reviewer", email: "reviewer@example.com", is_admin: false, is_active: false }
+      ],
+      projects: [
+        {
+          id: "bp1",
+          name: "Wekelijkse afstemming",
+          description: "Teamplanning en besluiten",
+          invited_user_ids: ["u2", "u3"],
+          card_count: 2,
+          last_activity_at: "2026-06-12T08:00:00Z"
+        }
+      ]
+    });
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+        { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true },
+        { id: "u3", username: "reviewer", full_name: "Reviewer", email: "reviewer@example.com", is_admin: false, is_active: false }
+      ],
+      projects: [
+        {
+          id: "bp1",
+          name: "Wekelijkse afstemming",
+          description: "Teamplanning en besluiten",
+          invited_user_ids: [],
+          card_count: 2,
+          last_activity_at: "2026-06-12T08:00:00Z"
+        }
+      ]
+    });
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("rowheader", { name: /Editor/ })).toBeInTheDocument();
+      expect(screen.getByRole("rowheader", { name: /Reviewer/ })).toBeInTheDocument();
+      expect(screen.getByText("Inactief")).toBeInTheDocument();
+      expect(screen.getByRole("rowheader", { name: /Admin/ })).toBeInTheDocument();
+    });
+
+    const inactiveAccess = screen.getByRole("checkbox", {
+      name: "Inactieve gebruiker Reviewer heeft bestaande toegang tot Wekelijkse afstemming en is niet bewerkbaar"
+    });
+    expect(inactiveAccess).toBeChecked();
+    expect(inactiveAccess).toBeDisabled();
+
+    fireEvent.click(inactiveAccess);
+    expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+    expect(screen.getByText("Geen onopgeslagen wijzigingen.")).toBeInTheDocument();
+
+    const editorAccess = screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" });
+    fireEvent.click(editorAccess);
+
+    expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeEnabled();
+    expect(screen.getByText("1 bord gewijzigd · 1 checkbox aangepast")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Rechten opslaan" }));
+
+    await waitFor(() => {
+      expect(mockApi.updateBoardRights).toHaveBeenCalledWith("bp1", { invited_user_ids: [] });
+      expect(screen.getByText("Bordrechten opgeslagen.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+    });
+  });
+
+  it("disables matrix controls while board-rights save is in flight", async () => {
+    let resolveSave: (() => void) | undefined;
+    mockApi.updateBoardRights.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" })).toBeInTheDocument();
+    });
+
+    const editorAccess = screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" });
+    fireEvent.click(editorAccess);
+    fireEvent.click(screen.getByRole("button", { name: "Rechten opslaan" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Opslaan..." })).toBeDisabled();
+      expect(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" })).toBeDisabled();
+      expect(screen.getByText("Wijzigingen worden opgeslagen; de matrix is tijdelijk vergrendeld.")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" }));
+    expect(mockApi.updateBoardRights).toHaveBeenCalledTimes(1);
+
+    resolveSave?.();
+
+    await waitFor(() => {
+      expect(screen.getByText("Bordrechten opgeslagen.")).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" })).not.toBeDisabled();
+    });
+  });
+
+  it("keeps unsaved matrix changes visible when save fails", async () => {
+    mockApi.updateBoardRights.mockRejectedValueOnce(new Error("Netwerkfout"));
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -1309,15 +1548,18 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Bordrechten" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Editor" }));
+
+    const editorAccess = screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" });
+    fireEvent.click(editorAccess);
     fireEvent.click(screen.getByRole("button", { name: "Rechten opslaan" }));
 
     await waitFor(() => {
-      expect(mockApi.updateBoardRights).toHaveBeenCalledWith("bp1", { invited_user_ids: [] });
-      expect(screen.getByText("Bordrechten opgeslagen.")).toBeInTheDocument();
+      expect(screen.getByText("Bordrechten opslaan is mislukt.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeEnabled();
+      expect(screen.getByText("1 bord gewijzigd · 1 checkbox aangepast")).toBeInTheDocument();
+      expect(screen.getByRole("checkbox", { name: "Geef Editor toegang tot Wekelijkse afstemming" })).not.toBeChecked();
     });
   });
 
@@ -1345,9 +1587,13 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Verwijder bord" })).toBeInTheDocument();
+      const rightsCard = screen.getByRole("heading", { name: "Wekelijkse afstemming" }).closest("article");
+      expect(rightsCard).not.toBeNull();
+      expect(within(rightsCard as HTMLElement).getByRole("button", { name: "Verwijder bord" })).toBeInTheDocument();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Verwijder bord" }));
+    const rightsCard = screen.getByRole("heading", { name: "Wekelijkse afstemming" }).closest("article");
+    expect(rightsCard).not.toBeNull();
+    fireEvent.click(within(rightsCard as HTMLElement).getByRole("button", { name: "Verwijder bord" }));
 
     await waitFor(() => {
       expect(confirmSpy).toHaveBeenCalled();
@@ -1355,6 +1601,87 @@ describe("App", () => {
       expect(screen.getByText("Vergaderbord verwijderd.")).toBeInTheDocument();
     });
     confirmSpy.mockRestore();
+  });
+
+  it("shows admins in the matrix when there are no non-admin users", async () => {
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true }
+      ],
+      projects: [
+        {
+          id: "bp1",
+          name: "Wekelijkse afstemming",
+          description: "Teamplanning en besluiten",
+          invited_user_ids: ["u1"],
+          card_count: 2,
+          last_activity_at: "2026-06-12T08:00:00Z"
+        }
+      ]
+    });
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("rowheader", { name: /Admin/ })).toBeInTheDocument();
+      expect(
+        screen.getByRole("checkbox", {
+          name: "Beheerder Admin heeft automatisch toegang tot Wekelijkse afstemming"
+        })
+      ).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Rechten opslaan" })).toBeDisabled();
+    });
+  });
+
+  it("shows an empty state when there are no vergaderborden", async () => {
+    mockApi.listBoardRights.mockResolvedValueOnce({
+      users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", is_admin: true, is_active: true },
+        { id: "u2", username: "editor", full_name: "Editor", email: "editor@example.com", is_admin: false, is_active: true }
+      ],
+      projects: []
+    });
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp();
+    await loginIntoApp();
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("tab", { name: "Bordrechten" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Er zijn nog geen vergaderborden.")).toBeInTheDocument();
+      expect(screen.getAllByRole("link", { name: "Nieuw vergaderbord aanmaken" }).length).toBeGreaterThan(0);
+    });
   });
 
   it("redirects non-admins away from admin vergaderborden route", async () => {
@@ -1403,10 +1730,14 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Bordrechten" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: "Nieuw vergaderbord aanmaken" })).toBeInTheDocument();
+      const rightsSection = screen.getByRole("heading", { name: "Bordrechten" }).closest("section");
+      expect(rightsSection).not.toBeNull();
+      expect(within(rightsSection as HTMLElement).getByRole("link", { name: "Nieuw vergaderbord aanmaken" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "Nieuw vergaderbord aanmaken" }));
+    const rightsSection = screen.getByRole("heading", { name: "Bordrechten" }).closest("section");
+    expect(rightsSection).not.toBeNull();
+    fireEvent.click(within(rightsSection as HTMLElement).getByRole("link", { name: "Nieuw vergaderbord aanmaken" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
