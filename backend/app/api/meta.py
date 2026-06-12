@@ -29,6 +29,26 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "74",
+                "date": "2026-06-12",
+                "title": "WindWilly-startpagina verder versoberd",
+                "highlights": [
+                    "De landing toont nu alleen nog de hero en het blok met samenwerkende coöperaties.",
+                    "De CTA-knoppen, het aparte introblok en de extra footerzin zijn verwijderd voor een rustigere pagina.",
+                    "De startpagina blijft compact, herkenbaar en in lijn met de bestaande WindWilly-branding.",
+                ],
+            },
+            {
+                "iteration": "73",
+                "date": "2026-06-11",
+                "title": "WindWilly-startpagina terug naar de kern",
+                "highlights": [
+                    "De homepage is teruggebracht tot een rustige start met alleen een heldere hero, korte intro en de samenwerkende coöperaties.",
+                    "Extra portaalblokken en update-onderdelen zijn van de startpagina weggehaald.",
+                    "De pagina blijft zo overzichtelijk en past beter bij de bestaande WindWilly-branding.",
+                ],
+            },
+            {
                 "iteration": "72",
                 "date": "2026-06-11",
                 "title": "Compactere bewerkmodal voor gebruikers",

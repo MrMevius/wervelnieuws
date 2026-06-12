@@ -511,6 +511,16 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "73",
+        date: "2026-06-11",
+        title: "WindWilly-startpagina duidelijker en rijker",
+        highlights: [
+          "De homepage toont nu directer wat WindWilly doet en voor wie de startpagina bedoeld is.",
+          "De belangrijkste instaproutes, module-kaarten en een actuele update-sectie zijn toegevoegd.",
+          "De footer geeft nu meer context en snelle toegang tot de hoofdonderdelen van de suite."
+        ]
+      },
+      {
         iteration: "01",
         date: "2026-03-01",
         title: "Eerste basis",
@@ -548,21 +558,21 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
-async function loginIntoApp() {
-  mockApi.getCurrentUser.mockResolvedValueOnce({
-    id: "u1",
-    username: "admin",
-    full_name: null,
-    email: null,
-    is_admin: true,
-    theme_preference: "system",
-    has_avatar: false
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
-  await waitFor(() => {
-    expect(screen.getByRole("heading", { name: /Welkom bij WindWilly|Workflow overzicht/i })).toBeInTheDocument();
-  });
-}
+  async function loginIntoApp() {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+    await waitFor(() => {
+      expect(screen.getByRole("navigation", { name: "Hoofdnavigatie" })).toBeInTheDocument();
+    });
+  }
 
 function openWervelnieuwsDropdown() {
   const wervelLink = screen.getByRole("link", { name: "Wervelnieuws" });
@@ -571,7 +581,7 @@ function openWervelnieuwsDropdown() {
 
 function clickWervelSubmenu(label: string) {
   openWervelnieuwsDropdown();
-  fireEvent.click(screen.getByRole("link", { name: label }));
+  fireEvent.click(within(screen.getByLabelText("Wervelnieuws navigatie")).getByRole("link", { name: label }));
 }
 
 function openVergaderbordenDropdown() {
@@ -581,7 +591,9 @@ function openVergaderbordenDropdown() {
 
 function clickVergaderbordenProject(label: string) {
   openVergaderbordenDropdown();
-  fireEvent.click(screen.getByRole("link", { name: label }));
+  fireEvent.click(
+    within(screen.getByLabelText("Vergaderborden projectnavigatie")).getByRole("link", { name: label })
+  );
 }
 
 describe("App", () => {
@@ -606,7 +618,7 @@ describe("App", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /Welkom bij WindWilly|Workflow overzicht/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
     });
   });
 
@@ -637,7 +649,7 @@ describe("App", () => {
   });
 
   it("shows WindWilly suite navigation and simplified landing after login", async () => {
-    renderApp();
+    const { container } = renderApp();
     await loginIntoApp();
 
     await waitFor(() => {
@@ -646,19 +658,28 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Bekijk changelog" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samenwerkende coöperaties" })).toBeInTheDocument();
+      expect(screen.getByText(/online vraagbaak\./i)).toBeInTheDocument();
+      expect(screen.getByText(/brengt nieuws naar buiten\./i)).toBeInTheDocument();
+      expect(screen.getByText(/bundelt open acties\./i)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Rustig startpunt" })).not.toBeInTheDocument();
       expect(
-        screen.getByText(
-          "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
+        screen.queryByText(
+          "Lokale communicatie, planning en publicatie met broncontrole, versiebeheer en menselijke review."
         )
-      ).toBeInTheDocument();
+      ).not.toBeInTheDocument();
     });
+
+    expect(container.querySelectorAll(".windwilly-homepage .panel")).toHaveLength(2);
 
     expect(screen.queryByText("Komende chatbotmodule voor snelle beantwoording van projectvragen.")).not.toBeInTheDocument();
     expect(screen.queryByText("Volledige redactie- en publicatieflow voor lokale windparkcommunicatie.")).not.toBeInTheDocument();
     expect(screen.queryByText("Placeholder voor urenregistratie en teaminzicht per projectfase.")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Bestuur (placeholder)" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Bekijk changelog/i })).not.toBeInTheDocument();
   });
 
   it("opens vergaderborden page from top navigation", async () => {
@@ -831,7 +852,7 @@ describe("App", () => {
     await loginIntoApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Trello" })).not.toBeInTheDocument();
     });
   });
@@ -859,20 +880,24 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("link", { name: "WindWilly landing" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          "WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber & Co en Energiek Daarle."
-        )
-      ).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Bekijk changelog" })).toBeInTheDocument();
-      expect(screen.queryByText(/Alles voor planning, content en publicatie/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
+      expect(screen.getByText("Één rustig startpunt voor wat er speelt.")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Spring naar de belangrijkste onderdelen" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Wat is er recent veranderd?" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Waarom dit overzicht betrouwbaar is" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuur (placeholder)" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 2" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 3" })).not.toBeInTheDocument();
       expect(screen.getByText("© 2026 WindWilly · Vibecoded by BJ & MR")).toBeInTheDocument();
-      expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          "Lokale communicatie, planning en publicatie met broncontrole, versiebeheer en menselijke review."
+        )
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Footer navigatie")).not.toBeInTheDocument();
     });
   });
 
@@ -888,8 +913,9 @@ describe("App", () => {
     fireEvent.mouseEnter(wervelLink.parentElement as HTMLElement);
 
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: "Main" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Planning" })).toBeInTheDocument();
+      const dropdown = within(screen.getByLabelText("Wervelnieuws navigatie"));
+      expect(dropdown.getByRole("link", { name: "Main" })).toBeInTheDocument();
+      expect(dropdown.getByRole("link", { name: "Planning" })).toBeInTheDocument();
     });
   });
 
@@ -915,11 +941,24 @@ describe("App", () => {
     });
   });
 
-  it("opens separate changelog page from WindWilly landing with newest items first", async () => {
-    renderApp();
-    await loginIntoApp();
+  it("opens separate changelog page from About with newest items first", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({
+      id: "u1",
+      username: "admin",
+      full_name: null,
+      email: null,
+      is_admin: true,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    renderApp(["/about"]);
 
-    fireEvent.click(screen.getByRole("link", { name: "Bekijk changelog" }));
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "changelogpagina" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("link", { name: "changelogpagina" }));
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
@@ -928,6 +967,7 @@ describe("App", () => {
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
     expect(headings).toEqual([
+      "Iteratie 73 - WindWilly-startpagina duidelijker en rijker",
       "Iteratie 03 - Aparte changelog",
       "Iteratie 02 - Nieuwe shell",
       "Iteratie 01 - Eerste basis"

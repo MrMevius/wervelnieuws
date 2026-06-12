@@ -552,7 +552,11 @@ export function App() {
         </Routes>
       </main>
       <footer className="app-footer">
-        <small>© 2026 WindWilly · Vibecoded by BJ & MR</small>
+        <div className="app-footer-inner">
+          <div className="app-footer-copy">
+            <small>© 2026 WindWilly · Vibecoded by BJ &amp; MR</small>
+          </div>
+        </div>
       </footer>
     </div>
   );
@@ -573,17 +577,39 @@ function handleLogin(
 
 function WindWillyLandingPage() {
   return (
-    <section className="panel main-dashboard">
-      <header className="main-hero windwilly-hero suite-overview-banner">
-        <p className="eyebrow">Suite-overzicht</p>
-        <h1>Welkom bij WindWilly</h1>
-        <p>WindWilly is een initiatief van drie samenwerkende energiecoöperaties: Duurzaam Daarlerveen, Noaber &amp; Co en Energiek Daarle.</p>
-        <div className="main-hero-actions">
-          <NavLink to={WINDWILLY_PATHS.changelog} className="main-action-link is-secondary">
-            Bekijk changelog
-          </NavLink>
+    <section className="main-dashboard windwilly-homepage">
+      <header className="panel windwilly-home-hero" aria-labelledby="windwilly-home-title">
+        <div className="windwilly-home-hero-copy">
+          <p className="eyebrow">WindWilly · startpunt</p>
+          <h1 id="windwilly-home-title">WindWilly voor vraag, nieuws en acties</h1>
+          <p>Één rustig startpunt voor wat er speelt.</p>
+          <ul className="windwilly-home-summary-list">
+            <li>
+              <strong>WindWilly</strong> is de online vraagbaak.
+            </li>
+            <li>
+              <strong>Wervelnieuws</strong> brengt nieuws naar buiten.
+            </li>
+            <li>
+              <strong>Vergaderborden</strong> bundelt open acties.
+            </li>
+          </ul>
         </div>
       </header>
+
+      <section className="panel windwilly-cooperatives-panel" aria-labelledby="windwilly-cooperatives-title">
+        <div className="windwilly-section-heading">
+          <p className="eyebrow">Samenwerking</p>
+          <h2 id="windwilly-cooperatives-title">Samenwerkende coöperaties</h2>
+          <p className="muted">Drie coöperaties delen één herkenbare WindWilly-omgeving.</p>
+        </div>
+
+        <ul className="windwilly-cooperatives-list">
+          <li>Duurzaam Daarlerveen</li>
+          <li>Noaber &amp; Co</li>
+          <li>Energiek Daarle</li>
+        </ul>
+      </section>
     </section>
   );
 }
