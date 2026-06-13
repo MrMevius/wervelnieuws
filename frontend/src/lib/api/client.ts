@@ -246,10 +246,19 @@ export type BoardCard = {
   recordings_count: number;
 };
 
+export type BoardAccessUser = {
+  id: string;
+  username: string;
+  full_name: string | null;
+  is_admin: boolean;
+  has_avatar?: boolean;
+};
+
 export type BoardProjectDetail = {
   project_id: string;
   project_name: string;
   invited_user_ids: string[];
+  access_users: BoardAccessUser[];
   cards: BoardCard[];
 };
 

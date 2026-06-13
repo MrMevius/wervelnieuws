@@ -22,6 +22,14 @@ class BoardProjectSummaryResponse(BaseModel):
     last_activity_at: datetime | None
 
 
+class BoardAccessUserResponse(BaseModel):
+    id: str
+    username: str
+    full_name: str | None
+    is_admin: bool
+    has_avatar: bool = False
+
+
 class BoardRightsUserResponse(BaseModel):
     id: str
     username: str
@@ -145,6 +153,7 @@ class ProjectBoardResponse(BaseModel):
     project_id: str
     project_name: str
     invited_user_ids: list[str]
+    access_users: list[BoardAccessUserResponse]
     cards: list[BoardCardResponse]
 
 

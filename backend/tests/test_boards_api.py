@@ -79,6 +79,32 @@ def test_board_access_for_invited_user_only(client):
     assert board_for_editor.status_code == 403
 
 
+def test_board_detail_exposes_access_users_for_invited_non_admin(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    editor = next(item for item in users if item["username"] == "editor")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Zichtbaar bord", "description": "", "invited_user_ids": [editor["id"]]},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    board = client.get(f"/api/boards/projects/{project_id}", headers=editor_headers)
+    assert board.status_code == 200
+    payload = board.json()
+
+    assert payload["invited_user_ids"] == [editor["id"]]
+    assert [user["username"] for user in payload["access_users"]] == ["admin", "editor"]
+    assert payload["access_users"][0]["is_admin"] is True
+    assert "has_avatar" in payload["access_users"][0]
+    assert payload["access_users"][1]["is_admin"] is False
+    assert "email" not in payload["access_users"][0]
+
+
 def test_admin_can_manage_board_rights_and_visibility(client):
     admin_headers = _login(client)
     editor_headers = _login(client, "editor", "editor12345")

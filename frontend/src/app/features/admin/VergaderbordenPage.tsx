@@ -3,6 +3,7 @@ import { FormEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState }
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
+  BoardAccessUser,
   createBoardCard,
   createBoardProject,
   deleteBoardCardUpdate,
@@ -29,6 +30,7 @@ const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
 const MIN_RECORDING_SECONDS = 5;
 const RECORDING_TOO_SHORT_MESSAGE = "Opname is te kort. Neem minimaal 5 seconden op.";
+const BOARD_ACCESS_BADGE_LIMIT = 5;
 
 type DragCardMeta = {
   cardId: string;
@@ -132,6 +134,32 @@ function avatarUrlForAssignment(assignment: BoardAssignment): string | null {
   return assignment.has_avatar ? getAdminUserAvatarUrl(assignment.user_id) : null;
 }
 
+function avatarUrlForAccessUser(user: Pick<BoardAccessUser, "id" | "has_avatar">): string | null {
+  return user.has_avatar ? getAdminUserAvatarUrl(user.id) : null;
+}
+
+function AvatarBadge({
+  label,
+  avatarUrl,
+  className = "",
+  ariaLabel = label
+}: {
+  label: string;
+  avatarUrl: string | null;
+  className?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <span className={`user-chip assignment-avatar${className ? ` ${className}` : ""}`} title={label} aria-label={ariaLabel}>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" className="assignment-avatar-image" />
+      ) : (
+        <span className="assignment-avatar-initials" aria-hidden="true">{initialsFromName(label)}</span>
+      )}
+    </span>
+  );
+}
+
 function AssignedUserAvatarRow({ assignments, className = "" }: { assignments: BoardAssignment[]; className?: string }) {
   if (!assignments.length) return null;
   return (
@@ -139,16 +167,45 @@ function AssignedUserAvatarRow({ assignments, className = "" }: { assignments: B
       {assignments.map((assn) => {
         const label = assn.user_display_name;
         const avatarUrl = avatarUrlForAssignment(assn);
+        return <AvatarBadge key={assn.id} label={label} avatarUrl={avatarUrl} />;
+      })}
+    </div>
+  );
+}
+
+function BoardAccessBadges({ users }: { users: BoardAccessUser[] }) {
+  if (!users.length) return null;
+
+  const visibleUsers = users.slice(0, BOARD_ACCESS_BADGE_LIMIT);
+  const hiddenUsers = users.slice(BOARD_ACCESS_BADGE_LIMIT);
+  const overflowCount = users.length - visibleUsers.length;
+  const hiddenUserNames = hiddenUsers.map((user) => displayNameForUser(user)).join(", ");
+
+  return (
+    <div className="chip-row vergaderborden-header-access-row" aria-label="Gebruikers met toegang tot dit bord">
+      {visibleUsers.map((user) => {
+        const label = displayNameForUser(user);
+        const avatarUrl = avatarUrlForAccessUser(user);
         return (
-          <span key={assn.id} className="user-chip assignment-avatar" title={label} aria-label={label}>
-            {avatarUrl ? (
-              <img src={avatarUrl} alt="" className="assignment-avatar-image" />
-            ) : (
-              <span className="assignment-avatar-initials" aria-hidden="true">{initialsFromName(label)}</span>
-            )}
-          </span>
+          <AvatarBadge
+            key={user.id}
+            className="vergaderborden-header-access-badge"
+            label={label}
+            avatarUrl={avatarUrl}
+            ariaLabel={`Toegang: ${label}`}
+          />
         );
       })}
+      {overflowCount > 0 && (
+        <span
+          className="user-chip assignment-avatar vergaderborden-header-access-badge vergaderborden-header-access-overflow"
+          tabIndex={0}
+          aria-label={`+${overflowCount} verborgen gebruikers: ${hiddenUserNames}`}
+          title={hiddenUserNames}
+        >
+          +{overflowCount}
+        </span>
+      )}
     </div>
   );
 }
@@ -539,6 +596,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     return selected?.name ?? boardQuery.data?.project_name ?? null;
   }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
 
+  const boardAccessUsers = boardQuery.data?.access_users ?? [];
+
   const cardActivityItems = useMemo<CardActivityItem[]>(() => {
     if (!cardQuery.data) return [];
     const updates: CardActivityItem[] = cardQuery.data.updates.map((u) => ({
@@ -814,6 +873,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     <section className="panel vergaderborden-page">
       <div className="vergaderborden-header">
         {resolvedProjectName && <h1>{resolvedProjectName}</h1>}
+        {resolvedProjectId && <BoardAccessBadges users={boardAccessUsers} />}
       </div>
       {canManageProjects && (
         <>

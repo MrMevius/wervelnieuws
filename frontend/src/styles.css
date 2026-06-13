@@ -507,6 +507,14 @@ button:disabled {
   gap: 6px;
 }
 
+.vergaderborden-header-access-row {
+  margin-top: 6px;
+}
+
+.vergaderborden-header-access-badge {
+  white-space: nowrap;
+}
+
 .user-chip {
   width: 28px;
   height: 28px;

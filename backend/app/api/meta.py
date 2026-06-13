@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "79",
+                "date": "2026-06-12",
+                "title": "Vergaderbord-header gebruikt avatarbadges",
+                "highlights": [
+                    "Op het geopende vergaderbord zie je toegangsgebruikers nu als compacte avatarbadges in plaats van naamchips.",
+                    "Wanneer een avatar beschikbaar is, wordt die gebruikt; anders zie je automatisch initialen als fallback.",
+                    "De +N-overflowbadge laat verborgen toegangsgebruikers nu op hover/focus zien via titel en aria-label, terwijl de header compact blijft met maximaal vijf zichtbare badges.",
+                ],
+            },
+            {
                 "iteration": "77",
                 "date": "2026-06-12",
                 "title": "Compacte bordrechtenmatrix met admins",

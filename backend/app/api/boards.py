@@ -9,6 +9,7 @@ from app.core.db import get_db
 from app.models.entities import Recording, User
 from app.repositories.board_repository import BoardRepository
 from app.schemas.boards import (
+    BoardAccessUserResponse,
     BoardCardCreateRequest,
     BoardCardMoveRequest,
     BoardCardDescriptionUpdateRequest,
@@ -47,6 +48,36 @@ def _display_name(user: User | None) -> str:
     if not user:
         return "onbekend"
     return (user.full_name or "").strip() or user.username
+
+
+def _access_user_sort_key(user: User) -> tuple[int, str, str]:
+    return (
+        0 if user.is_admin else 1,
+        _display_name(user).casefold(),
+        user.username.casefold(),
+    )
+
+
+def _project_access_users(repo: BoardRepository, project) -> list[BoardAccessUserResponse]:
+    invited_ids = set(project.invited_user_ids)
+    users = [
+        user
+        for user in repo.list_users()
+        if user.is_admin or user.id in invited_ids
+    ]
+    ordered_users = sorted(users, key=_access_user_sort_key)
+    unique_users: dict[str, BoardAccessUserResponse] = {}
+    for user in ordered_users:
+        if user.id in unique_users:
+            continue
+        unique_users[user.id] = BoardAccessUserResponse(
+            id=user.id,
+            username=user.username,
+            full_name=user.full_name,
+            is_admin=user.is_admin,
+            has_avatar=bool(user.avatar_path),
+        )
+    return list(unique_users.values())
 
 
 def _build_move_update_message(old_column: str, new_column: str) -> str:
@@ -175,7 +206,13 @@ def get_project_board(project_id: str, current: User = Depends(get_current_user)
     service = BoardService(repo)
     project = service.ensure_project_access(repo.get_project(project_id), current)
     cards = repo.list_project_cards(project.id)
-    return ProjectBoardResponse(project_id=project.id, project_name=project.name, invited_user_ids=project.invited_user_ids, cards=[_card_response(repo, card) for card in cards])
+    return ProjectBoardResponse(
+        project_id=project.id,
+        project_name=project.name,
+        invited_user_ids=project.invited_user_ids,
+        access_users=_project_access_users(repo, project),
+        cards=[_card_response(repo, card) for card in cards],
+    )
 
 
 @router.post("/projects/{project_id}/cards", response_model=BoardCardResponse)

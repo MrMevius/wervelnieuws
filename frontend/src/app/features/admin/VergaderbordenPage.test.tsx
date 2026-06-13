@@ -625,6 +625,80 @@ describe("Vergaderborden drag/drop", () => {
     expect(await screen.findByRole("button", { name: "Nieuw project" })).toBeInTheDocument();
   });
 
+  it("toont in de geopende header admins en genodigden als compacte badges met overflow", async () => {
+    api.listAdminUsers.mockResolvedValue([]);
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u3", "u4", "u5", "u6", "u7"],
+      access_users: [
+        { id: "u1", username: "alex", full_name: "Alex Admin", is_admin: true, has_avatar: true },
+        { id: "u2", username: "bram", full_name: "Bram Beheerder", is_admin: true, has_avatar: false },
+        { id: "u3", username: "cato", full_name: "Cato", is_admin: false, has_avatar: true },
+        { id: "u4", username: "daan", full_name: "Daan", is_admin: false, has_avatar: false },
+        { id: "u5", username: "eva", full_name: "Eva", is_admin: false, has_avatar: false },
+        { id: "u6", username: "fleur", full_name: "Fleur", is_admin: false, has_avatar: true },
+        { id: "u7", username: "gijs", full_name: "Gijs", is_admin: false, has_avatar: false }
+      ],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=p1");
+
+    const header = await screen.findByLabelText("Gebruikers met toegang tot dit bord");
+    expect(header.querySelectorAll(".vergaderborden-header-access-badge")).toHaveLength(6);
+
+    const alexBadge = within(header).getByLabelText("Toegang: Alex Admin");
+    expect(alexBadge.querySelector("img.assignment-avatar-image")).not.toBeNull();
+    expect(alexBadge).not.toHaveTextContent("Alex Admin");
+
+    const bramBadge = within(header).getByLabelText("Toegang: Bram Beheerder");
+    expect(bramBadge).toHaveTextContent("BB");
+    expect(bramBadge.querySelector("img.assignment-avatar-image")).toBeNull();
+
+    const catoBadge = within(header).getByLabelText("Toegang: Cato");
+    expect(catoBadge.querySelector("img.assignment-avatar-image")).not.toBeNull();
+
+    expect(within(header).getByLabelText("Toegang: Daan")).toHaveTextContent("D");
+    expect(within(header).getByLabelText("Toegang: Eva")).toHaveTextContent("E");
+    expect(within(header).queryByLabelText("Toegang: Fleur")).not.toBeInTheDocument();
+    const overflowBadge = within(header).getByText("+2");
+    expect(overflowBadge).toHaveAttribute("tabindex", "0");
+    expect(overflowBadge).toHaveAttribute("title", "Fleur, Gijs");
+    expect(overflowBadge).toHaveAttribute("aria-label", "+2 verborgen gebruikers: Fleur, Gijs");
+  });
+
+  it("toont toegangsbadges voor een uitgenodigde niet-admin op basis van board metadata", async () => {
+    api.listAdminUsers.mockResolvedValue([]);
+    api.getCurrentUser.mockResolvedValue({
+      id: "u3",
+      username: "cato",
+      full_name: "Cato",
+      email: null,
+      is_admin: false,
+      theme_preference: "system",
+      has_avatar: false
+    });
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u3"],
+      access_users: [
+        { id: "u1", username: "alex", full_name: "Alex Admin", is_admin: true },
+        { id: "u3", username: "cato", full_name: "Cato", is_admin: false }
+      ],
+      cards: []
+    });
+
+    renderPage("/vergaderborden?project=p1");
+
+    const header = await screen.findByLabelText("Gebruikers met toegang tot dit bord");
+    expect(within(header).getByLabelText("Toegang: Alex Admin")).toBeInTheDocument();
+    expect(within(header).getByLabelText("Toegang: Cato")).toBeInTheDocument();
+    expect(within(header).queryByLabelText(/Nog \d+ gebruikers met toegang/)).not.toBeInTheDocument();
+    expect(api.listAdminUsers).toHaveBeenCalled();
+  });
+
   it("toont display names voor toewijzingen en update-auteur", async () => {
     const card = {
       id: "c1",
