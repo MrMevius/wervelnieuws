@@ -88,6 +88,10 @@ const mockApi = vi.hoisted(() => ({
       invited_user_ids: ["u1"],
       card_count: 2
     },
+    access_users: [
+      { id: "u1", username: "admin", full_name: "Admin", is_admin: true, is_active: true, has_avatar: false },
+      { id: "u2", username: "editor", full_name: "Editor", is_admin: false, is_active: true, has_avatar: false }
+    ],
     cards: []
   }),
   getBoardCard: vi.fn().mockResolvedValue({

@@ -63,6 +63,113 @@ def test_board_project_card_update_and_recording_flow(client):
     assert download.status_code == 200
 
 
+def test_board_card_attachment_flow_and_permissions(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    editor = next(item for item in users if item["username"] == "editor")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Bijlagenbord", "description": "", "invited_user_ids": [editor["id"]]},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={"title": "Bijlagekaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    attachment_bytes = BytesIO(b"attachment data")
+    uploaded = client.post(
+        f"/api/boards/cards/{card_id}/attachments",
+        headers=admin_headers,
+        files={"file": ("notitie.pdf", attachment_bytes, "application/pdf")},
+    )
+    assert uploaded.status_code == 200
+    attachment = uploaded.json()
+    assert attachment["filename"] == "notitie.pdf"
+    assert attachment["mime_type"] == "application/pdf"
+    assert attachment["download_url"].endswith(f"/api/boards/attachments/{attachment['id']}/download")
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=admin_headers)
+    assert detail.status_code == 200
+    assert detail.json()["card"]["attachments_count"] == 1
+    assert detail.json()["attachments"][0]["filename"] == "notitie.pdf"
+
+    download = client.get(attachment["download_url"], headers=editor_headers)
+    assert download.status_code == 200
+    assert "notitie.pdf" in download.headers["content-disposition"]
+
+    removed = client.delete(f"/api/boards/cards/{card_id}/attachments/{attachment['id']}", headers=admin_headers)
+    assert removed.status_code == 200
+
+    after_delete = client.get(f"/api/boards/cards/{card_id}", headers=admin_headers)
+    assert after_delete.status_code == 200
+    assert after_delete.json()["attachments"] == []
+
+    hidden_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Verborgen bijlagenbord", "description": "", "invited_user_ids": []},
+    )
+    assert hidden_project.status_code == 200
+    hidden_project_id = hidden_project.json()["id"]
+    hidden_card = client.post(
+        f"/api/boards/projects/{hidden_project_id}/cards",
+        headers=admin_headers,
+        json={"title": "Verborgen kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert hidden_card.status_code == 200
+    hidden_card_id = hidden_card.json()["id"]
+    hidden_upload = client.post(
+        f"/api/boards/cards/{hidden_card_id}/attachments",
+        headers=admin_headers,
+        files={"file": ("intern.txt", BytesIO(b"intern"), "text/plain")},
+    )
+    assert hidden_upload.status_code == 200
+    hidden_attachment_id = hidden_upload.json()["id"]
+
+    assert client.get(f"/api/boards/cards/{hidden_card_id}", headers=editor_headers).status_code == 403
+    assert client.get(f"/api/boards/attachments/{hidden_attachment_id}/download", headers=editor_headers).status_code == 403
+    assert client.post(
+        f"/api/boards/cards/{hidden_card_id}/attachments",
+        headers=editor_headers,
+        files={"file": ("x.txt", BytesIO(b"x"), "text/plain")},
+    ).status_code == 403
+    assert client.delete(f"/api/boards/cards/{hidden_card_id}/attachments/{hidden_attachment_id}", headers=editor_headers).status_code == 403
+
+
+def test_board_card_attachment_rejects_empty_upload(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Lege upload", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    uploaded = client.post(
+        f"/api/boards/cards/{card_id}/attachments",
+        headers=headers,
+        files={"file": ("leeg.txt", BytesIO(b""), "text/plain")},
+    )
+    assert uploaded.status_code == 400
+
+
 def test_board_access_for_invited_user_only(client):
     admin_headers = _login(client)
     editor_headers = _login(client, "editor", "editor12345")
@@ -100,9 +207,91 @@ def test_board_detail_exposes_access_users_for_invited_non_admin(client):
     assert payload["invited_user_ids"] == [editor["id"]]
     assert [user["username"] for user in payload["access_users"]] == ["admin", "editor"]
     assert payload["access_users"][0]["is_admin"] is True
+    assert payload["access_users"][0]["is_active"] is True
     assert "has_avatar" in payload["access_users"][0]
     assert payload["access_users"][1]["is_admin"] is False
+    assert payload["access_users"][1]["is_active"] is True
     assert "email" not in payload["access_users"][0]
+
+
+def test_board_card_assignment_rejects_inactive_or_disallowed_users(client):
+    admin_headers = _login(client)
+    users = client.get("/api/admin/users", headers=admin_headers).json()
+    admin = next(item for item in users if item["username"] == "admin")
+    editor = next(item for item in users if item["username"] == "editor")
+
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Toewijzingsbord", "description": "", "invited_user_ids": [editor["id"]]},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    allowed_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={
+            "title": "Toegewezen kaart",
+            "description": "",
+            "column": "todo",
+            "assignment_user_ids": [editor["id"], admin["id"]],
+        },
+    )
+    assert allowed_card.status_code == 200
+
+    board_after_allowed = client.get(f"/api/boards/projects/{project_id}", headers=admin_headers)
+    assert board_after_allowed.status_code == 200
+    assert [card["title"] for card in board_after_allowed.json()["cards"]] == ["Toegewezen kaart"]
+
+    create_user = client.post(
+        "/api/admin/users",
+        headers=admin_headers,
+        json={"username": "reviewer", "password": "reviewer12345"},
+    )
+    assert create_user.status_code == 200
+    reviewer_id = create_user.json()["id"]
+
+    disallowed_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={
+            "title": "Niet toegestaan",
+            "description": "",
+            "column": "todo",
+            "assignment_user_ids": [reviewer_id],
+        },
+    )
+    assert disallowed_card.status_code == 400
+    assert reviewer_id in disallowed_card.json()["detail"]
+
+    board_after_disallowed = client.get(f"/api/boards/projects/{project_id}", headers=admin_headers)
+    assert board_after_disallowed.status_code == 200
+    assert [card["title"] for card in board_after_disallowed.json()["cards"]] == ["Toegewezen kaart"]
+
+    deactivate_editor = client.patch(
+        f"/api/admin/users/{editor['id']}/active",
+        headers=admin_headers,
+        json={"is_active": False},
+    )
+    assert deactivate_editor.status_code == 200
+
+    inactive_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=admin_headers,
+        json={
+            "title": "Inactief",
+            "description": "",
+            "column": "todo",
+            "assignment_user_ids": [editor["id"]],
+        },
+    )
+    assert inactive_card.status_code == 400
+    assert editor["id"] in inactive_card.json()["detail"]
+
+    board_after_inactive = client.get(f"/api/boards/projects/{project_id}", headers=admin_headers)
+    assert board_after_inactive.status_code == 200
+    assert [card["title"] for card in board_after_inactive.json()["cards"]] == ["Toegewezen kaart"]
 
 
 def test_admin_can_manage_board_rights_and_visibility(client):

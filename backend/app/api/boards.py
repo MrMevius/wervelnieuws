@@ -13,6 +13,7 @@ from app.schemas.boards import (
     BoardCardCreateRequest,
     BoardCardMoveRequest,
     BoardCardDescriptionUpdateRequest,
+    BoardAttachmentResponse,
     BoardCardResponse,
     BoardCardTitleUpdateRequest,
     BoardProjectCreateRequest,
@@ -75,6 +76,7 @@ def _project_access_users(repo: BoardRepository, project) -> list[BoardAccessUse
             username=user.username,
             full_name=user.full_name,
             is_admin=user.is_admin,
+            is_active=user.is_active,
             has_avatar=bool(user.avatar_path),
         )
     return list(unique_users.values())
@@ -104,6 +106,7 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         ],
         updates_count=repo.count_updates(card.id),
         recordings_count=repo.count_recordings(card.id),
+        attachments_count=repo.count_attachments(card.id),
     )
 
 
@@ -111,6 +114,21 @@ def _update_image_url(update_id: str, image_path: str | None) -> str | None:
     if not image_path:
         return None
     return f"/api/boards/updates/{update_id}/image"
+
+
+def _attachment_response(repo: BoardRepository, row) -> BoardAttachmentResponse:
+    uploaded_by = row.uploaded_by or repo.get_user(row.uploaded_by_user_id)
+    return BoardAttachmentResponse(
+        id=row.id,
+        uploaded_by_user_id=row.uploaded_by_user_id,
+        uploaded_by_username=uploaded_by.username if uploaded_by else None,
+        uploaded_by_display_name=_display_name(uploaded_by),
+        filename=row.filename,
+        mime_type=row.mime_type,
+        size_bytes=row.size_bytes,
+        created_at=row.created_at,
+        download_url=f"/api/boards/attachments/{row.id}/download",
+    )
 
 
 @router.get("/projects", response_model=list[BoardProjectSummaryResponse])
@@ -220,8 +238,9 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     repo = BoardRepository(db)
     service = BoardService(repo)
     project = service.ensure_project_access(repo.get_project(project_id), current)
+    assignment_user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
     card = repo.create_card(project.id, payload.title, payload.description, payload.column)
-    repo.replace_assignments(card, service.ensure_invited_users_exist(payload.assignment_user_ids))
+    repo.replace_assignments(card, assignment_user_ids)
     card = service.ensure_card_access(repo.get_card(card.id), current)
     service.touch_activity(project)
     AuditService(db).log("board.card.created", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id, card_id=card.id))
@@ -279,6 +298,7 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
     card = service.ensure_card_access(repo.get_card(card_id), current)
     updates = repo.list_updates(card.id)
     recordings = repo.list_recordings(card.id)
+    attachments = repo.list_attachments(card.id)
     return CardDetailResponse(
         card=_card_response(repo, card),
         updates=[
@@ -313,6 +333,7 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
             )
             for row in recordings
         ],
+        attachments=[_attachment_response(repo, row) for row in attachments],
     )
 
 
@@ -438,6 +459,69 @@ def upload_recording(
         created_at=row.created_at,
         download_url=f"/api/boards/recordings/{row.id}/download",
     )
+
+
+@router.post("/cards/{card_id}/attachments", response_model=BoardAttachmentResponse)
+def upload_attachment(
+    card_id: str,
+    file: UploadFile = File(...),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BoardAttachmentResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    file_path, size_bytes, mime_type, filename = service.store_card_attachment(card, file)
+    row = repo.create_attachment(card.id, current.id, filename, file_path, mime_type, size_bytes)
+    service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
+    AuditService(db).log(
+        "board.card.attachment_created",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=card.id, attachment_id=row.id),
+    )
+    return _attachment_response(repo, row)
+
+
+@router.delete("/cards/{card_id}/attachments/{attachment_id}")
+def delete_attachment(
+    card_id: str,
+    attachment_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    attachment = repo.get_attachment(attachment_id)
+    if not attachment or attachment.card_id != card.id:
+        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+
+    file_path = Path(attachment.file_path)
+    repo.delete_attachment(attachment)
+    if file_path.exists() and file_path.is_file():
+        file_path.unlink(missing_ok=True)
+    service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
+    AuditService(db).log(
+        "board.card.attachment_deleted",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=card.id, attachment_id=attachment_id),
+    )
+    return {"status": "deleted"}
+
+
+@router.get("/attachments/{attachment_id}/download")
+def download_attachment(attachment_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FileResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    attachment = repo.get_attachment(attachment_id)
+    if not attachment:
+        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+    card = service.ensure_card_access(repo.get_card(attachment.card_id), current)
+    del card
+    file_path = Path(attachment.file_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Bijlage niet gevonden")
+    return FileResponse(path=str(file_path), media_type=attachment.mime_type, filename=attachment.filename)
 
 
 @router.get("/recordings/{recording_id}/download")

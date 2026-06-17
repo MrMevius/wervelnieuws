@@ -27,6 +27,7 @@ class BoardAccessUserResponse(BaseModel):
     username: str
     full_name: str | None
     is_admin: bool
+    is_active: bool
     has_avatar: bool = False
 
 
@@ -137,6 +138,18 @@ class RecordingResponse(BaseModel):
     download_url: str
 
 
+class BoardAttachmentResponse(BaseModel):
+    id: str
+    uploaded_by_user_id: str
+    uploaded_by_username: str | None = None
+    uploaded_by_display_name: str | None = None
+    filename: str
+    mime_type: str
+    size_bytes: int
+    created_at: datetime
+    download_url: str
+
+
 class BoardCardResponse(BaseModel):
     id: str
     project_id: str
@@ -147,6 +160,7 @@ class BoardCardResponse(BaseModel):
     assignments: list[CardAssignmentResponse]
     updates_count: int
     recordings_count: int
+    attachments_count: int
 
 
 class ProjectBoardResponse(BaseModel):
@@ -161,5 +175,6 @@ class CardDetailResponse(BaseModel):
     card: BoardCardResponse
     updates: list[CardUpdateResponse]
     recordings: list[RecordingResponse]
+    attachments: list[BoardAttachmentResponse]
 
     model_config = ConfigDict(from_attributes=True)

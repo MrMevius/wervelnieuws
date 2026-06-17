@@ -152,6 +152,9 @@ class BoardCard(Base, TimestampMixin):
     recordings: Mapped[list["Recording"]] = relationship(
         back_populates="card", cascade="all,delete"
     )
+    attachments: Mapped[list["BoardCardAttachment"]] = relationship(
+        back_populates="card", cascade="all,delete"
+    )
 
 
 class CardAssignment(Base, TimestampMixin):
@@ -227,6 +230,29 @@ class Recording(Base):
     )
 
     card: Mapped[BoardCard] = relationship(back_populates="recordings")
+    uploaded_by: Mapped[User] = relationship()
+
+
+class BoardCardAttachment(Base):
+    __tablename__ = "board_card_attachments"
+    __table_args__ = (Index("ix_board_card_attachments_card_created", "card_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    card_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("board_cards.id"), nullable=False
+    )
+    uploaded_by_user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=False
+    )
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    mime_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
+    )
+
+    card: Mapped[BoardCard] = relationship(back_populates="attachments")
     uploaded_by: Mapped[User] = relationship()
 
 

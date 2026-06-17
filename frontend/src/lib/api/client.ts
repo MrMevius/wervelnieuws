@@ -244,6 +244,7 @@ export type BoardCard = {
   assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string; has_avatar?: boolean; avatar_url?: string | null }>;
   updates_count: number;
   recordings_count: number;
+  attachments_count: number;
 };
 
 export type BoardAccessUser = {
@@ -251,6 +252,7 @@ export type BoardAccessUser = {
   username: string;
   full_name: string | null;
   is_admin: boolean;
+  is_active: boolean;
   has_avatar?: boolean;
 };
 
@@ -278,6 +280,17 @@ export type BoardCardDetail = {
     transcription_text: string;
     mime_type: string;
     size_bytes?: number | null;
+    created_at: string;
+    download_url: string;
+  }>;
+  attachments: Array<{
+    id: string;
+    uploaded_by_user_id: string;
+    uploaded_by_username?: string | null;
+    uploaded_by_display_name?: string | null;
+    filename: string;
+    mime_type: string;
+    size_bytes: number;
     created_at: string;
     download_url: string;
   }>;
@@ -660,6 +673,16 @@ export function uploadBoardRecording(cardId: string, blob: Blob, duration?: numb
     fd.append("duration", String(Math.round(duration)));
   }
   return request<{ id: string }>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
+export function uploadBoardCardAttachment(cardId: string, file: File) {
+  const fd = new FormData();
+  fd.append("file", file, file.name || "bijlage");
+  return request<{ id: string }>(`/boards/cards/${cardId}/attachments`, { method: "POST", body: fd });
+}
+
+export function deleteBoardCardAttachment(cardId: string, attachmentId: string) {
+  return request<{ status: string }>(`/boards/cards/${cardId}/attachments/${attachmentId}`, { method: "DELETE" });
 }
 
 export function getAdminGenAIConfig() {

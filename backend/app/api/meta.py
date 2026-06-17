@@ -29,6 +29,45 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "83",
+                "date": "2026-06-17",
+                "title": "Bijlagen direct toevoegen bij nieuwe vergaderbord-kaarten",
+                "highlights": [
+                    "Bij een nieuwe vergaderbord-kaart kun je nu meteen meerdere bestanden kiezen voordat je opslaat.",
+                    "Na het aanmaken worden de gekozen bijlagen automatisch gekoppeld aan de kaart.",
+                    "Als een upload mislukt, blijft de kaart bestaan en zie je daar een duidelijke melding over.",
+                ],
+            },
+            {
+                "iteration": "82",
+                "date": "2026-06-16",
+                "title": "Vergaderbord-kaarten ondersteunen nu bijlagen",
+                "highlights": [
+                    "Op toegankelijke vergaderbord-kaarten kun je nu bestanden uploaden als bijlage, direct in het kaartdetail.",
+                    "Bijlagen zijn zichtbaar in een duidelijke lijst met download- en verwijderacties, en volgen dezelfde bordtoegang als de kaart zelf.",
+                    "De nieuwe bijlagefunctionaliteit gebruikt lokale opslag en heeft backend- en frontenddekking voor de belangrijkste CRUD- en permissieflows.",
+                ],
+            },
+            {
+                "iteration": "81",
+                "date": "2026-06-16",
+                "title": "Teamleden op vergaderbord-kaarten volgen nu bordtoegang",
+                "highlights": [
+                    "De Teamleden-selector gebruikt nu de gebruikers die toegang hebben tot het actuele vergaderbord, zodat ook uitgenodigde niet-admins gewoon kunnen selecteren.",
+                    "Als teamleden nog laden, niet beschikbaar zijn of er geen actieve bordgebruikers zijn, zie je nu een duidelijke melding in plaats van een leeg vak.",
+                    "Alleen actieve en toegestane bordgebruikers kunnen nog aan een kaart worden toegewezen, waardoor foutieve toewijzingen direct worden tegengehouden.",
+                ],
+            },
+            {
+                "iteration": "80",
+                "date": "2026-06-13",
+                "title": "Automatische verplaats-updates zijn nu alleen informatief",
+                "highlights": [
+                    "Kaartverplaatsingen in de kaartmodal tonen voortaan geen bewerk- of verwijderknoppen meer.",
+                    "Hierdoor zijn automatische verplaatsingsupdates duidelijker herkenbaar als systeemmelding en minder foutgevoelig.",
+                ],
+            },
+            {
                 "iteration": "79",
                 "date": "2026-06-12",
                 "title": "Vergaderbord-header gebruikt avatarbadges",

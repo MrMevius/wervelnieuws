@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { VergaderbordenPage } from "./VergaderbordenPage";
@@ -20,7 +20,9 @@ const api = vi.hoisted(() => ({
   postBoardCardUpdate: vi.fn(),
   editBoardCardUpdate: vi.fn(),
   deleteBoardCardUpdate: vi.fn(),
-  uploadBoardRecording: vi.fn()
+  uploadBoardRecording: vi.fn(),
+  uploadBoardCardAttachment: vi.fn(),
+  deleteBoardCardAttachment: vi.fn()
 }));
 
 vi.mock("../../../lib/api/client", () => api);
@@ -67,6 +69,16 @@ function makeDataTransfer() {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("Vergaderborden drag/drop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,6 +110,8 @@ describe("Vergaderborden drag/drop", () => {
     api.editBoardCardUpdate.mockResolvedValue({ id: "u3" });
     api.deleteBoardCardUpdate.mockResolvedValue(undefined);
     api.uploadBoardRecording.mockResolvedValue({ id: "r1" });
+    api.uploadBoardCardAttachment.mockResolvedValue({ id: "a1" });
+    api.deleteBoardCardAttachment.mockResolvedValue({ status: "deleted" });
     api.moveBoardCard.mockResolvedValue({ status: "ok" });
     api.updateBoardCardTitle.mockResolvedValue({ id: "c1", title: "Nieuwe titel" });
     api.updateBoardCardDescription.mockResolvedValue({ id: "c1", description: "Nieuwe beschrijving" });
@@ -453,6 +467,119 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
+  it("toont meerdere geselecteerde bijlagen en uploadt ze automatisch na aanmaken", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    const createCard = deferred<{ id: string }>();
+    const firstUpload = deferred<{ id: string }>();
+    const secondUpload = deferred<{ id: string }>();
+    api.createBoardCard.mockReturnValueOnce(createCard.promise);
+    api.uploadBoardCardAttachment.mockReturnValueOnce(firstUpload.promise).mockReturnValueOnce(secondUpload.promise);
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+
+    const attachmentInput = screen.getByLabelText("Bijlagen selecteren") as HTMLInputElement;
+    const fileA = new File(["een"], "eerste.txt", { type: "text/plain" });
+    const fileB = new File(["twee"], "tweede.txt", { type: "text/plain" });
+    fireEvent.change(attachmentInput, { target: { files: [fileA, fileB] } });
+
+    expect(screen.getByText("Geselecteerd: eerste.txt, tweede.txt")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Titel"), { target: { value: "Nieuwe kaart" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    expect(await screen.findByText("Kaart wordt aangemaakt…")).toBeInTheDocument();
+    await act(async () => {
+      createCard.resolve({ id: "c2" });
+    });
+
+    await waitFor(() => {
+      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ title: "Nieuwe kaart", description: "", column: "todo", assignment_user_ids: [] }));
+    });
+
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(1, "c2", fileA);
+    });
+    await act(async () => {
+      firstUpload.resolve({ id: "a1" });
+    });
+
+    await waitFor(() => {
+      const progressStatus = screen.getAllByRole("status").find((el) => el.textContent?.includes("Bijlage 2 van 2 wordt geüpload…"));
+      expect(progressStatus).toBeTruthy();
+    });
+    await act(async () => {
+      secondUpload.resolve({ id: "a2" });
+    });
+
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c2", fileB);
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  it("laat een nieuwe kaart zonder bijlagen normaal aanmaken", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+    fireEvent.change(screen.getByLabelText("Titel"), { target: { value: "Zonder bijlagen" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    await waitFor(() => {
+      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ title: "Zonder bijlagen", description: "", column: "todo", assignment_user_ids: [] }));
+    });
+    expect(api.uploadBoardCardAttachment).not.toHaveBeenCalled();
+  });
+
+  it("toont Nederlandse melding als een nieuwe bijlage-upload faalt", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.uploadBoardCardAttachment.mockResolvedValueOnce({ id: "a1" }).mockRejectedValueOnce(new Error("Upload mislukt"));
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+    const attachmentInput = screen.getByLabelText("Bijlagen selecteren") as HTMLInputElement;
+    const fileA = new File(["een"], "eerste.txt", { type: "text/plain" });
+    const fileB = new File(["twee"], "tweede.txt", { type: "text/plain" });
+    fireEvent.change(attachmentInput, { target: { files: [fileA, fileB] } });
+    fireEvent.change(screen.getByLabelText("Titel"), { target: { value: "Met fout" } });
+    fireEvent.click(screen.getByRole("button", { name: "Kaart toevoegen" }));
+
+    await waitFor(() => {
+      expect(api.createBoardCard).toHaveBeenCalledWith("p1", expect.objectContaining({ title: "Met fout", description: "", column: "todo", assignment_user_ids: [] }));
+    });
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(1, "c2", fileA);
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c2", fileB);
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Kaart is aangemaakt, maar 1 van de 2 bijlagen konden niet worden geüpload. De kaart blijft beschikbaar.");
+    expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(1, "c2", fileA);
+    expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c2", fileB);
+  });
+
   it("blokkeert nieuwe kaarttitels boven 80 tekens", async () => {
     const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
@@ -476,14 +603,17 @@ describe("Vergaderborden drag/drop", () => {
 
   it("selecteert teamleden via avatar-tiles zonder zichtbare namen en met initialen-fallback", async () => {
     api.listAdminUsers.mockResolvedValue([
-      { id: "u1", username: "admin", full_name: "Admin", has_avatar: true },
-      { id: "u2", username: "els", full_name: "Els van Dijk", has_avatar: false }
+      { id: "u9", username: "anders", full_name: "Anders", has_avatar: true }
     ]);
     const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
       project_name: "Project A",
       invited_user_ids: ["u1"],
+      access_users: [
+        { id: "u1", username: "admin", full_name: "Admin", is_admin: true, is_active: true, has_avatar: true },
+        { id: "u2", username: "els", full_name: "Els van Dijk", is_admin: false, is_active: true, has_avatar: false }
+      ],
       cards: [card]
     });
 
@@ -517,6 +647,46 @@ describe("Vergaderborden drag/drop", () => {
         expect.objectContaining({ assignment_user_ids: expect.arrayContaining(["u1", "u2"]) })
       );
     });
+  });
+
+  it("toont laden-, fout- en lege-status voor teamleden in de selector", async () => {
+    const pendingBoard = new Promise<never>(() => undefined);
+    api.getBoardProject.mockReturnValueOnce(pendingBoard);
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+
+    expect(await screen.findByText("Teamleden worden geladen…")).toBeInTheDocument();
+  });
+
+  it("toont een foutmelding als teamleden niet kunnen worden geladen", async () => {
+    api.getBoardProject.mockRejectedValueOnce(new Error("Netwerkfout"));
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+
+    expect(await screen.findByText("Teamleden konden niet worden geladen. Probeer het later opnieuw.")).toBeInTheDocument();
+  });
+
+  it("toont een lege-status als er geen actieve teamleden beschikbaar zijn", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      access_users: [
+        { id: "u1", username: "admin", full_name: "Admin", is_admin: true, is_active: false, has_avatar: false }
+      ],
+      cards: [card]
+    });
+
+    renderPage();
+    const todoColumn = await screen.findByTestId("board-column-todo");
+    fireEvent.click(within(todoColumn).getByRole("button", { name: "+ Kaart toevoegen" }));
+
+    expect(await screen.findByText("Er zijn geen actieve teamleden beschikbaar voor dit bord.")).toBeInTheDocument();
   });
 
   it("opent kaartdetail vanaf het overzicht en annuleert detailtitelbewerking met Escape", async () => {
@@ -740,7 +910,13 @@ describe("Vergaderborden drag/drop", () => {
     expect(overviewAvatar.querySelector("img.assignment-avatar-image")).not.toBeNull();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     expect(await screen.findByText(/Kaart verplaatst:/)).toBeInTheDocument();
+    const moveMessage = screen.getByText(/Kaart verplaatst:/).closest(".board-update-message");
+    expect(moveMessage).not.toBeNull();
+    expect(moveMessage?.children).toHaveLength(1);
+    expect(moveMessage?.firstElementChild?.tagName).toBe("SPAN");
     expect(screen.getByText(/→/)).toBeInTheDocument();
+    expect(within(moveMessage as HTMLElement).queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
+    expect(within(moveMessage as HTMLElement).queryByRole("button", { name: "Verwijderen" })).not.toBeInTheDocument();
     expect(screen.getAllByTitle("Admin Gebruiker").some((el) => el.querySelector("img.assignment-avatar-image")?.getAttribute("src")?.includes("/api/admin/users/u1/avatar"))).toBe(true);
     expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
@@ -974,7 +1150,7 @@ describe("Vergaderborden drag/drop", () => {
         recordings: []
       })
       .mockResolvedValueOnce({ card, updates: [], recordings: [] });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
@@ -1078,6 +1254,51 @@ describe("Vergaderborden drag/drop", () => {
     expect(api.uploadBoardRecording).not.toHaveBeenCalled();
     expect(await screen.findByText("Opname is te kort. Neem minimaal 5 seconden op.")).toBeInTheDocument();
     expect(screen.queryByText(/Timer:/)).not.toBeInTheDocument();
+  });
+
+  it("toont, uploadt en verwijdert kaartbijlagen in het kaartdetail", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, attachments_count: 1 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [],
+      recordings: [],
+      attachments: [
+        {
+          id: "a1",
+          uploaded_by_user_id: "u1",
+          uploaded_by_username: "admin",
+          uploaded_by_display_name: "Admin",
+          filename: "notitie.pdf",
+          mime_type: "application/pdf",
+          size_bytes: 2048,
+          created_at: "2026-06-16T10:00:00Z",
+          download_url: "/api/boards/attachments/a1/download"
+        }
+      ]
+    });
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    expect(await screen.findByText("notitie.pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download bijlage" })).toHaveAttribute("href", "/api/boards/attachments/a1/download");
+
+    const attachmentInput = screen.getByLabelText("Bijlage uploaden") as HTMLInputElement;
+    const nextFile = new File(["nieuw"], "nieuw.txt", { type: "text/plain" });
+    fireEvent.change(attachmentInput, { target: { files: [nextFile] } });
+    fireEvent.click(screen.getByRole("button", { name: "Bijlage uploaden" }));
+
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenCalledWith("c1", nextFile);
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Verwijderen" }));
+    await waitFor(() => {
+      expect(api.deleteBoardCardAttachment).toHaveBeenCalledWith("c1", "a1");
+    });
+    confirmSpy.mockRestore();
   });
 
   it("staat maar één actieve opname tegelijk toe en toont Nederlandse foutmelding", async () => {

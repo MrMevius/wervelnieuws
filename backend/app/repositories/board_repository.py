@@ -3,7 +3,15 @@ from datetime import UTC, datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from app.models.entities import BoardCard, CardAssignment, CardUpdate, Project, Recording, User
+from app.models.entities import (
+    BoardCard,
+    BoardCardAttachment,
+    CardAssignment,
+    CardUpdate,
+    Project,
+    Recording,
+    User,
+)
 from app.models.enums import BoardColumn
 
 
@@ -69,12 +77,19 @@ class BoardRepository:
     def count_recordings(self, card_id: str) -> int:
         return int(self.db.scalar(select(func.count(Recording.id)).where(Recording.card_id == card_id)) or 0)
 
+    def count_attachments(self, card_id: str) -> int:
+        return int(
+            self.db.scalar(
+                select(func.count(BoardCardAttachment.id)).where(BoardCardAttachment.card_id == card_id)
+            )
+            or 0
+        )
+
     def create_card(self, project_id: str, title: str, description: str, column: BoardColumn) -> BoardCard:
         max_position = self.db.scalar(select(func.max(BoardCard.position)).where(BoardCard.project_id == project_id, BoardCard.column == column))
         card = BoardCard(project_id=project_id, title=title.strip(), description=description.strip(), column=column, position=int(max_position or -1) + 1)
         self.db.add(card)
-        self.db.commit()
-        self.db.refresh(card)
+        self.db.flush()
         return card
 
     def get_card(self, card_id: str) -> BoardCard | None:
@@ -98,7 +113,7 @@ class BoardRepository:
         self.db.query(CardAssignment).filter(CardAssignment.card_id == card.id).delete()
         for user_id in dict.fromkeys(user_ids):
             self.db.add(CardAssignment(card_id=card.id, user_id=user_id))
-        self.db.commit()
+        self.db.flush()
 
     def move_card(self, card: BoardCard, target_column: BoardColumn, target_position: int) -> BoardCard:
         cards = list(
@@ -161,6 +176,16 @@ class BoardRepository:
     def list_recordings(self, card_id: str) -> list[Recording]:
         return list(self.db.scalars(select(Recording).where(Recording.card_id == card_id).order_by(Recording.created_at.desc())).all())
 
+    def list_attachments(self, card_id: str) -> list[BoardCardAttachment]:
+        return list(
+            self.db.scalars(
+                select(BoardCardAttachment)
+                .where(BoardCardAttachment.card_id == card_id)
+                .options(joinedload(BoardCardAttachment.uploaded_by))
+                .order_by(BoardCardAttachment.created_at.desc())
+            ).all()
+        )
+
     def create_recording(
         self,
         card_id: str,
@@ -184,6 +209,39 @@ class BoardRepository:
         self.db.commit()
         self.db.refresh(row)
         return row
+
+    def create_attachment(
+        self,
+        card_id: str,
+        uploaded_by_user_id: str,
+        filename: str,
+        file_path: str,
+        mime_type: str,
+        size_bytes: int,
+    ) -> BoardCardAttachment:
+        row = BoardCardAttachment(
+            card_id=card_id,
+            uploaded_by_user_id=uploaded_by_user_id,
+            filename=filename,
+            file_path=file_path,
+            mime_type=mime_type,
+            size_bytes=size_bytes,
+        )
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_attachment(self, attachment_id: str) -> BoardCardAttachment | None:
+        return self.db.scalar(
+            select(BoardCardAttachment)
+            .where(BoardCardAttachment.id == attachment_id)
+            .options(joinedload(BoardCardAttachment.uploaded_by))
+        )
+
+    def delete_attachment(self, attachment: BoardCardAttachment) -> None:
+        self.db.delete(attachment)
+        self.db.commit()
 
     def get_user(self, user_id: str) -> User | None:
         return self.db.get(User, user_id)

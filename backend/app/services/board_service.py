@@ -50,6 +50,19 @@ class BoardService:
                 normalized.append(user_id)
         return normalized
 
+    def ensure_active_board_assignment_users(self, project: Project, assignment_user_ids: list[str]) -> list[str]:
+        normalized: list[str] = []
+        allowed_user_ids = set(project.invited_user_ids)
+        for user_id in assignment_user_ids:
+            found = self.repo.get_user(user_id)
+            if not found or not found.is_active:
+                raise HTTPException(status_code=400, detail=f"Onbekende of inactieve gebruiker: {user_id}")
+            if not (found.is_admin or user_id in allowed_user_ids):
+                raise HTTPException(status_code=400, detail=f"Gebruiker mag niet worden toegewezen aan dit bord: {user_id}")
+            if user_id not in normalized:
+                normalized.append(user_id)
+        return normalized
+
     def ensure_active_non_admin_users_exist(self, invited_user_ids: list[str]) -> list[str]:
         normalized: list[str] = []
         for user_id in invited_user_ids:
@@ -90,6 +103,27 @@ class BoardService:
         target.write_bytes(content)
         original_name = (file.filename or "opname.webm").strip() or "opname.webm"
         return str(target), len(content), mime_type, original_name
+
+    def store_card_attachment(self, card: BoardCard, file: UploadFile) -> tuple[str, int, str, str]:
+        settings = get_settings()
+        root = settings.storage_root / settings.uploads_dir / "board-attachments" / card.project_id / card.id
+        root.mkdir(parents=True, exist_ok=True)
+
+        content = file.file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Lege upload is niet toegestaan.")
+        if len(content) > settings.upload_max_bytes:
+            raise HTTPException(status_code=400, detail="Bestand is te groot.")
+
+        mime_type = (file.content_type or "application/octet-stream").strip().lower() or "application/octet-stream"
+        source_name = Path(file.filename or "bijlage").name.strip() or "bijlage"
+        if source_name in {".", ".."}:
+            source_name = "bijlage"
+        suffix = Path(source_name).suffix or ""
+        file_name = f"{uuid4()}{suffix}"
+        target = root / file_name
+        target.write_bytes(content)
+        return str(target), len(content), mime_type, source_name
 
     def store_update_image(self, card: BoardCard, file: UploadFile) -> str:
         mime_type = (file.content_type or "").lower().strip()

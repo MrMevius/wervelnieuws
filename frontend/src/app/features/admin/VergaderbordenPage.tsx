@@ -7,6 +7,7 @@ import {
   createBoardCard,
   createBoardProject,
   deleteBoardCardUpdate,
+  deleteBoardCardAttachment,
   editBoardCardUpdate,
   getBoardCard,
   getCurrentUser,
@@ -18,7 +19,8 @@ import {
   postBoardCardUpdate,
   updateBoardCardDescription,
   updateBoardCardTitle,
-  uploadBoardRecording
+  uploadBoardRecording,
+  uploadBoardCardAttachment
 } from "../../../lib/api/client";
 import {
   resolveVergaderbordenProjectId,
@@ -109,6 +111,18 @@ type CardActivityItem =
       download_url: string;
     };
   };
+
+type CardAttachmentItem = {
+  id: string;
+  uploaded_by_user_id: string;
+  uploaded_by_username?: string | null;
+  uploaded_by_display_name?: string | null;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  download_url: string;
+};
 
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
@@ -240,10 +254,14 @@ function renderBoardUpdateMessage(message: string | null | undefined): ReactNode
 
   const [, oldColumn, newColumn] = match;
   return (
-    <>
+    <span>
       Kaart verplaatst: <strong>{oldColumn}</strong> → <strong>{newColumn}</strong>
-    </>
+    </span>
   );
+}
+
+function isAutomaticMoveUpdate(message: string | null | undefined): boolean {
+  return MOVE_UPDATE_MESSAGE_REGEX.test(message?.trim() || "");
 }
 
 function applyInlineTokens(text: string): ReactNode[] {
@@ -511,6 +529,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [createCardNotice, setCreateCardNotice] = useState<string | null>(null);
+  const [createCardProgress, setCreateCardProgress] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
@@ -597,6 +619,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
 
   const boardAccessUsers = boardQuery.data?.access_users ?? [];
+  const boardAssignableUsers = useMemo(
+    () => boardAccessUsers.filter((user) => user.is_active),
+    [boardAccessUsers]
+  );
 
   const cardActivityItems = useMemo<CardActivityItem[]>(() => {
     if (!cardQuery.data) return [];
@@ -619,6 +645,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     });
     return [...updates, ...recordings].sort((a, b) => b.sortTs - a.sortTs);
   }, [cardQuery.data]);
+
+  const cardAttachments = useMemo<CardAttachmentItem[]>(() => cardQuery.data?.attachments ?? [], [cardQuery.data]);
 
   const createProjectMutation = useMutation({
     mutationFn: createBoardProject,
@@ -693,6 +721,20 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setRecordingError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
     }
   });
+  const uploadAttachmentMutation = useMutation({
+    mutationFn: ({ cardId, file }: { cardId: string; file: File }) => uploadBoardCardAttachment(cardId, file),
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
+      ]);
+      setAttachmentFile(null);
+      setAttachmentError(null);
+    },
+    onError: () => {
+      setAttachmentError("Uploaden van de bijlage is mislukt. Probeer het opnieuw.");
+    }
+  });
   const deleteUpdateMutation = useMutation({
     mutationFn: ({ cardId, updateId }: { cardId: string; updateId: string }) => deleteBoardCardUpdate(cardId, updateId),
     onSuccess: async (_result, variables) => {
@@ -700,6 +742,18 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
         queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
       ]);
+    }
+  });
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: ({ cardId, attachmentId }: { cardId: string; attachmentId: string }) => deleteBoardCardAttachment(cardId, attachmentId),
+    onSuccess: async (_result, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
+      ]);
+    },
+    onError: () => {
+      setAttachmentError("Verwijderen van de bijlage is mislukt. Probeer het opnieuw.");
     }
   });
 
@@ -750,6 +804,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   useEffect(() => {
     setDescriptionEdit(null);
   }, [selectedCardId]);
+
+  useEffect(() => {
+    setAttachmentFile(null);
+    setAttachmentError(null);
+  }, [selectedCardId]);
+
+  useEffect(() => {
+    setCreateCardNotice(null);
+  }, [resolvedProjectId]);
 
   useEffect(() => {
     return () => {
@@ -884,6 +947,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
       {resolvedProjectId && (
         <div className="board-grid">
+          {createCardProgress && <p className="vergaderborden-saving-indicator" role="status" aria-live="polite">{createCardProgress}</p>}
+          {createCardNotice && <p className="error vergaderborden-inline-error" role="alert">{createCardNotice}</p>}
           {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
           {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
           {KOLOMMEN.map((kolom) => (
@@ -923,20 +988,58 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <button
                   type="button"
                   className="vergaderborden-card-add-toggle"
-                  onClick={() => setActiveCreateColumn(kolom)}
+                  onClick={() => {
+                    setCreateCardNotice(null);
+                    setActiveCreateColumn(kolom);
+                  }}
                 >
                   + Kaart toevoegen
                 </button>
               ) : (
                 <CreateCardInline
-                  users={usersQuery.data ?? []}
+                  users={boardAssignableUsers}
+                  isLoading={boardQuery.isLoading}
+                  hasError={boardQuery.isError}
                   onCreate={async (payload) => {
                     if (!resolvedProjectId) return false;
                     try {
-                      await createCardMutation.mutateAsync({ projectId: resolvedProjectId, column: kolom, ...payload });
+                      setCreateCardNotice(null);
+                      setCreateCardProgress("Kaart wordt aangemaakt…");
+                      const createdCard = await createCardMutation.mutateAsync({
+                        projectId: resolvedProjectId,
+                        column: kolom,
+                        title: payload.title,
+                        description: payload.description,
+                        assignment_user_ids: payload.assignment_user_ids
+                      });
+                      let uploadFailures = 0;
+                      for (const [index, file] of payload.attachments.entries()) {
+                        setCreateCardProgress(`Kaart is aangemaakt. Bijlage ${index + 1} van ${payload.attachments.length} wordt geüpload…`);
+                        try {
+                          await uploadBoardCardAttachment(createdCard.id, file);
+                        } catch {
+                          uploadFailures += 1;
+                        }
+                      }
+                      if (payload.attachments.length > 0) {
+                        setCreateCardProgress("Bijlagen verwerkt…");
+                        await Promise.all([
+                          queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+                          queryClient.invalidateQueries({ queryKey: ["board-card", createdCard.id] })
+                        ]);
+                      }
+                      if (uploadFailures > 0) {
+                        setCreateCardNotice(
+                          `Kaart is aangemaakt, maar ${uploadFailures} van de ${payload.attachments.length} bijlagen konden niet worden geüpload. De kaart blijft beschikbaar.`
+                        );
+                      } else {
+                        setCreateCardNotice(null);
+                      }
+                      setCreateCardProgress(null);
                       setActiveCreateColumn(null);
                       return true;
                     } catch {
+                      setCreateCardProgress(null);
                       return false;
                     }
                   }}
@@ -961,7 +1064,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   <strong className="vergaderborden-card-title">{card.title}</strong>
                   <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
                   <AssignedUserAvatarRow assignments={card.assignments} />
-                  <small>Updates: {card.updates_count} · Opnames: {card.recordings_count}</small>
+                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
                   <div className="board-card-recording-controls">
                     {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
                     <button
@@ -1119,6 +1222,71 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
               <button type="submit">Update plaatsen</button>
             </form>
+
+            <section className="board-attachments-section">
+              <h3>Bijlagen</h3>
+              <form
+                className="board-attachment-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!attachmentFile) {
+                    setAttachmentError("Kies eerst een bestand om toe te voegen.");
+                    return;
+                  }
+                  setAttachmentError(null);
+                  uploadAttachmentMutation.mutate({ cardId: cardQuery.data!.card.id, file: attachmentFile });
+                }}
+              >
+                <label className="vergaderborden-field">
+                  <span>Bijlage uploaden</span>
+                  <input
+                    type="file"
+                    onChange={(evt) => {
+                      setAttachmentFile(evt.target.files?.[0] ?? null);
+                      setAttachmentError(null);
+                    }}
+                    disabled={uploadAttachmentMutation.isPending}
+                  />
+                </label>
+                {attachmentFile && <p className="board-attachment-selected muted">Geselecteerd: {attachmentFile.name}</p>}
+                {attachmentError && <p className="error vergaderborden-inline-error">{attachmentError}</p>}
+                <button type="submit" disabled={uploadAttachmentMutation.isPending || !attachmentFile}>Bijlage uploaden</button>
+              </form>
+              {cardAttachments.length === 0 ? (
+                <p className="board-attachments-empty">Er zijn nog geen bijlagen toegevoegd.</p>
+              ) : (
+                <div className="board-attachments-list" role="list" aria-label="Bijlagenlijst">
+                  {cardAttachments.map((attachment) => {
+                    const uploadedBy = attachment.uploaded_by_display_name?.trim() || attachment.uploaded_by_username?.trim() || "Onbekende gebruiker";
+                    const createdAtLabel = attachment.created_at ? formatAmsterdamDateTime(attachment.created_at) : "Datum onbekend";
+                    return (
+                      <article key={attachment.id} className="board-attachment-item" role="listitem">
+                        <div className="board-attachment-header">
+                          <strong className="board-attachment-name">{attachment.filename}</strong>
+                          <small className="board-attachment-meta">{uploadedBy} · {createdAtLabel} · Grootte: {formatRecordingSize(attachment.size_bytes)}</small>
+                        </div>
+                        <div className="board-attachment-actions">
+                          <a href={attachment.download_url}>Download bijlage</a>
+                          <button
+                            type="button"
+                            className="board-update-action-link"
+                            disabled={deleteAttachmentMutation.isPending}
+                            onClick={() => {
+                              const shouldDelete = window.confirm("Weet je zeker dat je deze bijlage wilt verwijderen?");
+                              if (!shouldDelete) return;
+                              deleteAttachmentMutation.mutate({ cardId: cardQuery.data!.card.id, attachmentId: attachment.id });
+                            }}
+                          >
+                            Verwijderen
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
             <section className="board-updates-section" aria-live="polite">
               <h3>Updates</h3>
               {cardActivityItems.map((activity) => {
@@ -1150,6 +1318,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const hasDate = Boolean(u.created_at);
                   const dateLabel = hasDate ? formatAmsterdamDateTime(u.created_at) : "Datum onbekend";
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
+                  const isMoveUpdate = isAutomaticMoveUpdate(u.message);
                   return (
                     <article key={u.id} className="board-update-item">
                       <div className="board-update-header">
@@ -1159,7 +1328,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                           <small className="board-update-meta">{dateLabel}</small>
                         </div>
                       </div>
-                      {updateEdit?.updateId === u.id ? (
+                      {updateEdit?.updateId === u.id && !isMoveUpdate ? (
                         <div className="board-update-editor">
                           <div className="board-update-editor-shell">
                             <UpdateFormattingToolbar onAction={handleUpdateEditToolbarAction} />
@@ -1225,7 +1394,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         <>
                           <div className="board-update-message">{renderBoardUpdateMessage(u.message)}</div>
                           {u.image_url && <img src={u.image_url} alt="Update-afbeelding" className="board-update-image" />}
-                          {u.author_user_id === currentUserQuery.data?.id && (
+                          {!isMoveUpdate && u.author_user_id === currentUserQuery.data?.id && (
                             <div className="board-update-actions">
                               <button
                                 type="button"
@@ -1329,12 +1498,14 @@ function CreateProjectModal({ users, onClose, onSubmit }: { users: AdminUser[]; 
   );
 }
 
-function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[] }) => Promise<boolean>; onCancel: () => void }) {
+function CreateCardInline({ users, isLoading, hasError, onCreate, onCancel }: { users: BoardAccessUser[]; isLoading: boolean; hasError: boolean; onCreate: (payload: { title: string; description: string; assignment_user_ids: string[]; attachments: File[] }) => Promise<boolean>; onCancel: () => void }) {
   const [titleError, setTitleError] = useState<string | null>(null);
   const [descriptionError, setDescriptionError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [selectedAttachments, setSelectedAttachments] = useState<File[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const descriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -1356,7 +1527,14 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
 
   const selectedUserLabel = selectedUserIds.length
     ? `${selectedUserIds.length} teamlid${selectedUserIds.length === 1 ? "" : "en"} geselecteerd`
-    : "Selecteer teamleden";
+    : isLoading
+      ? "Teamleden laden…"
+      : hasError
+        ? "Teamleden niet beschikbaar"
+        : users.length
+          ? "Selecteer teamleden"
+          : "Geen actieve teamleden beschikbaar";
+  const hasSelectableUsers = !isLoading && !hasError && users.length > 0;
 
   return (
     <form
@@ -1364,6 +1542,7 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
       noValidate
       onSubmit={async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
         const form = e.currentTarget as HTMLFormElement;
         const fd = new FormData(e.currentTarget);
         const title = String(fd.get("title") || "").trim();
@@ -1381,14 +1560,20 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
           setTitleError(`Titel mag maximaal ${CARD_TITLE_MAX_LENGTH} tekens bevatten.`);
           return;
         }
-        const success = await onCreate({ title, description: normalizedDescription, assignment_user_ids });
-        if (success) {
-          form.reset();
-          setDescription("");
-          setDescriptionError(null);
-          setSelectedUserIds([]);
-          setDropdownOpen(false);
-          setTitleError(null);
+        setIsSubmitting(true);
+        try {
+          const success = await onCreate({ title, description: normalizedDescription, assignment_user_ids, attachments: selectedAttachments });
+          if (success) {
+            form.reset();
+            setDescription("");
+            setSelectedAttachments([]);
+            setDescriptionError(null);
+            setSelectedUserIds([]);
+            setDropdownOpen(false);
+            setTitleError(null);
+          }
+        } finally {
+          setIsSubmitting(false);
         }
       }}
     >
@@ -1431,6 +1616,23 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
           />
           <input type="hidden" name="description" value={description} />
         </label>
+        <label className="vergaderborden-field vergaderborden-field-full">
+          <span>Bijlagen (optioneel)</span>
+          <input
+            type="file"
+            multiple
+            onChange={(evt) => {
+              setSelectedAttachments(Array.from(evt.target.files ?? []));
+            }}
+            disabled={isSubmitting}
+            aria-label="Bijlagen selecteren"
+          />
+        </label>
+        {selectedAttachments.length > 0 && (
+          <div className="vergaderborden-field vergaderborden-field-full">
+            <p className="vergaderborden-inline-status muted">Geselecteerd: {selectedAttachments.map((file) => file.name).join(", ")}</p>
+          </div>
+        )}
         <div className="vergaderborden-field vergaderborden-field-full" ref={containerRef}>
           <span>Teamleden</span>
           <button
@@ -1439,19 +1641,34 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
             onClick={() => setDropdownOpen((open) => !open)}
             aria-expanded={dropdownOpen}
             aria-haspopup="listbox"
+            aria-describedby={isLoading || hasError || !users.length ? "vergaderborden-teamleden-status" : undefined}
           >
             {selectedUserLabel}
           </button>
           {selectedUserIds.map((id) => (
             <input key={id} type="hidden" name="assignment_user_ids" value={id} />
           ))}
-          {dropdownOpen && (
+          {(isLoading || hasError || !users.length) && (
+            <p
+              id="vergaderborden-teamleden-status"
+              className={`vergaderborden-inline-status${hasError ? " error" : " muted"}`}
+              role={hasError ? "alert" : "status"}
+              aria-live="polite"
+            >
+              {isLoading
+                ? "Teamleden worden geladen…"
+                : hasError
+                  ? "Teamleden konden niet worden geladen. Probeer het later opnieuw."
+                  : "Er zijn geen actieve teamleden beschikbaar voor dit bord."}
+            </p>
+          )}
+          {dropdownOpen && hasSelectableUsers && (
             <div className="vergaderborden-multiselect-menu" role="listbox" aria-label="Teamleden kiezen" aria-multiselectable="true">
               {users.map((u) => {
                 const checked = selectedUserIds.includes(u.id);
                 const label = displayNameForUser(u);
                 const initials = initialsFromName(label);
-                const avatarUrl = avatarUrlForUser(u);
+                const avatarUrl = avatarUrlForAccessUser(u);
                 return (
                   <button
                     key={u.id}
@@ -1478,7 +1695,7 @@ function CreateCardInline({ users, onCreate, onCancel }: { users: AdminUser[]; o
       </div>
       <div className="vergaderborden-card-add-actions">
         <button type="button" className="vergaderborden-card-add-cancel" onClick={onCancel}>Sluiten</button>
-        <button type="submit">Kaart toevoegen</button>
+        <button type="submit" disabled={isSubmitting}>Kaart toevoegen</button>
       </div>
     </form>
   );
