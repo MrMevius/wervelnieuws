@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "87",
+                "date": "2026-06-22",
+                "title": "Meerdere bijlagen tegelijk toevoegen in Vergaderborden",
+                "highlights": [
+                    "Je kunt nu meerdere bestanden in één keer kiezen of slepen bij een vergaderbord-kaart.",
+                    "De uploadknop verwerkt de selectie achter elkaar, zodat je niet elk bestand los hoeft toe te voegen.",
+                    "Als niet alles lukt, zie je duidelijk welke bestanden wel en niet zijn gelukt.",
+                ],
+            },
+            {
                 "iteration": "86",
                 "date": "2026-06-22",
                 "title": "Afbeeldingsbijlagen kun je nu groter bekijken",

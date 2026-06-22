@@ -130,6 +130,12 @@ type CardAttachmentItem = {
   download_url: string;
 };
 
+type AttachmentBatchItem = {
+  fileName: string;
+  status: "queued" | "uploading" | "success" | "error";
+  error?: string;
+};
+
 const MOVE_ERROR_FALLBACK = "Opslaan van de kaart is mislukt. Ververs de pagina en probeer het opnieuw.";
 const MOVE_UPDATE_MESSAGE_REGEX = /^Kaart verplaatst van (.+) naar (.+)\.$/;
 const UNDERLINE_MARKER = "++";
@@ -664,9 +670,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
+  const [attachmentResults, setAttachmentResults] = useState<AttachmentBatchItem[]>([]);
+  const [attachmentStatusMessage, setAttachmentStatusMessage] = useState<string | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
+  const [isAttachmentUploading, setIsAttachmentUploading] = useState(false);
   const [attachmentPreview, setAttachmentPreview] = useState<CardAttachmentItem | null>(null);
   const [createCardNotice, setCreateCardNotice] = useState<string | null>(null);
   const [createCardProgress, setCreateCardProgress] = useState<string | null>(null);
@@ -689,14 +698,17 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const dragCardMetaRef = useRef<DragCardMeta | null>(null);
 
   const clearAttachmentSelection = () => {
-    setAttachmentFile(null);
+    setAttachmentFiles([]);
+    setAttachmentError(null);
     if (attachmentInputRef.current) {
       attachmentInputRef.current.value = "";
     }
   };
 
-  const selectAttachmentFile = (file: File | null) => {
-    setAttachmentFile(file);
+  const selectAttachmentFiles = (files: File[]) => {
+    setAttachmentFiles(files);
+    setAttachmentResults(files.map((file) => ({ fileName: file.name, status: "queued" })));
+    setAttachmentStatusMessage(null);
     setAttachmentError(null);
   };
 
@@ -886,21 +898,6 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setRecordingError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
     }
   });
-  const uploadAttachmentMutation = useMutation({
-    mutationFn: ({ cardId, file }: { cardId: string; file: File }) => uploadBoardCardAttachment(cardId, file),
-    onSuccess: async (_result, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
-        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
-      ]);
-      clearAttachmentSelection();
-      setAttachmentError(null);
-      setAttachmentDragActive(false);
-    },
-    onError: () => {
-      setAttachmentError("Uploaden van de bijlage is mislukt. Probeer het opnieuw.");
-    }
-  });
   const deleteUpdateMutation = useMutation({
     mutationFn: ({ cardId, updateId }: { cardId: string; updateId: string }) => deleteBoardCardUpdate(cardId, updateId),
     onSuccess: async (_result, variables) => {
@@ -922,6 +919,63 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setAttachmentError("Verwijderen van de bijlage is mislukt. Probeer het opnieuw.");
     }
   });
+
+  const uploadSelectedAttachments = async () => {
+    if (!cardQuery.data?.card || isAttachmentUploading) return;
+    if (!attachmentFiles.length) {
+      setAttachmentError("Kies eerst een of meer bestanden om toe te voegen.");
+      return;
+    }
+
+    setAttachmentError(null);
+    setAttachmentStatusMessage(`Bijlage 1 van ${attachmentFiles.length} wordt geüpload…`);
+    setAttachmentResults(attachmentFiles.map((file) => ({ fileName: file.name, status: "queued" })));
+    setIsAttachmentUploading(true);
+
+    let successCount = 0;
+    const failedFiles: Array<{ fileName: string; error: string }> = [];
+
+    try {
+      for (const [index, file] of attachmentFiles.entries()) {
+        setAttachmentStatusMessage(`Bijlage ${index + 1} van ${attachmentFiles.length} wordt geüpload…`);
+        setAttachmentResults((current) => current.map((item, currentIndex) => (currentIndex === index ? { ...item, status: "uploading" } : item)));
+
+        try {
+          await uploadBoardCardAttachment(cardQuery.data.card.id, file);
+          successCount += 1;
+          setAttachmentResults((current) => current.map((item, currentIndex) => (currentIndex === index ? { ...item, status: "success" } : item)));
+        } catch (error) {
+          const message = error instanceof Error && error.message ? error.message : "Upload mislukt.";
+          failedFiles.push({ fileName: file.name, error: message });
+          setAttachmentResults((current) => current.map((item, currentIndex) => (currentIndex === index ? { ...item, status: "error", error: message } : item)));
+        }
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-card", cardQuery.data.card.id] }),
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
+      ]);
+
+      if (failedFiles.length > 0) {
+        const failedNames = failedFiles.map((item) => item.fileName).join(", ");
+        setAttachmentStatusMessage(
+          successCount > 0
+            ? `${successCount} van de ${attachmentFiles.length} bijlagen geüpload. Mislukt: ${failedNames}.`
+            : `Geen van de ${attachmentFiles.length} bijlagen kon worden geüpload. Mislukt: ${failedNames}.`
+        );
+      } else {
+        setAttachmentStatusMessage(`${successCount} bijlage${successCount === 1 ? "" : "n"} geüpload.`);
+      }
+
+      clearAttachmentSelection();
+      setAttachmentDragActive(false);
+    } catch {
+      setAttachmentStatusMessage(null);
+      setAttachmentError("Uploaden van de bijlage is mislukt. Probeer het opnieuw.");
+    } finally {
+      setIsAttachmentUploading(false);
+    }
+  };
 
   const cardsByColumn = useMemo(() => {
     const cards = boardQuery.data?.cards ?? [];
@@ -1006,8 +1060,11 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [selectedCardId]);
 
   useEffect(() => {
-    setAttachmentFile(null);
+    setAttachmentFiles([]);
+    setAttachmentResults([]);
+    setAttachmentStatusMessage(null);
     setAttachmentError(null);
+    setIsAttachmentUploading(false);
   }, [selectedCardId]);
 
   useEffect(() => {
@@ -1596,29 +1653,25 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 className={`board-attachment-form ${attachmentDragActive ? "is-drag-active" : ""}`}
                 onDragOver={(evt) => {
                   evt.preventDefault();
+                  if (isAttachmentUploading) return;
                   setAttachmentDragActive(true);
                 }}
                 onDragEnter={(evt) => {
                   evt.preventDefault();
+                  if (isAttachmentUploading) return;
                   setAttachmentDragActive(true);
                 }}
                 onDragLeave={() => setAttachmentDragActive(false)}
                 onDrop={(evt) => {
                   evt.preventDefault();
                   setAttachmentDragActive(false);
-                  const file = evt.dataTransfer.files?.[0] ?? null;
-                  if (file) {
-                    selectAttachmentFile(file);
-                  }
+                  if (isAttachmentUploading) return;
+                  const files = Array.from(evt.dataTransfer.files ?? []);
+                  selectAttachmentFiles(files);
                 }}
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!attachmentFile) {
-                    setAttachmentError("Kies eerst een bestand om toe te voegen.");
-                    return;
-                  }
-                  setAttachmentError(null);
-                  uploadAttachmentMutation.mutate({ cardId: cardQuery.data!.card.id, file: attachmentFile });
+                  void uploadSelectedAttachments();
                 }}
                 >
                 <label className="board-attachment-dropzone">
@@ -1626,27 +1679,48 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     ref={attachmentInputRef}
                     className="board-attachment-dropzone-input"
                     type="file"
-                    aria-label="Bijlage kiezen"
+                    multiple
+                    aria-label="Bijlagen selecteren"
                     onChange={(evt) => {
-                      selectAttachmentFile(evt.target.files?.[0] ?? null);
+                      selectAttachmentFiles(Array.from(evt.target.files ?? []));
                     }}
-                    disabled={uploadAttachmentMutation.isPending}
+                    disabled={isAttachmentUploading}
                   />
-                  <span className="board-attachment-dropzone-title">Sleep een bijlage hierheen</span>
-                  <span className="board-attachment-dropzone-hint">of klik om een bestand te kiezen</span>
+                  <span className="board-attachment-dropzone-title">Sleep een of meer bijlagen hierheen</span>
+                  <span className="board-attachment-dropzone-hint">of klik om bestanden te kiezen</span>
                 </label>
                 <div className="board-attachment-form-actions">
-                  {attachmentFile ? (
+                  {attachmentFiles.length > 0 ? (
                     <div className="board-attachment-selected-row">
-                      <p className="board-attachment-selected muted">Geselecteerd: {attachmentFile.name}</p>
-                      <button type="button" className="board-attachment-action board-attachment-action--secondary" onClick={clearAttachmentSelection} disabled={uploadAttachmentMutation.isPending}>
+                      <p className="board-attachment-selected muted">
+                        Geselecteerd ({attachmentFiles.length}): {attachmentFiles.map((file) => file.name).join(", ")}
+                      </p>
+                      <button type="button" className="board-attachment-action board-attachment-action--secondary" onClick={clearAttachmentSelection} disabled={isAttachmentUploading}>
                         Wissen
                       </button>
                     </div>
                   ) : null}
+                  {attachmentStatusMessage && (
+                    <p
+                      className={`${attachmentStatusMessage.includes("Mislukt") || attachmentStatusMessage.includes("Geen van") ? "error vergaderborden-inline-error" : "board-attachments-empty"}`}
+                      role={attachmentStatusMessage.includes("Mislukt") || attachmentStatusMessage.includes("Geen van") ? "alert" : "status"}
+                    >
+                      {attachmentStatusMessage}
+                    </p>
+                  )}
                   {attachmentError && <p className="error vergaderborden-inline-error">{attachmentError}</p>}
-                  <button type="submit" className="board-attachment-submit" disabled={uploadAttachmentMutation.isPending || !attachmentFile}>
-                    {uploadAttachmentMutation.isPending ? "Toevoegen…" : "Toevoegen"}
+                  {attachmentResults.some((item) => item.status !== "queued") && (
+                    <ul className="board-attachments-list board-attachment-results" role="list" aria-label="Uploadresultaten bijlagen">
+                      {attachmentResults.map((item) => (
+                        <li key={`${item.fileName}-${item.status}`} className="board-attachment-result-item" role="listitem">
+                          <strong>{item.fileName}</strong> — {item.status === "queued" ? "Geselecteerd" : item.status === "uploading" ? "Wordt geüpload" : item.status === "success" ? "Geüpload" : "Mislukt"}
+                          {item.error ? `: ${item.error}` : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <button type="submit" className="board-attachment-submit" disabled={isAttachmentUploading || !attachmentFiles.length}>
+                    {isAttachmentUploading ? "Toevoegen…" : "Toevoegen"}
                   </button>
                 </div>
               </form>

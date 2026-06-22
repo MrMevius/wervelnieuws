@@ -605,7 +605,7 @@ describe("Vergaderborden drag/drop", () => {
       expect(closeButton).toHaveFocus();
     });
 
-    const attachmentInput = within(dialog).getByLabelText("Bijlage kiezen") as HTMLInputElement;
+    const attachmentInput = within(dialog).getByLabelText("Bijlagen selecteren") as HTMLInputElement;
     fireEvent.change(attachmentInput, { target: { files: [new File(["bijlage"], "bijlage.txt", { type: "text/plain" })] } });
 
     const uploadButton = within(dialog).getByRole("button", { name: "Toevoegen" });
@@ -1536,20 +1536,79 @@ describe("Vergaderborden drag/drop", () => {
     });
     expect(detailDialog).toBeInTheDocument();
 
-    const attachmentInput = screen.getByLabelText("Bijlage kiezen") as HTMLInputElement;
-    const nextFile = new File(["nieuw"], "nieuw.txt", { type: "text/plain" });
-    fireEvent.change(attachmentInput, { target: { files: [nextFile] } });
+    const attachmentInput = screen.getByLabelText("Bijlagen selecteren") as HTMLInputElement;
+    const firstUpload = deferred<{ id: string }>();
+    const secondUpload = deferred<{ id: string }>();
+    api.uploadBoardCardAttachment.mockReturnValueOnce(firstUpload.promise).mockReturnValueOnce(secondUpload.promise);
+    const firstFile = new File(["nieuw"], "nieuw.txt", { type: "text/plain" });
+    const secondFile = new File(["extra"], "extra.txt", { type: "text/plain" });
+    fireEvent.change(attachmentInput, { target: { files: [firstFile, secondFile] } });
+    expect(screen.getByText("Geselecteerd (2): nieuw.txt, extra.txt")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Toevoegen" }));
 
     await waitFor(() => {
-      expect(api.uploadBoardCardAttachment).toHaveBeenCalledWith("c1", nextFile);
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(1, "c1", firstFile);
     });
+
+    await act(async () => {
+      firstUpload.resolve({ id: "a3" });
+    });
+
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c1", secondFile);
+    });
+
+    await act(async () => {
+      secondUpload.resolve({ id: "a4" });
+    });
+
+    expect(await screen.findByText("2 bijlagen geüpload.")).toBeInTheDocument();
 
     fireEvent.click(within(pdfAttachment as HTMLElement).getByRole("button", { name: "Verwijderen" }));
     await waitFor(() => {
       expect(api.deleteBoardCardAttachment).toHaveBeenCalledWith("c1", "a1");
     });
     confirmSpy.mockRestore();
+  });
+
+  it("neemt meerdere gedropte bijlagen over en toont partial success", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, attachments_count: 1 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [],
+      recordings: [],
+      attachments: []
+    });
+    api.uploadBoardCardAttachment.mockResolvedValueOnce({ id: "a1" }).mockRejectedValueOnce(new Error("Upload mislukt"));
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    await screen.findByRole("dialog");
+
+    const detailForm = screen.getByRole("dialog").querySelector("form.board-attachment-form");
+    expect(detailForm).not.toBeNull();
+
+    const firstFile = new File(["een"], "eerste.txt", { type: "text/plain" });
+    const secondFile = new File(["twee"], "tweede.txt", { type: "text/plain" });
+    fireEvent.drop(detailForm as Element, { dataTransfer: { files: [firstFile, secondFile] } });
+
+    expect(screen.getByText("Geselecteerd (2): eerste.txt, tweede.txt")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Toevoegen" }));
+
+    await waitFor(() => {
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(1, "c1", firstFile);
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c1", secondFile);
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("1 van de 2 bijlagen geüpload. Mislukt: tweede.txt.");
+    const resultList = screen.getByRole("list", { name: "Uploadresultaten bijlagen" });
+    expect(resultList).toHaveTextContent("eerste.txt");
+    expect(resultList).toHaveTextContent("Geüpload");
+    expect(resultList).toHaveTextContent("tweede.txt");
+    expect(resultList).toHaveTextContent("Mislukt");
   });
 
   it("staat maar één actieve opname tegelijk toe en toont Nederlandse foutmelding", async () => {
