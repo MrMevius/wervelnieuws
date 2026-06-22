@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, FocusEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
@@ -38,6 +38,12 @@ type DragCardMeta = {
   cardId: string;
   sourceColumn: "todo" | "doing" | "done";
   sourcePosition: number;
+};
+
+type DragDropTarget = {
+  column: "todo" | "doing" | "done";
+  cardId: string | null;
+  placement: "before" | "after";
 };
 
 type BoardAssignment = {
@@ -237,6 +243,27 @@ function parseDragCardMeta(raw: string): DragCardMeta | null {
   }
 }
 
+function cardIdFromTestId(testId: string | null): string | null {
+  if (!testId?.startsWith("board-card-")) return null;
+  return testId.slice("board-card-".length);
+}
+
+function resolveColumnDragTarget(columnElement: HTMLElement, column: "todo" | "doing" | "done", clientY: number): DragDropTarget {
+  const cardElements = Array.from(columnElement.querySelectorAll<HTMLElement>('[data-testid^="board-card-"]'));
+  for (const cardElement of cardElements) {
+    const rect = cardElement.getBoundingClientRect();
+    if (clientY < rect.top + rect.height / 2) {
+      return {
+        column,
+        cardId: cardIdFromTestId(cardElement.getAttribute("data-testid")),
+        placement: "before"
+      };
+    }
+  }
+
+  return { column, cardId: null, placement: "after" };
+}
+
 function toDutchMoveError(err: unknown): string {
   if (err instanceof Error) {
     const msg = err.message?.trim();
@@ -397,18 +424,32 @@ function applyToolbarAction(value: string, selectionStart: number, selectionEnd:
   };
 }
 
+const BOARD_DETAIL_FOCUSABLE_SELECTOR = [
+  'button:not([disabled])',
+  'a[href]',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])'
+].join(', ');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(BOARD_DETAIL_FOCUSABLE_SELECTOR)).filter((element) => !element.hasAttribute("disabled") && element.tabIndex >= 0);
+}
+
 function UpdateFormattingToolbar({
   onAction
 }: {
   onAction: (action: UpdateToolbarAction) => void;
 }) {
   return (
-    <div className="board-update-toolbar" aria-label="Opmaak knoppen">
-      <button className="board-update-toolbar-button" type="button" aria-label="B" onClick={() => onAction("bold")}><strong>B</strong></button>
-      <button className="board-update-toolbar-button" type="button" aria-label="I" onClick={() => onAction("italic")}><em>I</em></button>
-      <button className="board-update-toolbar-button" type="button" aria-label="U" onClick={() => onAction("underline")}><u>U</u></button>
-      <button className="board-update-toolbar-button" type="button" onClick={() => onAction("bullets")}>• Lijst</button>
-      <button className="board-update-toolbar-button" type="button" onClick={() => onAction("numbers")}>1. Lijst</button>
+    <div className="board-update-toolbar" role="toolbar" aria-label="Opmaak knoppen">
+      <button className="board-update-toolbar-button" type="button" aria-label="B" onMouseDown={(evt) => evt.preventDefault()} onClick={() => onAction("bold")}><strong>B</strong></button>
+      <button className="board-update-toolbar-button" type="button" aria-label="I" onMouseDown={(evt) => evt.preventDefault()} onClick={() => onAction("italic")}><em>I</em></button>
+      <button className="board-update-toolbar-button" type="button" aria-label="U" onMouseDown={(evt) => evt.preventDefault()} onClick={() => onAction("underline")}><u>U</u></button>
+      <button className="board-update-toolbar-button" type="button" onMouseDown={(evt) => evt.preventDefault()} onClick={() => onAction("bullets")}>• Lijst</button>
+      <button className="board-update-toolbar-button" type="button" onMouseDown={(evt) => evt.preventDefault()} onClick={() => onAction("numbers")}>1. Lijst</button>
     </div>
   );
 }
@@ -452,7 +493,7 @@ function DescriptionEditor({
   error?: string | null;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
   onToolbarAction: (action: UpdateToolbarAction) => void;
-  onBlur?: () => void;
+  onBlur?: (event: FocusEvent<HTMLTextAreaElement>) => void;
   onFocus?: () => void;
   ariaLabel: string;
 }) {
@@ -531,9 +572,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [updateMessage, setUpdateMessage] = useState("");
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [attachmentDragActive, setAttachmentDragActive] = useState(false);
   const [createCardNotice, setCreateCardNotice] = useState<string | null>(null);
   const [createCardProgress, setCreateCardProgress] = useState<string | null>(null);
-  const [dragOverColumn, setDragOverColumn] = useState<"todo" | "doing" | "done" | null>(null);
+  const [dragDropTarget, setDragDropTarget] = useState<DragDropTarget | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
@@ -542,8 +584,25 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const newUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const detailDescriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const boardDetailModalRef = useRef<HTMLDivElement | null>(null);
+  const boardDetailCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const boardDetailTriggerRef = useRef<HTMLElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const skipNextTitleBlurRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
+  const dragCardMetaRef = useRef<DragCardMeta | null>(null);
+
+  const clearAttachmentSelection = () => {
+    setAttachmentFile(null);
+    if (attachmentInputRef.current) {
+      attachmentInputRef.current.value = "";
+    }
+  };
+
+  const selectAttachmentFile = (file: File | null) => {
+    setAttachmentFile(file);
+    setAttachmentError(null);
+  };
 
   const handleUpdateToolbarAction = (action: UpdateToolbarAction) => {
     const textarea = newUpdateTextareaRef.current;
@@ -728,8 +787,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         queryClient.invalidateQueries({ queryKey: ["board-card", variables.cardId] }),
         queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] })
       ]);
-      setAttachmentFile(null);
+      clearAttachmentSelection();
       setAttachmentError(null);
+      setAttachmentDragActive(false);
     },
     onError: () => {
       setAttachmentError("Uploaden van de bijlage is mislukt. Probeer het opnieuw.");
@@ -766,8 +826,42 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     };
   }, [boardQuery.data]);
 
+  const resolveMoveTargetPosition = (
+    targetCards: typeof cardsByColumn.todo,
+    targetColumn: "todo" | "doing" | "done",
+    cardMeta: DragCardMeta,
+    targetCardId: string | null,
+    placement: "before" | "after"
+  ) => {
+    if (!targetCardId) {
+      return targetCards.length;
+    }
+
+    const targetIndex = targetCards.findIndex((card) => card.id === targetCardId);
+    if (targetIndex < 0) {
+      return targetCards.length;
+    }
+
+    if (cardMeta.sourceColumn === targetColumn) {
+      if (placement === "before") {
+        return cardMeta.sourcePosition < targetIndex ? targetIndex - 1 : targetIndex;
+      }
+      return cardMeta.sourcePosition < targetIndex ? targetIndex : targetIndex + 1;
+    }
+
+    return placement === "before" ? targetIndex : targetIndex + 1;
+  };
+
   useEffect(() => {
     setActiveCreateColumn(null);
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    setDragDropTarget(null);
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    dragCardMetaRef.current = null;
   }, [resolvedProjectId]);
 
   useEffect(() => {
@@ -813,6 +907,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   useEffect(() => {
     setCreateCardNotice(null);
   }, [resolvedProjectId]);
+
+  useEffect(() => {
+    setDragDropTarget(null);
+  }, [boardQuery.data?.project_id]);
 
   useEffect(() => {
     return () => {
@@ -876,6 +974,13 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     setTitleEdit({ cardId, value: title, original: title, error: null });
   };
 
+  const closeCardDetail = () => {
+    setSelectedCardId(null);
+    window.requestAnimationFrame(() => {
+      boardDetailTriggerRef.current?.focus();
+    });
+  };
+
   const startDescriptionEdit = (cardId: string, description: string) => {
     setDescriptionEdit({ cardId, value: description, original: description, error: null });
     window.requestAnimationFrame(() => {
@@ -932,6 +1037,52 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     autoResizeTextarea(detailDescriptionTextareaRef.current);
   }, [descriptionEdit?.value, cardQuery.data?.card?.id]);
 
+  useEffect(() => {
+    if (!selectedCardId || !cardQuery.data?.card) return;
+    if (titleEdit || descriptionEdit || updateEdit) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const focusTarget = boardDetailCloseButtonRef.current ?? getFocusableElements(boardDetailModalRef.current)[0] ?? boardDetailModalRef.current;
+      focusTarget?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedCardId, cardQuery.data?.card?.id, titleEdit, descriptionEdit, updateEdit]);
+
+  useEffect(() => {
+    if (!selectedCardId || !cardQuery.data?.card) return;
+
+    const onDocumentKeyDown = (evt: KeyboardEvent) => {
+      if (evt.key !== "Tab") return;
+      const modal = boardDetailModalRef.current;
+      if (!modal || !modal.contains(document.activeElement)) return;
+
+      const focusables = getFocusableElements(modal);
+      if (!focusables.length) {
+        evt.preventDefault();
+        modal.focus();
+        return;
+      }
+
+      const activeElement = document.activeElement as HTMLElement | null;
+      const currentIndex = activeElement ? focusables.indexOf(activeElement) : -1;
+      if (evt.shiftKey) {
+        if (currentIndex <= 0) {
+          evt.preventDefault();
+          focusables[focusables.length - 1]?.focus();
+        }
+        return;
+      }
+
+      if (currentIndex === focusables.length - 1) {
+        evt.preventDefault();
+        focusables[0]?.focus();
+      }
+    };
+
+    document.addEventListener("keydown", onDocumentKeyDown, true);
+    return () => document.removeEventListener("keydown", onDocumentKeyDown, true);
+  }, [selectedCardId, cardQuery.data?.card?.id]);
+
   return (
     <section className="panel vergaderborden-page">
       <div className="vergaderborden-header">
@@ -953,30 +1104,29 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
           {KOLOMMEN.map((kolom) => (
             <div
-              className={`vergaderborden-column${dragOverColumn === kolom ? " is-drag-over" : ""}${savingCardId ? " is-saving" : ""}`}
+              className={`vergaderborden-column${dragDropTarget?.column === kolom ? " is-drag-over" : ""}${savingCardId ? " is-saving" : ""}`}
               key={kolom}
               data-testid={`board-column-${kolom}`}
               onDragOver={(e) => {
                 e.preventDefault();
-                if (dragOverColumn !== kolom) setDragOverColumn(kolom);
+                if (!dragCardMetaRef.current) return;
+                setDragDropTarget(resolveColumnDragTarget(e.currentTarget, kolom, e.clientY));
               }}
               onDragLeave={(e) => {
                 if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                setDragOverColumn((current) => (current === kolom ? null : current));
+                setDragDropTarget((current) => (current?.column === kolom ? null : current));
               }}
               onDrop={(e) => {
                 e.preventDefault();
-                setDragOverColumn(null);
-                const cardMeta = parseDragCardMeta(e.dataTransfer.getData("application/json"));
+                e.stopPropagation();
+                setDragDropTarget(null);
+                const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
                 if (!cardMeta) return;
-
-                const isSameColumn = cardMeta.sourceColumn === kolom;
-                if (isSameColumn) {
-                  return;
-                }
+                dragCardMetaRef.current = null;
 
                 const targetCards = cardsByColumn[kolom] ?? [];
-                const targetPosition = targetCards.length;
+                const targetDrop = resolveColumnDragTarget(e.currentTarget, kolom, e.clientY);
+                const targetPosition = resolveMoveTargetPosition(targetCards, kolom, cardMeta, targetDrop.cardId, targetDrop.placement);
 
                 setMoveError(null);
                 setSavingCardId(cardMeta.cardId);
@@ -1047,111 +1197,205 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 />
               )}
               {cardsByColumn[kolom].map((card) => (
-                <article
-                  key={card.id}
-                  className="vergaderborden-board-card"
-                  data-testid={`board-card-${card.id}`}
-                  draggable
-                  onDragStart={(e) => {
-                    setMoveError(null);
-                    const payload: DragCardMeta = { cardId: card.id, sourceColumn: card.column, sourcePosition: card.position };
-                    e.dataTransfer.setData("application/json", JSON.stringify(payload));
-                    e.dataTransfer.setData("text/plain", card.id);
-                  }}
-                  onDragEnd={() => setDragOverColumn(null)}
-                  onClick={() => setSelectedCardId(card.id)}
-                >
-                  <strong className="vergaderborden-card-title">{card.title}</strong>
-                  <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
-                  <AssignedUserAvatarRow assignments={card.assignments} />
-                   <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
-                  <div className="board-card-recording-controls">
-                    {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
-                    <button
-                      type="button"
-                      className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
-                      onClick={(evt) => {
-                        evt.stopPropagation();
-                        void startOrStopRecording(card.id);
-                      }}
-                      disabled={Boolean(recorder && activeRecordingCardId !== card.id)}
-                      aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
-                      title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
-                    >
-                      <RecordIcon active={activeRecordingCardId === card.id} />
-                    </button>
-                  </div>
-                </article>
+                <div key={card.id}>
+                  {dragDropTarget?.column === kolom && dragDropTarget.cardId === card.id && dragDropTarget.placement === "before" && (
+                    <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${kolom}-${card.id}-before`} aria-hidden="true" />
+                  )}
+                  <article
+                    className="vergaderborden-board-card"
+                    data-testid={`board-card-${card.id}`}
+                    tabIndex={-1}
+                    draggable
+                    onDragStart={(e) => {
+                      setMoveError(null);
+                      const payload: DragCardMeta = { cardId: card.id, sourceColumn: card.column, sourcePosition: card.position };
+                      dragCardMetaRef.current = payload;
+                      e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                      e.dataTransfer.setData("text/plain", card.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!dragCardMetaRef.current) return;
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                      setDragDropTarget({ column: kolom, cardId: card.id, placement });
+                    }}
+                    onDragLeave={(e) => {
+                      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                      setDragDropTarget((current) => (current?.cardId === card.id ? null : current));
+                    }}
+                    onDragEnd={() => {
+                      dragCardMetaRef.current = null;
+                      setDragDropTarget(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDragDropTarget(null);
+                      const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
+                      if (!cardMeta || cardMeta.cardId === card.id) return;
+                      dragCardMetaRef.current = null;
+
+                      const targetCards = cardsByColumn[kolom] ?? [];
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                      const targetPosition = resolveMoveTargetPosition(targetCards, kolom, cardMeta, card.id, placement);
+
+                      setMoveError(null);
+                      setSavingCardId(cardMeta.cardId);
+                      moveCardMutation.mutate({ cardId: cardMeta.cardId, column: kolom, position: targetPosition });
+                    }}
+                    onClick={(evt) => {
+                      boardDetailTriggerRef.current = evt.currentTarget;
+                      evt.currentTarget.focus();
+                      setSelectedCardId(card.id);
+                    }}
+                  >
+                    <strong className="vergaderborden-card-title">{card.title}</strong>
+                    <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
+                    <AssignedUserAvatarRow assignments={card.assignments} />
+                     <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
+                    <div className="board-card-recording-controls">
+                      {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
+                      <button
+                        type="button"
+                        className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
+                        onClick={(evt) => {
+                          evt.stopPropagation();
+                          void startOrStopRecording(card.id);
+                        }}
+                        disabled={Boolean(recorder && activeRecordingCardId !== card.id)}
+                        aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+                        title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+                      >
+                        <RecordIcon active={activeRecordingCardId === card.id} />
+                      </button>
+                    </div>
+                  </article>
+                  {dragDropTarget?.column === kolom && dragDropTarget.cardId === card.id && dragDropTarget.placement === "after" && (
+                    <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${kolom}-${card.id}-after`} aria-hidden="true" />
+                  )}
+                </div>
               ))}
+              {dragDropTarget?.column === kolom && dragDropTarget.cardId === null && (
+                <div className="vergaderborden-drop-indicator vergaderborden-drop-indicator--end" data-testid={`board-drop-indicator-${kolom}-end`} aria-hidden="true" />
+              )}
             </div>
           ))}
         </div>
       )}
       {recordingError && <p className="error vergaderborden-inline-error">{recordingError}</p>}
 
-      {cardQuery.data?.card && (
-        <div className="board-detail-overlay" role="dialog" aria-modal="true" onClick={(e) => {
-          if (e.target === e.currentTarget) setSelectedCardId(null);
-        }}>
+      {selectedCardId && cardQuery.data?.card && (
+        <div
+          className="board-detail-overlay"
+          role="dialog"
+          aria-modal="true"
+          tabIndex={-1}
+          ref={boardDetailModalRef}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeCardDetail();
+          }}
+          onKeyDownCapture={(evt) => {
+            if (evt.key !== "Tab") return;
+
+            const focusables = getFocusableElements(boardDetailModalRef.current);
+            if (!focusables.length) {
+              evt.preventDefault();
+              boardDetailModalRef.current?.focus();
+              return;
+            }
+
+            const activeElement = document.activeElement as HTMLElement | null;
+            const currentIndex = activeElement ? focusables.indexOf(activeElement) : -1;
+            if (evt.shiftKey) {
+              if (currentIndex <= 0) {
+                evt.preventDefault();
+                focusables[focusables.length - 1]?.focus();
+              }
+              return;
+            }
+
+            if (currentIndex === focusables.length - 1) {
+              evt.preventDefault();
+              focusables[0]?.focus();
+            }
+          }}
+          onKeyDown={(evt) => {
+            if (evt.key === "Escape") {
+              evt.preventDefault();
+              closeCardDetail();
+            }
+          }}
+        >
           <div className="board-detail-modal">
-            <button type="button" className="board-detail-close" onClick={() => setSelectedCardId(null)} aria-label="Kaartdetail sluiten">×</button>
-            {titleEdit?.cardId === cardQuery.data.card.id ? (
-              <div className="board-detail-title-edit">
-                <label className="vergaderborden-field">
-                  <span>Kaarttitel</span>
-                  <input
-                    autoFocus
-                    name="kaarttitel"
-                    value={titleEdit.value}
-                    onChange={(evt) => setTitleEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
-                    maxLength={CARD_TITLE_MAX_LENGTH}
-                    onBlur={() => {
-                      if (skipNextTitleBlurRef.current) {
-                        skipNextTitleBlurRef.current = false;
-                        return;
-                      }
-                      void saveTitleEdit();
-                    }}
-                    onKeyDown={(evt) => {
-                      if (evt.key === "Enter") {
-                        evt.preventDefault();
-                        skipNextTitleBlurRef.current = true;
-                        void saveTitleEdit();
-                      }
-                      if (evt.key === "Escape") {
-                        evt.preventDefault();
-                        skipNextTitleBlurRef.current = true;
-                        setTitleEdit(null);
-                      }
-                    }}
-                    disabled={updateTitleMutation.isPending}
-                  />
-                </label>
-                {titleEdit.error && <p className="error vergaderborden-inline-error">{titleEdit.error}</p>}
+            <header className="board-detail-header">
+              <div className="board-detail-header-copy">
+                {titleEdit?.cardId === cardQuery.data.card.id ? (
+                  <div className="board-detail-title-edit">
+                    <label className="vergaderborden-field">
+                      <span>Kaarttitel</span>
+                      <input
+                        autoFocus
+                        name="kaarttitel"
+                        value={titleEdit.value}
+                        onChange={(evt) => setTitleEdit((current) => (current ? { ...current, value: evt.target.value, error: null } : current))}
+                        maxLength={CARD_TITLE_MAX_LENGTH}
+                        onBlur={() => {
+                          if (skipNextTitleBlurRef.current) {
+                            skipNextTitleBlurRef.current = false;
+                            return;
+                          }
+                          void saveTitleEdit();
+                        }}
+                        onKeyDown={(evt) => {
+                          if (evt.key === "Enter") {
+                            evt.preventDefault();
+                            skipNextTitleBlurRef.current = true;
+                            void saveTitleEdit();
+                          }
+                          if (evt.key === "Escape") {
+                            evt.preventDefault();
+                            evt.stopPropagation();
+                            skipNextTitleBlurRef.current = true;
+                            setTitleEdit(null);
+                          }
+                        }}
+                        disabled={updateTitleMutation.isPending}
+                      />
+                    </label>
+                    {titleEdit.error && <p className="error vergaderborden-inline-error">{titleEdit.error}</p>}
+                  </div>
+                ) : (
+                  <div className="board-detail-title-row">
+                    <h2
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
+                      onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
+                      onKeyDown={(evt) => {
+                        if (evt.key === "Enter" || evt.key === " ") {
+                          evt.preventDefault();
+                          startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title);
+                        }
+                      }}
+                    >
+                      {cardQuery.data.card.title}
+                    </h2>
+                  </div>
+                )}
+                <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
               </div>
-            ) : (
-              <div className="board-detail-title-row">
-                <h2
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
-                  onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
-                  onKeyDown={(evt) => {
-                    if (evt.key === "Enter" || evt.key === " ") {
-                      evt.preventDefault();
-                      startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title);
-                    }
-                  }}
-                >
-                  {cardQuery.data.card.title}
-                </h2>
+              <button type="button" className="board-detail-close" ref={boardDetailCloseButtonRef} onClick={closeCardDetail} aria-label="Kaartdetail sluiten">Sluiten</button>
+            </header>
+
+            <section className="board-detail-section board-detail-description-panel">
+              <div className="board-detail-section-heading">
+                <h3>Beschrijving</h3>
               </div>
-            )}
-            <div className="board-detail-description-edit">
-              <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
               {descriptionEdit?.cardId === cardQuery.data.card.id ? (
                 <label className="vergaderborden-field">
-                  <span>Beschrijving</span>
                   <DescriptionEditor
                     ariaLabel="Beschrijving"
                     textareaRef={detailDescriptionTextareaRef}
@@ -1159,7 +1403,11 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     onChange={(nextValue) => {
                       setDescriptionEdit((current) => (current ? { ...current, value: nextValue, error: null } : current));
                     }}
-                    onBlur={() => {
+                    onBlur={(evt) => {
+                      const relatedTarget = evt.relatedTarget as Node | null;
+                      if (relatedTarget && evt.currentTarget.parentElement?.contains(relatedTarget)) {
+                        return;
+                      }
                       void saveDescriptionEdit();
                     }}
                     placeholder="Beschrijving toevoegen"
@@ -1171,7 +1419,6 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 </label>
               ) : (
                 <div className="vergaderborden-field">
-                  <span>Beschrijving</span>
                   <div
                     role="button"
                     tabIndex={0}
@@ -1189,9 +1436,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   </div>
                 </div>
               )}
-            </div>
+            </section>
+
             <form
-              className="board-update-form"
+              className="board-update-form board-detail-section"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
                 const message = updateMessage.trim();
@@ -1201,9 +1449,11 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 }
                 postUpdateMutation.mutate({ cardId: cardQuery.data!.card.id, message });
               }}
-            >
+              >
+              <div className="board-detail-section-heading">
+                <h3>Nieuwe update</h3>
+              </div>
               <label className="vergaderborden-field">
-                <span>Nieuwe update</span>
                 <div className="board-update-editor-shell">
                   <UpdateFormattingToolbar onAction={handleUpdateToolbarAction} />
                   <textarea
@@ -1220,13 +1470,36 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 </div>
               </label>
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
-              <button type="submit">Update plaatsen</button>
+              <div className="board-update-actions board-update-actions-editor">
+                <button type="submit" className="board-update-submit" disabled={postUpdateMutation.isPending}>
+                  {postUpdateMutation.isPending ? "Update plaatsen…" : "Update plaatsen"}
+                </button>
+              </div>
             </form>
 
-            <section className="board-attachments-section">
-              <h3>Bijlagen</h3>
+            <section className="board-detail-section board-attachments-section">
+              <div className="board-detail-section-heading">
+                <h3>Bijlagen</h3>
+              </div>
               <form
-                className="board-attachment-form"
+                className={`board-attachment-form ${attachmentDragActive ? "is-drag-active" : ""}`}
+                onDragOver={(evt) => {
+                  evt.preventDefault();
+                  setAttachmentDragActive(true);
+                }}
+                onDragEnter={(evt) => {
+                  evt.preventDefault();
+                  setAttachmentDragActive(true);
+                }}
+                onDragLeave={() => setAttachmentDragActive(false)}
+                onDrop={(evt) => {
+                  evt.preventDefault();
+                  setAttachmentDragActive(false);
+                  const file = evt.dataTransfer.files?.[0] ?? null;
+                  if (file) {
+                    selectAttachmentFile(file);
+                  }
+                }}
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!attachmentFile) {
@@ -1236,21 +1509,35 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   setAttachmentError(null);
                   uploadAttachmentMutation.mutate({ cardId: cardQuery.data!.card.id, file: attachmentFile });
                 }}
-              >
-                <label className="vergaderborden-field">
-                  <span>Bijlage uploaden</span>
+                >
+                <label className="board-attachment-dropzone">
                   <input
+                    ref={attachmentInputRef}
+                    className="board-attachment-dropzone-input"
                     type="file"
+                    aria-label="Bijlage kiezen"
                     onChange={(evt) => {
-                      setAttachmentFile(evt.target.files?.[0] ?? null);
-                      setAttachmentError(null);
+                      selectAttachmentFile(evt.target.files?.[0] ?? null);
                     }}
                     disabled={uploadAttachmentMutation.isPending}
                   />
+                  <span className="board-attachment-dropzone-title">Sleep een bijlage hierheen</span>
+                  <span className="board-attachment-dropzone-hint">of klik om een bestand te kiezen</span>
                 </label>
-                {attachmentFile && <p className="board-attachment-selected muted">Geselecteerd: {attachmentFile.name}</p>}
-                {attachmentError && <p className="error vergaderborden-inline-error">{attachmentError}</p>}
-                <button type="submit" disabled={uploadAttachmentMutation.isPending || !attachmentFile}>Bijlage uploaden</button>
+                <div className="board-attachment-form-actions">
+                  {attachmentFile ? (
+                    <div className="board-attachment-selected-row">
+                      <p className="board-attachment-selected muted">Geselecteerd: {attachmentFile.name}</p>
+                      <button type="button" className="board-attachment-action board-attachment-action--secondary" onClick={clearAttachmentSelection} disabled={uploadAttachmentMutation.isPending}>
+                        Wissen
+                      </button>
+                    </div>
+                  ) : null}
+                  {attachmentError && <p className="error vergaderborden-inline-error">{attachmentError}</p>}
+                  <button type="submit" className="board-attachment-submit" disabled={uploadAttachmentMutation.isPending || !attachmentFile}>
+                    {uploadAttachmentMutation.isPending ? "Toevoegen…" : "Toevoegen"}
+                  </button>
+                </div>
               </form>
               {cardAttachments.length === 0 ? (
                 <p className="board-attachments-empty">Er zijn nog geen bijlagen toegevoegd.</p>
@@ -1263,13 +1550,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       <article key={attachment.id} className="board-attachment-item" role="listitem">
                         <div className="board-attachment-header">
                           <strong className="board-attachment-name">{attachment.filename}</strong>
-                          <small className="board-attachment-meta">{uploadedBy} · {createdAtLabel} · Grootte: {formatRecordingSize(attachment.size_bytes)}</small>
+                          <small className="board-attachment-meta">{uploadedBy} · {createdAtLabel} · {formatRecordingSize(attachment.size_bytes)}</small>
                         </div>
                         <div className="board-attachment-actions">
-                          <a href={attachment.download_url}>Download bijlage</a>
+                          <a className="board-attachment-action board-attachment-action--download" href={attachment.download_url}>
+                            Downloaden
+                          </a>
                           <button
                             type="button"
-                            className="board-update-action-link"
+                            className="board-attachment-action board-attachment-action--danger"
                             disabled={deleteAttachmentMutation.isPending}
                             onClick={() => {
                               const shouldDelete = window.confirm("Weet je zeker dat je deze bijlage wilt verwijderen?");
@@ -1287,8 +1576,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               )}
             </section>
 
-            <section className="board-updates-section" aria-live="polite">
-              <h3>Updates</h3>
+            <section className="board-updates-section board-detail-section" aria-live="polite">
+              <div className="board-detail-section-heading">
+                <div>
+                  <h3>Updates</h3>
+                  <p className="board-section-help">De nieuwste activiteit staat bovenaan in een compacte timeline.</p>
+                </div>
+              </div>
+              <div className="board-updates-timeline" role="list" aria-label="Chronologische updates">
               {cardActivityItems.map((activity) => {
                   if (activity.kind === "recording") {
                     const r = activity.recording;
@@ -1296,7 +1591,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     const dateLabel = hasDate ? formatAmsterdamDateTime(activity.createdAt) : "Datum onbekend";
                     const authorLabel = r.uploaded_by_display_name?.trim() || r.uploaded_by_username?.trim() || "Onbekende auteur";
                     return (
-                      <article key={activity.id} className="board-update-item">
+                      <article key={activity.id} className="board-update-item" role="listitem">
                         <div className="board-update-header">
                           <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
                           <div className="board-update-header-text">
@@ -1320,7 +1615,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   const authorLabel = u.author_display_name?.trim() || u.author_username?.trim() || "Onbekende auteur";
                   const isMoveUpdate = isAutomaticMoveUpdate(u.message);
                   return (
-                    <article key={u.id} className="board-update-item">
+                    <article key={u.id} className="board-update-item" role="listitem">
                       <div className="board-update-header">
                         <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
                         <div className="board-update-header-text">
@@ -1432,8 +1727,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         </>
                       )}
                     </article>
-                  );
-                })}
+                    );
+                  })}
+              </div>
               {cardActivityItems.length === 0 && <p className="board-updates-empty">Er zijn nog geen updates geplaatst.</p>}
             </section>
             {cardQuery.data.card.column === "doing" && (

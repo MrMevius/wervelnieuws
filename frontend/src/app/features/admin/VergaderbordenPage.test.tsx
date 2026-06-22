@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VergaderbordenPage } from "./VergaderbordenPage";
 import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./vergaderbordenProjectSelection";
 
@@ -61,11 +61,12 @@ function renderPage(initialEntry = "/vergaderborden?project=p1", canManageProjec
   );
 }
 
-function makeDataTransfer() {
+function makeDataTransfer(options: { readable?: boolean } = {}) {
+  const { readable = true } = options;
   const store = new Map<string, string>();
   return {
     setData: (type: string, value: string) => store.set(type, value),
-    getData: (type: string) => store.get(type) ?? ""
+    getData: vi.fn((type: string) => (readable ? store.get(type) ?? "" : ""))
   };
 }
 
@@ -129,6 +130,10 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("slaat direct op bij verplaatsen naar andere kolom", async () => {
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
@@ -150,28 +155,127 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
-  it("doet geen API-call bij same-column drop met meerdere kaarten", async () => {
+  it("toont een duidelijke horizontale invoegstreep op de middenpositie in een andere kolom", async () => {
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
       project_name: "Project A",
       invited_user_ids: ["u1"],
       cards: [
-        { id: "c1", project_id: "p1", title: "Kaart 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
-        { id: "c2", project_id: "p1", title: "Kaart 2", description: "", column: "todo", position: 1, assignments: [], updates_count: 0, recordings_count: 0 },
-        { id: "c3", project_id: "p1", title: "Kaart 3", description: "", column: "todo", position: 2, assignments: [], updates_count: 0, recordings_count: 0 }
+        { id: "c1", project_id: "p1", title: "Todo 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Todo 2", description: "", column: "todo", position: 1, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "d1", project_id: "p1", title: "Doing 1", description: "", column: "doing", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "d2", project_id: "p1", title: "Doing 2", description: "", column: "doing", position: 1, assignments: [], updates_count: 0, recordings_count: 0 }
       ]
     });
 
     renderPage();
 
-    const card = await screen.findByTestId("board-card-c1");
-    const todoColumn = await screen.findByTestId("board-column-todo");
-    const dt = makeDataTransfer();
-    fireEvent.dragStart(card, { dataTransfer: dt });
-    fireEvent.drop(todoColumn, { dataTransfer: dt });
+    const sourceCard = await screen.findByTestId("board-card-c1");
+    const targetCard = await screen.findByTestId("board-card-d1");
+    Object.defineProperty(targetCard, "getBoundingClientRect", {
+      value: () => ({
+        x: 0,
+        y: 100,
+        top: 100,
+        left: 0,
+        right: 240,
+        bottom: 160,
+        width: 240,
+        height: 60,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+    const dt = makeDataTransfer({ readable: false });
+    fireEvent.dragStart(sourceCard, { dataTransfer: dt });
+    fireEvent.dragOver(targetCard, { dataTransfer: dt, clientY: 150 });
+
+    expect(await screen.findByTestId("board-drop-indicator-doing-d1-after")).toBeInTheDocument();
+
+    fireEvent.drop(targetCard, { dataTransfer: dt, clientY: 150 });
+
+    expect(dt.getData).not.toHaveBeenCalled();
 
     await waitFor(() => {
-      expect(api.moveBoardCard).not.toHaveBeenCalled();
+      expect(api.moveBoardCard).toHaveBeenCalledWith("c1", { column: "doing", position: 1 });
+    });
+  });
+
+  it("plaatst een kaart onderaan een niet-lege kolom echt als laatste", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Todo 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Todo 2", description: "", column: "todo", position: 1, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "d1", project_id: "p1", title: "Doing 1", description: "", column: "doing", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "d2", project_id: "p1", title: "Doing 2", description: "", column: "doing", position: 1, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "d3", project_id: "p1", title: "Doing 3", description: "", column: "doing", position: 2, assignments: [], updates_count: 0, recordings_count: 0 }
+      ]
+    });
+
+    renderPage();
+
+    const sourceCard = await screen.findByTestId("board-card-c1");
+    const doingColumn = await screen.findByTestId("board-column-doing");
+    const dt = makeDataTransfer({ readable: false });
+    fireEvent.dragStart(sourceCard, { dataTransfer: dt });
+    fireEvent.dragOver(doingColumn, { dataTransfer: dt, clientY: 999 });
+
+    expect(await screen.findByTestId("board-drop-indicator-doing-end")).toBeInTheDocument();
+
+    fireEvent.drop(doingColumn, { dataTransfer: dt, clientY: 999 });
+
+    expect(dt.getData).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(api.moveBoardCard).toHaveBeenCalledWith("c1", { column: "doing", position: 3 });
+    });
+  });
+
+  it("verplaatst een kaart binnen dezelfde kolom naar een nieuwe positie en gebruikt drag state in plaats van dataTransfer tijdens dragover", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Todo 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c2", project_id: "p1", title: "Todo 2", description: "", column: "todo", position: 1, assignments: [], updates_count: 0, recordings_count: 0 },
+        { id: "c3", project_id: "p1", title: "Todo 3", description: "", column: "todo", position: 2, assignments: [], updates_count: 0, recordings_count: 0 }
+      ]
+    });
+
+    renderPage();
+
+    const sourceCard = await screen.findByTestId("board-card-c3");
+    const targetCard = await screen.findByTestId("board-card-c1");
+    Object.defineProperty(targetCard, "getBoundingClientRect", {
+      value: () => ({
+        x: 0,
+        y: 100,
+        top: 100,
+        left: 0,
+        right: 240,
+        bottom: 160,
+        width: 240,
+        height: 60,
+        toJSON: () => ({})
+      }),
+      configurable: true
+    });
+
+    const dt = makeDataTransfer({ readable: false });
+    fireEvent.dragStart(sourceCard, { dataTransfer: dt });
+    fireEvent.dragOver(targetCard, { dataTransfer: dt, clientY: 120 });
+    expect(dt.getData).not.toHaveBeenCalled();
+
+    fireEvent.drop(targetCard, { dataTransfer: dt, clientY: 120 });
+
+    expect(dt.getData).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(api.moveBoardCard).toHaveBeenCalledWith("c3", { column: "todo", position: 1 });
     });
   });
 
@@ -438,6 +542,96 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Beschrijving toevoegen" }));
 
     expect(await screen.findByLabelText("Beschrijving")).toBeInTheDocument();
+  });
+
+  it("houdt beschrijving-toolbaracties intact bij blur en slaat daarna gepolijst op", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "Oud", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    fireEvent.click(await screen.findByRole("button", { name: "Beschrijving bewerken" }));
+    const input = await screen.findByLabelText("Beschrijving") as HTMLTextAreaElement;
+    fireEvent.change(input, { target: { value: "Nieuwe beschrijving" } });
+    input.setSelectionRange(0, "Nieuwe beschrijving".length);
+
+    const boldButton = within(screen.getByRole("dialog")).getAllByRole("button", { name: "B" })[0];
+    fireEvent.blur(input, { relatedTarget: boldButton });
+    expect(api.updateBoardCardDescription).not.toHaveBeenCalled();
+
+    fireEvent.mouseDown(boldButton);
+    fireEvent.click(boldButton);
+    await waitFor(() => {
+      expect(input).toHaveValue("**Nieuwe beschrijving**");
+    });
+
+    fireEvent.blur(input);
+
+    await waitFor(() => {
+      expect(api.updateBoardCardDescription).toHaveBeenCalledWith("c1", { description: "**Nieuwe beschrijving**" });
+    });
+  });
+
+  it("zet initial focus, houdt focus in de modal en geeft focus terug aan de trigger", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Titel", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [card]
+    });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+
+    renderPage();
+
+    const trigger = await screen.findByTestId("board-card-c1");
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText("Beschrijving")).toHaveLength(1);
+    expect(within(dialog).queryByText("Klik om de kaartomschrijving direct te bewerken.")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("De update blijft op dezelfde plek, maar is rustiger opgebouwd.")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Sleep een bestand in de zone of kies handmatig een bijlage.")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Bijlage selecteren")).not.toBeInTheDocument();
+    const closeButton = within(dialog).getByRole("button", { name: "Kaartdetail sluiten" });
+
+    await waitFor(() => {
+      expect(closeButton).toHaveFocus();
+    });
+
+    const attachmentInput = within(dialog).getByLabelText("Bijlage kiezen") as HTMLInputElement;
+    fireEvent.change(attachmentInput, { target: { files: [new File(["bijlage"], "bijlage.txt", { type: "text/plain" })] } });
+
+    const uploadButton = within(dialog).getByRole("button", { name: "Toevoegen" });
+    expect(uploadButton).not.toBeDisabled();
+    const titleEditButton = within(dialog).getByRole("button", { name: "Kaarttitel bewerken: Titel" });
+
+    const focusables = Array.from(dialog.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      .filter((element) => element.tabIndex >= 0);
+    const lastFocusable = focusables[focusables.length - 1];
+    expect(lastFocusable).toBeDefined();
+
+    uploadButton.focus();
+    fireEvent.keyDown(uploadButton, { key: "Tab", code: "Tab" });
+    expect(titleEditButton).toHaveFocus();
+
+    lastFocusable.focus();
+    fireEvent.keyDown(lastFocusable, { key: "Tab", code: "Tab" });
+    expect(titleEditButton).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(trigger).toHaveFocus();
+    });
   });
 
   it("biedt rijke beschrijving-editor in nieuw-kaart flow", async () => {
@@ -1283,12 +1477,13 @@ describe("Vergaderborden drag/drop", () => {
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     expect(await screen.findByText("notitie.pdf")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Download bijlage" })).toHaveAttribute("href", "/api/boards/attachments/a1/download");
+    expect(screen.getByRole("link", { name: "Downloaden" })).toHaveAttribute("href", "/api/boards/attachments/a1/download");
+    expect(screen.getByRole("list", { name: "Chronologische updates" })).toBeInTheDocument();
 
-    const attachmentInput = screen.getByLabelText("Bijlage uploaden") as HTMLInputElement;
+    const attachmentInput = screen.getByLabelText("Bijlage kiezen") as HTMLInputElement;
     const nextFile = new File(["nieuw"], "nieuw.txt", { type: "text/plain" });
     fireEvent.change(attachmentInput, { target: { files: [nextFile] } });
-    fireEvent.click(screen.getByRole("button", { name: "Bijlage uploaden" }));
+    fireEvent.click(screen.getByRole("button", { name: "Toevoegen" }));
 
     await waitFor(() => {
       expect(api.uploadBoardCardAttachment).toHaveBeenCalledWith("c1", nextFile);
