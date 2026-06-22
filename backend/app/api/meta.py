@@ -29,6 +29,37 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "86",
+                "date": "2026-06-22",
+                "title": "Afbeeldingsbijlagen kun je nu groter bekijken",
+                "highlights": [
+                    "Afbeeldingsbijlagen tonen nu een klikbare preview in de bijlagenlijst.",
+                    "Klikken opent een groter venster dat netjes binnen het scherm past.",
+                    "Sluiten blijft eenvoudig via de knop, de achtergrond of Escape.",
+                ],
+            },
+            {
+                "iteration": "85",
+                "date": "2026-06-17",
+                "title": "Vergaderbord-kaartdetail voelt rustiger en overzichtelijker",
+                "highlights": [
+                    "Het kaartdetail heeft nu duidelijkere secties voor titel, beschrijving, update-invoer, bijlagen en geschiedenis.",
+                    "Bijlagen zijn makkelijker te uploaden met een drag-and-drop zone en duidelijkere download- en verwijderknoppen.",
+                    "De updategeschiedenis is compacter en beter scanbaar, terwijl de editor en sluitknop rustiger in de modal zijn geïntegreerd.",
+                ],
+            },
+            {
+                "iteration": "84",
+                "date": "2026-06-17",
+                "title": "Vergaderbord-kaarten kun je nu binnen dezelfde kolom herschikken",
+                "highlights": [
+                    "Kaarten kunnen nu omhoog en omlaag worden gesleept binnen dezelfde kolom, met een duidelijke invoegindicator tijdens het slepen.",
+                    "Droppen onderaan een volle kolom plaatst een kaart nu echt als laatste, ook als je vanuit een andere kolom verplaatst.",
+                    "De nieuwe volgorde blijft bewaard na verversen, zodat je bordindeling niet verloren gaat.",
+                    "Verplaatsen naar een andere kolom blijft gewoon werken zoals je gewend bent.",
+                ],
+            },
+            {
                 "iteration": "83",
                 "date": "2026-06-17",
                 "title": "Bijlagen direct toevoegen bij nieuwe vergaderbord-kaarten",

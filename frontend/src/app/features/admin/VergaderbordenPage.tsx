@@ -433,9 +433,15 @@ const BOARD_DETAIL_FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(', ');
 
+const ATTACHMENT_PREVIEW_OVERLAY_SELECTOR = ".board-attachment-preview-overlay";
+
 function getFocusableElements(container: HTMLElement | null) {
   if (!container) return [];
   return Array.from(container.querySelectorAll<HTMLElement>(BOARD_DETAIL_FOCUSABLE_SELECTOR)).filter((element) => !element.hasAttribute("disabled") && element.tabIndex >= 0);
+}
+
+function isInsideAttachmentPreview(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest(ATTACHMENT_PREVIEW_OVERLAY_SELECTOR));
 }
 
 function UpdateFormattingToolbar({
@@ -558,6 +564,94 @@ function formatRecordingSize(sizeBytes: number | null | undefined): string {
   return `${new Intl.NumberFormat("nl-NL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(mb)} MB`;
 }
 
+const IMAGE_ATTACHMENT_EXTENSIONS = new Set(["avif", "gif", "heic", "heif", "ico", "jpeg", "jpg", "png", "svg", "tif", "tiff", "webp"]);
+
+function isImageAttachment(attachment: Pick<CardAttachmentItem, "filename" | "mime_type">): boolean {
+  const mimeType = attachment.mime_type.trim().toLowerCase();
+  if (mimeType.startsWith("image/")) return true;
+
+  const extension = attachment.filename.trim().toLowerCase().split(".").pop();
+  return Boolean(extension && IMAGE_ATTACHMENT_EXTENSIONS.has(extension));
+}
+
+function AttachmentPreviewModal({ attachment, onClose }: { attachment: CardAttachmentItem; onClose: () => void }) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const previewModalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [attachment.id]);
+
+  const handleKeyDownCapture = (evt: React.KeyboardEvent<HTMLDivElement>) => {
+    if (evt.key === "Escape") {
+      evt.preventDefault();
+      evt.stopPropagation();
+      onClose();
+      return;
+    }
+
+    if (evt.key !== "Tab") return;
+
+    const focusables = getFocusableElements(previewModalRef.current);
+    if (!focusables.length) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      closeButtonRef.current?.focus();
+      return;
+    }
+
+    const activeElement = document.activeElement as HTMLElement | null;
+    const currentIndex = activeElement ? focusables.indexOf(activeElement) : -1;
+
+    if (evt.shiftKey) {
+      if (currentIndex <= 0) {
+        evt.preventDefault();
+        evt.stopPropagation();
+        focusables[focusables.length - 1]?.focus();
+      }
+      return;
+    }
+
+    if (currentIndex === -1 || currentIndex === focusables.length - 1) {
+      evt.preventDefault();
+      evt.stopPropagation();
+      focusables[0]?.focus();
+    }
+  };
+
+  return (
+    <div
+      className="modal board-attachment-preview-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Voorbeeld van ${attachment.filename}`}
+      onKeyDownCapture={handleKeyDownCapture}
+      onClick={(evt) => {
+        if (evt.target === evt.currentTarget) onClose();
+      }}
+    >
+      <div ref={previewModalRef} className="board-attachment-preview-modal" onClick={(evt) => evt.stopPropagation()}>
+        <div className="board-attachment-preview-header">
+          <div>
+            <h3>Bijlagevoorbeeld</h3>
+            <p className="board-attachment-preview-filename">{attachment.filename}</p>
+          </div>
+          <button type="button" className="board-attachment-preview-close" autoFocus ref={closeButtonRef} onClick={onClose}>
+            Sluiten
+          </button>
+        </div>
+        <div className="board-attachment-preview-frame">
+          <img className="board-attachment-preview-image" src={attachment.download_url} alt={`Voorbeeld van ${attachment.filename}`} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function VergaderbordenPage({ canManageProjects = false }: { canManageProjects?: boolean }) {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -573,6 +667,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [attachmentDragActive, setAttachmentDragActive] = useState(false);
+  const [attachmentPreview, setAttachmentPreview] = useState<CardAttachmentItem | null>(null);
   const [createCardNotice, setCreateCardNotice] = useState<string | null>(null);
   const [createCardProgress, setCreateCardProgress] = useState<string | null>(null);
   const [dragDropTarget, setDragDropTarget] = useState<DragDropTarget | null>(null);
@@ -587,6 +682,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const boardDetailModalRef = useRef<HTMLDivElement | null>(null);
   const boardDetailCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const boardDetailTriggerRef = useRef<HTMLElement | null>(null);
+  const attachmentPreviewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const skipNextTitleBlurRef = useRef(false);
   const recordingStartedAtRef = useRef<number | null>(null);
@@ -603,6 +699,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     setAttachmentFile(file);
     setAttachmentError(null);
   };
+
+  useEffect(() => {
+    const shouldRestoreFocus = attachmentPreview === null && attachmentPreviewTriggerRef.current;
+    if (!shouldRestoreFocus) return;
+    attachmentPreviewTriggerRef.current?.focus();
+  }, [attachmentPreview]);
 
   const handleUpdateToolbarAction = (action: UpdateToolbarAction) => {
     const textarea = newUpdateTextareaRef.current;
@@ -706,6 +808,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [cardQuery.data]);
 
   const cardAttachments = useMemo<CardAttachmentItem[]>(() => cardQuery.data?.attachments ?? [], [cardQuery.data]);
+
+  useEffect(() => {
+    setAttachmentPreview(null);
+  }, [selectedCardId]);
 
   const createProjectMutation = useMutation({
     mutationFn: createBoardProject,
@@ -975,6 +1081,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   };
 
   const closeCardDetail = () => {
+    setAttachmentPreview(null);
     setSelectedCardId(null);
     window.requestAnimationFrame(() => {
       boardDetailTriggerRef.current?.focus();
@@ -1298,6 +1405,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             if (e.target === e.currentTarget) closeCardDetail();
           }}
           onKeyDownCapture={(evt) => {
+            if (isInsideAttachmentPreview(evt.target)) return;
+
             if (evt.key !== "Tab") return;
 
             const focusables = getFocusableElements(boardDetailModalRef.current);
@@ -1323,6 +1432,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             }
           }}
           onKeyDown={(evt) => {
+            if (isInsideAttachmentPreview(evt.target)) return;
+
             if (evt.key === "Escape") {
               evt.preventDefault();
               closeCardDetail();
@@ -1544,10 +1655,24 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               ) : (
                 <div className="board-attachments-list" role="list" aria-label="Bijlagenlijst">
                   {cardAttachments.map((attachment) => {
+                    const isImage = isImageAttachment(attachment);
                     const uploadedBy = attachment.uploaded_by_display_name?.trim() || attachment.uploaded_by_username?.trim() || "Onbekende gebruiker";
                     const createdAtLabel = attachment.created_at ? formatAmsterdamDateTime(attachment.created_at) : "Datum onbekend";
                     return (
                       <article key={attachment.id} className="board-attachment-item" role="listitem">
+                        {isImage ? (
+                          <button
+                            type="button"
+                            className="board-attachment-preview-button"
+                            aria-label={`Voorbeeld van ${attachment.filename}`}
+                            onClick={(evt) => {
+                              attachmentPreviewTriggerRef.current = evt.currentTarget;
+                              setAttachmentPreview(attachment);
+                            }}
+                          >
+                            <img className="board-attachment-preview-thumb" src={attachment.download_url} alt={`Voorvertoning van ${attachment.filename}`} loading="lazy" />
+                          </button>
+                        ) : null}
                         <div className="board-attachment-header">
                           <strong className="board-attachment-name">{attachment.filename}</strong>
                           <small className="board-attachment-meta">{uploadedBy} · {createdAtLabel} · {formatRecordingSize(attachment.size_bytes)}</small>
@@ -1575,6 +1700,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 </div>
               )}
             </section>
+
+            {attachmentPreview && isImageAttachment(attachmentPreview) && (
+              <AttachmentPreviewModal attachment={attachmentPreview} onClose={() => setAttachmentPreview(null)} />
+            )}
 
             <section className="board-updates-section board-detail-section" aria-live="polite">
               <div className="board-detail-section-heading">

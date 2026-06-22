@@ -1468,6 +1468,17 @@ describe("Vergaderborden drag/drop", () => {
           size_bytes: 2048,
           created_at: "2026-06-16T10:00:00Z",
           download_url: "/api/boards/attachments/a1/download"
+        },
+        {
+          id: "a2",
+          uploaded_by_user_id: "u1",
+          uploaded_by_username: "admin",
+          uploaded_by_display_name: "Admin",
+          filename: "foto.jpg",
+          mime_type: "image/jpeg",
+          size_bytes: 4096,
+          created_at: "2026-06-16T10:05:00Z",
+          download_url: "/api/boards/attachments/a2/download"
         }
       ]
     });
@@ -1476,9 +1487,54 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
 
     fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const detailDialog = await screen.findByRole("dialog");
     expect(await screen.findByText("notitie.pdf")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Downloaden" })).toHaveAttribute("href", "/api/boards/attachments/a1/download");
+    const pdfAttachment = screen.getByText("notitie.pdf").closest("article");
+    expect(pdfAttachment).not.toBeNull();
+    expect(within(pdfAttachment as HTMLElement).getByRole("link", { name: "Downloaden" })).toHaveAttribute("href", "/api/boards/attachments/a1/download");
     expect(screen.getByRole("list", { name: "Chronologische updates" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Voorbeeld van notitie.pdf" })).not.toBeInTheDocument();
+
+    const previewButton = screen.getByRole("button", { name: "Voorbeeld van foto.jpg" });
+    fireEvent.click(previewButton);
+
+    const previewDialog = await screen.findByRole("dialog", { name: "Voorbeeld van foto.jpg" });
+    const previewCloseButton = within(previewDialog).getByRole("button", { name: "Sluiten" });
+    expect(within(previewDialog).getByAltText("Voorbeeld van foto.jpg")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(previewCloseButton).toHaveFocus();
+    });
+
+    fireEvent.keyDown(previewCloseButton, { key: "Tab", code: "Tab" });
+    expect(previewCloseButton).toHaveFocus();
+
+    fireEvent.keyDown(previewCloseButton, { key: "Tab", code: "Tab", shiftKey: true });
+    expect(previewCloseButton).toHaveFocus();
+
+    fireEvent.click(previewCloseButton);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Voorbeeld van foto.jpg" })).not.toBeInTheDocument();
+    });
+    expect(detailDialog).toBeInTheDocument();
+    expect(previewButton).toHaveFocus();
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+
+    fireEvent.click(previewButton);
+    const backdropPreviewDialog = await screen.findByRole("dialog", { name: "Voorbeeld van foto.jpg" });
+    fireEvent.click(backdropPreviewDialog);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Voorbeeld van foto.jpg" })).not.toBeInTheDocument();
+    });
+    expect(detailDialog).toBeInTheDocument();
+
+    fireEvent.click(previewButton);
+    const escapePreviewDialog = await screen.findByRole("dialog", { name: "Voorbeeld van foto.jpg" });
+    const escapeCloseButton = within(escapePreviewDialog).getByRole("button", { name: "Sluiten" });
+    fireEvent.keyDown(escapeCloseButton, { key: "Escape" });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Voorbeeld van foto.jpg" })).not.toBeInTheDocument();
+    });
+    expect(detailDialog).toBeInTheDocument();
 
     const attachmentInput = screen.getByLabelText("Bijlage kiezen") as HTMLInputElement;
     const nextFile = new File(["nieuw"], "nieuw.txt", { type: "text/plain" });
@@ -1489,7 +1545,7 @@ describe("Vergaderborden drag/drop", () => {
       expect(api.uploadBoardCardAttachment).toHaveBeenCalledWith("c1", nextFile);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Verwijderen" }));
+    fireEvent.click(within(pdfAttachment as HTMLElement).getByRole("button", { name: "Verwijderen" }));
     await waitFor(() => {
       expect(api.deleteBoardCardAttachment).toHaveBeenCalledWith("c1", "a1");
     });

@@ -374,7 +374,7 @@ def test_about_returns_read_only_payload(client):
     assert payload["description"]
     assert payload["disclaimer"]
     assert len(payload["changelog"]) >= 1
-    assert payload["changelog"][0]["title"] == "Bijlagen direct toevoegen bij nieuwe vergaderbord-kaarten"
+    assert payload["changelog"][0]["title"] == "Afbeeldingsbijlagen kun je nu groter bekijken"
 
 
 def test_meta_ui_settings_returns_global_wind_theme_state(client):
