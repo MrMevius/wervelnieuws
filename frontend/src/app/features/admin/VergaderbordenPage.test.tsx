@@ -1166,8 +1166,10 @@ describe("Vergaderborden drag/drop", () => {
     const cards = document.querySelectorAll(".board-update-item");
     expect(cards[0]).toHaveTextContent("Audio-opname");
     expect(cards[0]).toHaveTextContent("Duur: 0:07 · Grootte: 1,2 KB");
+    expect(cards[0].querySelector(".board-update-message")?.children).toHaveLength(2);
+    expect(cards[0].querySelector(".board-recording-summary")).toBeInTheDocument();
     expect(cards[1]).toHaveTextContent("Tekstupdate");
-    expect(screen.getByText("Download opname")).toHaveAttribute("href", "/api/boards/recordings/r1/download");
+    expect(screen.queryByText("Download opname")).not.toBeInTheDocument();
     const audioEl = document.querySelector("audio");
     expect(audioEl).toHaveAttribute("src", "/api/boards/recordings/r1/download");
   });
@@ -1201,9 +1203,10 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
 
-    expect(await screen.findByText("Audio-opname")).toBeInTheDocument();
-    expect(screen.getByText("Duur: Duur onbekend · Grootte: Grootte onbekend")).toBeInTheDocument();
-    expect(screen.getByText("Download opname")).toHaveAttribute("href", "/api/boards/recordings/r-old/download");
+    const recordingMessage = (await screen.findByText("Audio-opname")).closest(".board-update-message");
+    expect(recordingMessage).toHaveTextContent("Audio-opname · Duur: Duur onbekend · Grootte: Grootte onbekend");
+    expect(recordingMessage?.querySelector(".board-recording-summary")).toBeInTheDocument();
+    expect(screen.queryByText("Download opname")).not.toBeInTheDocument();
     const audioEl = document.querySelector("audio");
     expect(audioEl).toHaveAttribute("src", "/api/boards/recordings/r-old/download");
   });

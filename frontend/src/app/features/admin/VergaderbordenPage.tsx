@@ -1803,10 +1803,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                           </div>
                         </div>
                         <div className="board-update-message">
-                          <p><strong>Audio-opname</strong></p>
-                          <p>Duur: {formatRecordingDuration(r.duration)} · Grootte: {formatRecordingSize(r.size_bytes)}</p>
+                          <p className="board-recording-summary"><strong>Audio-opname</strong> · Duur: {formatRecordingDuration(r.duration)} · Grootte: {formatRecordingSize(r.size_bytes)}</p>
                           <audio controls src={r.download_url} />
-                          <p><a href={r.download_url}>Download opname</a></p>
                         </div>
                       </article>
                     );
