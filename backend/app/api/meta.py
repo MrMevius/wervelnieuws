@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "89",
+                "date": "2026-07-28",
+                "title": "Vergaderborden krijgen een duidelijke paarse stijl",
+                "highlights": [
+                    "Vergaderbordkolommen, knoppen, badges en focusstates hebben nu een herkenbare paarse accentkleur.",
+                    "De rest van de interface blijft rustig en goed leesbaar, ook in donkere weergave.",
+                    "Modals en overlays sluiten nu visueel aan op de paarse bordstijl zonder dat je werkwijze verandert.",
+                ],
+            },
+            {
                 "iteration": "87",
                 "date": "2026-06-22",
                 "title": "Meerdere bijlagen tegelijk toevoegen in Vergaderborden",
