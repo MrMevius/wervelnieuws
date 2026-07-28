@@ -374,7 +374,7 @@ def test_about_returns_read_only_payload(client):
     assert payload["description"]
     assert payload["disclaimer"]
     assert len(payload["changelog"]) >= 1
-    assert payload["changelog"][0]["title"] == "Vergaderborden krijgen een duidelijke paarse stijl"
+    assert payload["changelog"][0]["title"] == "Gebruikersvenster leest rustiger in donkere modus"
 
 
 def test_meta_ui_settings_returns_global_wind_theme_state(client):

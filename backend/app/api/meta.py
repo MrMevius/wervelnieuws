@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "90",
+                "date": "2026-07-28",
+                "title": "Gebruikersvenster leest rustiger in donkere modus",
+                "highlights": [
+                    "Het hoofdvenster voor gebruikersbeheer gebruikt nu neutralere charcoal-vlakken in plaats van sterke paarstinten.",
+                    "Knoppen, invoervelden en actieblokken vallen duidelijker op, terwijl de indeling hetzelfde blijft.",
+                    "De kleuren zijn beter afgestemd op leesbaarheid in donkere weergave zonder andere vensters te raken.",
+                ],
+            },
+            {
                 "iteration": "89",
                 "date": "2026-07-28",
                 "title": "Vergaderborden krijgen een duidelijke paarse stijl",
@@ -36,6 +46,16 @@ def _default_about() -> AboutResponse:
                     "Vergaderbordkolommen, knoppen, badges en focusstates hebben nu een herkenbare paarse accentkleur.",
                     "De rest van de interface blijft rustig en goed leesbaar, ook in donkere weergave.",
                     "Modals en overlays sluiten nu visueel aan op de paarse bordstijl zonder dat je werkwijze verandert.",
+                ],
+            },
+            {
+                "iteration": "88",
+                "date": "2026-07-01",
+                "title": "Vergaderbord-updates tonen de opmaaktoolbar pas bij focus",
+                "highlights": [
+                    "Bij een nieuwe update blijft de opmaaktoolbar eerst uit beeld totdat je in het tekstvak klikt of focus geeft.",
+                    "Dezelfde rustiger focuservaring geldt nu ook voor het bewerken van een bestaande update.",
+                    "De beschrijving-editor in kaartdetail blijft werken zoals je gewend bent en toont de toolbar nog steeds direct.",
                 ],
             },
             {
@@ -916,6 +936,16 @@ def _default_about() -> AboutResponse:
                     "In kaartdetails staan audio-opnames nu tussen de gewone updates, zodat je één chronologische activiteitenlijst hebt.",
                     "De aparte sectie 'Opnames' is verwijderd; audio-items tonen nu dezelfde kaartstijl met speler en downloadlink.",
                     "Updates en opnames worden samen newest-first gesorteerd op datum en tijd, met behoud van bestaande update- en opnameflows.",
+                ],
+            },
+            {
+                "iteration": "47",
+                "date": "2026-06-30",
+                "title": "Wervelnieuws: audio-opnames automatisch omgezet naar doorzoekbare bron",
+                "highlights": [
+                    "Bij topic-updates kun je nu een audio-opname uploaden; de transcriptie start automatisch op de achtergrond.",
+                    "Na verwerking verschijnt de transcriptie als normale, read-only tekstbron die mee kan in zoekresultaten en generatie.",
+                    "Bij een mislukte transcriptie blijft de opname bewaard en kun je de bron direct opnieuw laten verwerken.",
                 ],
             },
         ],
