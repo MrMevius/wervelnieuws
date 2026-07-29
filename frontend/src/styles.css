@@ -874,6 +874,10 @@ button:disabled {
   box-shadow: 0 1px 0 color-mix(in srgb, var(--surface) 78%, transparent 22%);
 }
 
+:root[data-theme="dark"] .board-update-item {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--brand-soft) 20%, transparent 80%) 0 4px, color-mix(in srgb, var(--bg) 76%, var(--surface) 24%) 4px 100%);
+}
+
 .board-update-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
