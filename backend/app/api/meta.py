@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "91",
+                "date": "2026-07-29",
+                "title": "Lichtmodusknoppen en invoervelden zijn duidelijker",
+                "highlights": [
+                    "De knoppen in het vergaderbord-detail zijn nu beter zichtbaar in lichte weergave, inclusief sluit-, upload- en actieknoppen.",
+                    "Invoervelden, statuslabels en modals gebruiken rustiger oppervlaktes en duidelijkere contrasten zonder de workflow te veranderen.",
+                    "De interface blijft hetzelfde in opbouw, maar lichtmodus is nu minder gevoelig voor contrastregressies.",
+                ],
+            },
+            {
                 "iteration": "90",
                 "date": "2026-07-28",
                 "title": "Gebruikersvenster leest rustiger in donkere modus",
