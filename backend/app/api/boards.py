@@ -20,6 +20,7 @@ from app.schemas.boards import (
     BoardProjectRightsResponse,
     BoardProjectRightsUpdateRequest,
     BoardProjectSummaryResponse,
+    BoardRecycleBinCardResponse,
     BoardRightsOverviewResponse,
     BoardRightsUserResponse,
     CardAssignmentResponse,
@@ -94,6 +95,39 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         description=card.description,
         column=card.column,
         position=card.position,
+        is_archived=card.is_archived,
+        assignments=[
+            CardAssignmentResponse(
+                id=row.id,
+                user_id=row.user_id,
+                username=row.user.username,
+                user_display_name=_display_name(row.user),
+                has_avatar=bool(row.user.avatar_path),
+            )
+            for row in card.assignments
+        ],
+        updates_count=repo.count_updates(card.id),
+        recordings_count=repo.count_recordings(card.id),
+        attachments_count=repo.count_attachments(card.id),
+    )
+
+
+def _recycle_bin_card_response(repo: BoardRepository, card) -> BoardRecycleBinCardResponse:
+    deleted_by = card.deleted_by or (repo.get_user(card.deleted_by_user_id) if card.deleted_by_user_id else None)
+    project = card.project or repo.get_project(card.project_id)
+    return BoardRecycleBinCardResponse(
+        id=card.id,
+        project_id=card.project_id,
+        project_name=project.name if project else "Onbekend project",
+        title=card.title,
+        description=card.description,
+        column=card.column,
+        position=card.position,
+        is_archived=card.is_archived,
+        deleted_at=card.deleted_at,
+        deleted_by_user_id=card.deleted_by_user_id,
+        deleted_by_username=deleted_by.username if deleted_by else None,
+        deleted_by_display_name=_display_name(deleted_by) if deleted_by else None,
         assignments=[
             CardAssignmentResponse(
                 id=row.id,
@@ -224,12 +258,14 @@ def get_project_board(project_id: str, current: User = Depends(get_current_user)
     service = BoardService(repo)
     project = service.ensure_project_access(repo.get_project(project_id), current)
     cards = repo.list_project_cards(project.id)
+    archived_cards = repo.list_archived_project_cards(project.id)
     return ProjectBoardResponse(
         project_id=project.id,
         project_name=project.name,
         invited_user_ids=project.invited_user_ids,
         access_users=_project_access_users(repo, project),
         cards=[_card_response(repo, card) for card in cards],
+        archived_cards=[_card_response(repo, card) for card in archived_cards],
     )
 
 
@@ -245,6 +281,59 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     service.touch_activity(project)
     AuditService(db).log("board.card.created", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id, card_id=card.id))
     return _card_response(repo, card)
+
+
+@router.patch("/cards/{card_id}/archive", response_model=BoardCardResponse)
+def archive_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    archived = repo.archive_card(card)
+    service.touch_activity(service.ensure_project_access(repo.get_project(archived.project_id), current))
+    AuditService(db).log("board.card.archived", actor_user_id=current.id, details_json=service.audit_details(card_id=archived.id, project_id=archived.project_id))
+    return _card_response(repo, archived)
+
+
+@router.patch("/cards/{card_id}/restore", response_model=BoardCardResponse)
+def restore_archived_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    restored = repo.restore_card(card)
+    service.touch_activity(service.ensure_project_access(repo.get_project(restored.project_id), current))
+    AuditService(db).log("board.card.restored", actor_user_id=current.id, details_json=service.audit_details(card_id=restored.id, project_id=restored.project_id))
+    return _card_response(repo, restored)
+
+
+@router.delete("/cards/{card_id}")
+def soft_delete_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_access(repo.get_card(card_id), current)
+    repo.soft_delete_card(card, current.id)
+    service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
+    AuditService(db).log("board.card.deleted", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, project_id=card.project_id))
+    return {"status": "deleted"}
+
+
+@router.get("/admin/recycle-bin", response_model=list[BoardRecycleBinCardResponse])
+def list_recycle_bin(current: User = Depends(require_admin), db: Session = Depends(get_db)) -> list[BoardRecycleBinCardResponse]:
+    del current
+    repo = BoardRepository(db)
+    return [_recycle_bin_card_response(repo, card) for card in repo.list_deleted_cards()]
+
+
+@router.patch("/admin/recycle-bin/{card_id}/restore", response_model=BoardCardResponse)
+def restore_deleted_card(card_id: str, current: User = Depends(require_admin), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = repo.get_card(card_id, include_deleted=True)
+    if not card or card.deleted_at is None:
+        raise HTTPException(status_code=404, detail="Kaart niet gevonden")
+    restored = repo.restore_deleted_card(card)
+    service.touch_activity(service.ensure_project_access(repo.get_project(restored.project_id), current))
+    AuditService(db).log("board.card.deleted_restored", actor_user_id=current.id, details_json=service.audit_details(card_id=restored.id, project_id=restored.project_id))
+    return _card_response(repo, restored)
 
 
 @router.patch("/cards/{card_id}/move", response_model=BoardCardResponse)

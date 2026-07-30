@@ -24,7 +24,7 @@ class BoardService:
         return project
 
     def ensure_card_access(self, card: BoardCard | None, user: User) -> BoardCard:
-        if not card:
+        if not card or card.deleted_at is not None:
             raise HTTPException(status_code=404, detail="Kaart niet gevonden")
         self.ensure_project_access(self.repo.get_project(card.project_id), user)
         return card

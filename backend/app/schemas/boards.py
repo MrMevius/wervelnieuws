@@ -157,6 +157,7 @@ class BoardCardResponse(BaseModel):
     description: str
     column: BoardColumn
     position: int
+    is_archived: bool = False
     assignments: list[CardAssignmentResponse]
     updates_count: int
     recordings_count: int
@@ -169,6 +170,26 @@ class ProjectBoardResponse(BaseModel):
     invited_user_ids: list[str]
     access_users: list[BoardAccessUserResponse]
     cards: list[BoardCardResponse]
+    archived_cards: list[BoardCardResponse] = Field(default_factory=list)
+
+
+class BoardRecycleBinCardResponse(BaseModel):
+    id: str
+    project_id: str
+    project_name: str
+    title: str
+    description: str
+    column: BoardColumn
+    position: int
+    is_archived: bool = False
+    deleted_at: datetime
+    deleted_by_user_id: str | None
+    deleted_by_username: str | None = None
+    deleted_by_display_name: str | None = None
+    assignments: list[CardAssignmentResponse]
+    updates_count: int
+    recordings_count: int
+    attachments_count: int
 
 
 class CardDetailResponse(BaseModel):

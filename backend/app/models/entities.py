@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
 from app.models.enums import (
+    AudioTranscriptionStatus,
     BoardColumn,
     ChannelName,
     ChannelPublishState,
@@ -128,6 +129,8 @@ class BoardCard(Base, TimestampMixin):
     __tablename__ = "board_cards"
     __table_args__ = (
         Index("ix_board_cards_project_column_position", "project_id", "column", "position"),
+        Index("ix_board_cards_deleted_at", "deleted_at"),
+        Index("ix_board_cards_deleted_by_user_id", "deleted_by_user_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -141,8 +144,13 @@ class BoardCard(Base, TimestampMixin):
     )
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
 
     project: Mapped[Project] = relationship(back_populates="board_cards")
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
     assignments: Mapped[list["CardAssignment"]] = relationship(
         back_populates="card", cascade="all,delete"
     )
@@ -384,6 +392,9 @@ class TopicSourceDocument(Base, TimestampMixin):
     topic_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("topics.id"), nullable=False
     )
+    parent_source_document_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("topic_source_documents.id"), nullable=True
+    )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     file_path: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
@@ -392,6 +403,21 @@ class TopicSourceDocument(Base, TimestampMixin):
         Enum(DocumentStatus), default=DocumentStatus.uploaded, nullable=False
     )
     extraction_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    transcription_status: Mapped[AudioTranscriptionStatus] = mapped_column(
+        Enum(AudioTranscriptionStatus),
+        default=AudioTranscriptionStatus.not_applicable,
+        nullable=False,
+    )
+    transcription_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    transcription_error: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    transcription_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    transcription_model: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    transcription_language: Mapped[str] = mapped_column(String(20), default="", nullable=False)
+    speaker_labels_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    transcript_document_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("topic_source_documents.id"), nullable=True
+    )
 
     topic: Mapped[Topic] = relationship(back_populates="source_documents")
     chunks: Mapped[list["DocumentChunk"]] = relationship(

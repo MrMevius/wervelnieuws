@@ -53,9 +53,20 @@ export type Note = { id: string; note: string };
 export type SourceDocument = {
   id: string;
   filename: string;
+  parent_source_document_id: string | null;
   doc_type: string;
   status: string;
+  duration_seconds: number | null;
+  transcription_status: string;
+  transcription_attempts: number;
   extraction_error: string;
+  transcription_error: string;
+  transcription_text: string;
+  transcription_model: string;
+  transcription_language: string;
+  speaker_labels_json: string;
+  transcript_document_id: string | null;
+  created_at: string;
 };
 
 export type ContentVersion = {
@@ -241,6 +252,7 @@ export type BoardCard = {
   description: string;
   column: "todo" | "doing" | "done";
   position: number;
+  is_archived?: boolean;
   assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string; has_avatar?: boolean; avatar_url?: string | null }>;
   updates_count: number;
   recordings_count: number;
@@ -262,6 +274,15 @@ export type BoardProjectDetail = {
   invited_user_ids: string[];
   access_users: BoardAccessUser[];
   cards: BoardCard[];
+  archived_cards: BoardCard[];
+};
+
+export type BoardRecycleBinCard = BoardCard & {
+  project_name: string;
+  deleted_at: string;
+  deleted_by_user_id: string | null;
+  deleted_by_username: string | null;
+  deleted_by_display_name: string | null;
 };
 
 export type BoardCardDetail = {
@@ -373,6 +394,8 @@ export type GenAIConfig = {
   newsletter_prompt: string;
   text_model: string;
   image_model: string;
+  whisper_model: string;
+  whisper_language: string;
   websearch_enabled: boolean;
   websearch_max_results: number;
   has_api_key: boolean;
@@ -390,6 +413,8 @@ export type UpdateGenAIConfigPayload = Partial<{
   newsletter_prompt: string;
   text_model: string;
   image_model: string;
+  whisper_model: string;
+  whisper_language: string;
   websearch_enabled: boolean;
   websearch_max_results: number;
   openai_api_key: string;
@@ -634,6 +659,26 @@ export function createBoardCard(projectId: string, payload: { title: string; des
   return request<BoardCard>(`/boards/projects/${projectId}/cards`, { method: "POST", body: JSON.stringify(payload) });
 }
 
+export function archiveBoardCard(cardId: string) {
+  return request<BoardCard>(`/boards/cards/${cardId}/archive`, { method: "PATCH" });
+}
+
+export function restoreBoardCard(cardId: string) {
+  return request<BoardCard>(`/boards/cards/${cardId}/restore`, { method: "PATCH" });
+}
+
+export function deleteBoardCard(cardId: string) {
+  return request<{ status: string }>(`/boards/cards/${cardId}`, { method: "DELETE" });
+}
+
+export function listBoardRecycleBin() {
+  return request<BoardRecycleBinCard[]>("/boards/admin/recycle-bin");
+}
+
+export function restoreDeletedBoardCard(cardId: string) {
+  return request<BoardCard>(`/boards/admin/recycle-bin/${cardId}/restore`, { method: "PATCH" });
+}
+
 export function moveBoardCard(cardId: string, payload: { column: "todo" | "doing" | "done"; position: number }) {
   return request<BoardCard>(`/boards/cards/${cardId}/move`, { method: "PATCH", body: JSON.stringify(payload) });
 }
@@ -708,6 +753,28 @@ export function updateAdminGenAIConfig(payload: UpdateGenAIConfigPayload) {
   return request<GenAIConfig>("/admin/genai-config", {
     method: "PATCH",
     body: JSON.stringify(payload)
+  });
+}
+
+export function listTopicDocuments(topicId: string) {
+  return request<SourceDocument[]>(`/topics/${topicId}/documents`);
+}
+
+export function uploadTopicDocument(topicId: string, file: File, durationSeconds?: number) {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (typeof durationSeconds === "number") {
+    fd.append("duration_seconds", String(durationSeconds));
+  }
+  return request<SourceDocument>(`/topics/${topicId}/documents`, {
+    method: "POST",
+    body: fd
+  });
+}
+
+export function retryTopicDocumentTranscription(topicId: string, documentId: string) {
+  return request<SourceDocument>(`/topics/${topicId}/documents/${documentId}/retry-transcription`, {
+    method: "POST"
   });
 }
 

@@ -1,3 +1,4 @@
+import json
 from io import BytesIO
 
 
@@ -61,6 +62,145 @@ def test_board_project_card_update_and_recording_flow(client):
 
     download = client.get(rec_payload["download_url"], headers=headers)
     assert download.status_code == 200
+
+
+def test_board_card_archive_restore_and_archive_tab(client):
+    headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Archiefbord", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Archiefkaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    assert client.patch(f"/api/boards/cards/{card_id}/archive", headers=editor_headers).status_code == 403
+
+    archived = client.patch(f"/api/boards/cards/{card_id}/archive", headers=headers)
+    assert archived.status_code == 200
+    assert archived.json()["is_archived"] is True
+
+    archived_activity = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={"event_type": "board.card.archived", "period": "all", "limit": 10},
+    )
+    assert archived_activity.status_code == 200
+    archived_events = archived_activity.json()
+    assert len(archived_events) == 1
+    assert archived_events[0]["actor_username"] == "admin"
+    assert json.loads(archived_events[0]["details_json"]) == {"card_id": card_id, "project_id": project_id}
+
+    board_after_archive = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board_after_archive.status_code == 200
+    assert board_after_archive.json()["cards"] == []
+    assert [card["id"] for card in board_after_archive.json()["archived_cards"]] == [card_id]
+
+    assert client.patch(f"/api/boards/cards/{card_id}/restore", headers=editor_headers).status_code == 403
+
+    projects = client.get("/api/boards/projects", headers=headers)
+    assert projects.status_code == 200
+    assert projects.json()[0]["card_count"] == 0
+
+    restored = client.patch(f"/api/boards/cards/{card_id}/restore", headers=headers)
+    assert restored.status_code == 200
+    assert restored.json()["is_archived"] is False
+
+    restored_activity = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={"event_type": "board.card.restored", "period": "all", "limit": 10},
+    )
+    assert restored_activity.status_code == 200
+    restored_events = restored_activity.json()
+    assert len(restored_events) == 1
+    assert restored_events[0]["actor_username"] == "admin"
+    assert json.loads(restored_events[0]["details_json"]) == {"card_id": card_id, "project_id": project_id}
+
+    board_after_restore = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board_after_restore.status_code == 200
+    assert [card["id"] for card in board_after_restore.json()["cards"]] == [card_id]
+    assert board_after_restore.json()["archived_cards"] == []
+
+
+def test_board_card_soft_delete_and_admin_recycle_bin_restore(client):
+    headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Prullenbakbord", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Verwijderkaart", "description": "", "column": "doing", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    assert client.delete(f"/api/boards/cards/{card_id}", headers=editor_headers).status_code == 403
+
+    deleted = client.delete(f"/api/boards/cards/{card_id}", headers=headers)
+    assert deleted.status_code == 200
+
+    deleted_activity = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={"event_type": "board.card.deleted", "period": "all", "limit": 10},
+    )
+    assert deleted_activity.status_code == 200
+    deleted_events = deleted_activity.json()
+    assert len(deleted_events) == 1
+    assert deleted_events[0]["actor_username"] == "admin"
+    assert json.loads(deleted_events[0]["details_json"]) == {"card_id": card_id, "project_id": project_id}
+
+    board_after_delete = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board_after_delete.status_code == 200
+    assert board_after_delete.json()["cards"] == []
+    assert board_after_delete.json()["archived_cards"] == []
+
+    detail_after_delete = client.get(f"/api/boards/cards/{card_id}", headers=headers)
+    assert detail_after_delete.status_code == 404
+
+    recycle_bin = client.get("/api/boards/admin/recycle-bin", headers=headers)
+    assert recycle_bin.status_code == 200
+    assert recycle_bin.json()[0]["id"] == card_id
+    assert recycle_bin.json()[0]["project_name"] == "Prullenbakbord"
+    assert recycle_bin.json()[0]["deleted_by_username"] == "admin"
+
+    assert client.patch(f"/api/boards/admin/recycle-bin/{card_id}/restore", headers=editor_headers).status_code == 403
+
+    restored = client.patch(f"/api/boards/admin/recycle-bin/{card_id}/restore", headers=headers)
+    assert restored.status_code == 200
+    assert restored.json()["is_archived"] is False
+
+    restored_activity = client.get(
+        "/api/content/activity",
+        headers=headers,
+        params={"event_type": "board.card.deleted_restored", "period": "all", "limit": 10},
+    )
+    assert restored_activity.status_code == 200
+    restored_events = restored_activity.json()
+    assert len(restored_events) == 1
+    assert restored_events[0]["actor_username"] == "admin"
+    assert json.loads(restored_events[0]["details_json"]) == {"card_id": card_id, "project_id": project_id}
+
+    board_after_restore = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board_after_restore.status_code == 200
+    assert [card["id"] for card in board_after_restore.json()["cards"]] == [card_id]
 
 
 def test_board_card_attachment_flow_and_permissions(client):

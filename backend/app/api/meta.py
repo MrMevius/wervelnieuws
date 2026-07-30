@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "92",
+                "date": "2026-07-29",
+                "title": "Vergaderbord-kaarten krijgen archief en prullenbak",
+                "highlights": [
+                    "Kaarten op vergaderborden kunnen nu worden gearchiveerd en later weer teruggezet via een aparte archieftab.",
+                    "Soft-verwijderde kaarten verdwijnen uit het bord en komen in een centrale admin-prullenbak terecht, zonder harde database-delete.",
+                    "De kaartdata, posities en historie blijven bewaard, met auditlogs voor archiveren, herstellen en verwijderen.",
+                ],
+            },
+            {
                 "iteration": "91",
                 "date": "2026-07-29",
                 "title": "Lichtmodusknoppen en invoervelden zijn duidelijker",

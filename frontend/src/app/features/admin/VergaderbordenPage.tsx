@@ -1,11 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, FocusEvent, ReactNode, RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, FocusEvent, ReactNode, RefObject, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
   BoardAccessUser,
+  BoardCard,
+  BoardRecycleBinCard,
+  archiveBoardCard,
   createBoardCard,
   createBoardProject,
+  deleteBoardCard,
   deleteBoardCardUpdate,
   deleteBoardCardAttachment,
   editBoardCardUpdate,
@@ -15,8 +19,11 @@ import {
   listAdminUsers,
   getAdminUserAvatarUrl,
   listBoardProjects,
+  listBoardRecycleBin,
   moveBoardCard,
   postBoardCardUpdate,
+  restoreBoardCard,
+  restoreDeletedBoardCard,
   updateBoardCardDescription,
   updateBoardCardTitle,
   uploadBoardRecording,
@@ -484,6 +491,68 @@ function RecordIcon({ active }: { active: boolean }) {
   );
 }
 
+function ArchiveIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="board-icon-glyph">
+      <path d="M2.5 4.5h11v2h-11z" fill="currentColor" opacity="0.8" />
+      <path d="M3.5 6.5h9v5.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+      <path d="M8 4.6v5.1m0 0 1.9-1.9M8 9.7 6.1 7.8" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function RestoreIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="board-icon-glyph">
+      <path d="M4.2 7.1a4.2 4.2 0 1 1 1.1 3.2" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+      <path d="M4.2 7.1h2.4V4.7" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="board-icon-glyph">
+      <path d="M5 4.5h6m-4.5 0V3.6h3V4.5m-5 0 .6 7.1a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-7.1" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.2" />
+      <path d="M6.6 7v3.6m2.8-3.6v3.6" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
+function IconActionButton({
+  label,
+  title,
+  onClick,
+  disabled,
+  className = "",
+  children,
+  stopPropagation = true
+}: {
+  label: string;
+  title?: string;
+  onClick: (evt: ReactMouseEvent<HTMLButtonElement>) => void;
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+  stopPropagation?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className={`board-icon-action-button${className ? ` ${className}` : ""}`}
+      aria-label={label}
+      title={title ?? label}
+      disabled={disabled}
+      onClick={(evt) => {
+        if (stopPropagation) evt.stopPropagation();
+        onClick(evt);
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function DescriptionEditor({
   value,
   onChange,
@@ -664,6 +733,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [activeCreateColumn, setActiveCreateColumn] = useState<"todo" | "doing" | "done" | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [boardView, setBoardView] = useState<"active" | "archive" | "recycle">("active");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [activeRecordingCardId, setActiveRecordingCardId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
@@ -681,10 +751,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [createCardProgress, setCreateCardProgress] = useState<string | null>(null);
   const [dragDropTarget, setDragDropTarget] = useState<DragDropTarget | null>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
+  const [cardActionMessage, setCardActionMessage] = useState<string | null>(null);
+  const [cardActionError, setCardActionError] = useState<string | null>(null);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [titleEdit, setTitleEdit] = useState<TitleEditState | null>(null);
   const [descriptionEdit, setDescriptionEdit] = useState<DescriptionEditState | null>(null);
   const [updateEdit, setUpdateEdit] = useState<UpdateEditState | null>(null);
+  const [isNewUpdateToolbarVisible, setIsNewUpdateToolbarVisible] = useState(false);
+  const [isUpdateEditToolbarVisible, setIsUpdateEditToolbarVisible] = useState(false);
   const newUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const editUpdateTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const detailDescriptionTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -718,6 +792,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     attachmentPreviewTriggerRef.current?.focus();
   }, [attachmentPreview]);
 
+  useEffect(() => {
+    setIsNewUpdateToolbarVisible(false);
+  }, [selectedCardId]);
+
+  useEffect(() => {
+    setIsUpdateEditToolbarVisible(false);
+  }, [updateEdit?.updateId]);
+
   const handleUpdateToolbarAction = (action: UpdateToolbarAction) => {
     const textarea = newUpdateTextareaRef.current;
     if (!textarea) return;
@@ -742,6 +824,26 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       textarea.focus();
       textarea.setSelectionRange(next.nextSelectionStart, next.nextSelectionEnd);
     });
+  };
+
+  const showNewUpdateToolbar = () => setIsNewUpdateToolbarVisible(true);
+
+  const hideNewUpdateToolbar = (evt: FocusEvent<HTMLDivElement>) => {
+    const relatedTarget = evt.relatedTarget as Node | null;
+    if (relatedTarget && evt.currentTarget.contains(relatedTarget)) {
+      return;
+    }
+    setIsNewUpdateToolbarVisible(false);
+  };
+
+  const showUpdateEditToolbar = () => setIsUpdateEditToolbarVisible(true);
+
+  const hideUpdateEditToolbar = (evt: FocusEvent<HTMLDivElement>) => {
+    const relatedTarget = evt.relatedTarget as Node | null;
+    if (relatedTarget && evt.currentTarget.contains(relatedTarget)) {
+      return;
+    }
+    setIsUpdateEditToolbarVisible(false);
   };
 
   const handleDetailDescriptionToolbarAction = (action: UpdateToolbarAction) => {
@@ -784,6 +886,11 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     queryFn: () => getBoardProject(resolvedProjectId || ""),
     enabled: Boolean(resolvedProjectId)
   });
+  const recycleBinQuery = useQuery({
+    queryKey: ["board-recycle-bin"],
+    queryFn: listBoardRecycleBin,
+    enabled: canManageProjects
+  });
   const cardQuery = useQuery({ queryKey: ["board-card", selectedCardId], queryFn: () => getBoardCard(selectedCardId || ""), enabled: Boolean(selectedCardId) });
   const resolvedProjectName = useMemo(() => {
     const projects = projectsQuery.data ?? [];
@@ -796,6 +903,16 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     () => boardAccessUsers.filter((user) => user.is_active),
     [boardAccessUsers]
   );
+
+  const archivedCards = useMemo<BoardCard[]>(() => boardQuery.data?.archived_cards ?? [], [boardQuery.data]);
+  const archivedCardsByColumn = useMemo(() => {
+    return {
+      todo: archivedCards.filter((c) => c.column === "todo").sort((a, b) => a.position - b.position),
+      doing: archivedCards.filter((c) => c.column === "doing").sort((a, b) => a.position - b.position),
+      done: archivedCards.filter((c) => c.column === "done").sort((a, b) => a.position - b.position)
+    };
+  }, [archivedCards]);
+  const recycleBinCards: BoardRecycleBinCard[] = recycleBinQuery.data ?? [];
 
   const cardActivityItems = useMemo<CardActivityItem[]>(() => {
     if (!cardQuery.data) return [];
@@ -919,6 +1036,64 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       setAttachmentError("Verwijderen van de bijlage is mislukt. Probeer het opnieuw.");
     }
   });
+  const archiveCardMutation = useMutation({
+    mutationFn: (cardId: string) => archiveBoardCard(cardId),
+    onSuccess: async (_result, cardId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", cardId] })
+      ]);
+    }
+  });
+  const restoreCardMutation = useMutation({
+    mutationFn: (cardId: string) => restoreBoardCard(cardId),
+    onSuccess: async (_result, cardId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", cardId] })
+      ]);
+    }
+  });
+  const deleteCardMutation = useMutation({
+    mutationFn: (cardId: string) => deleteBoardCard(cardId),
+    onMutate: () => {
+      setCardActionMessage(null);
+      setCardActionError(null);
+    },
+    onSuccess: async (_result, cardId) => {
+      setSelectedCardId((current) => (current === cardId ? null : current));
+      setCardActionError(null);
+      setCardActionMessage("Kaart verwijderd.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-card", cardId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-recycle-bin"] })
+      ]);
+    },
+    onError: () => {
+      setCardActionMessage(null);
+      setCardActionError("Verwijderen van de kaart is mislukt. Probeer het opnieuw.");
+    }
+  });
+  const restoreDeletedCardMutation = useMutation({
+    mutationFn: (cardId: string) => restoreDeletedBoardCard(cardId),
+    onMutate: () => {
+      setCardActionMessage(null);
+      setCardActionError(null);
+    },
+    onSuccess: async () => {
+      setCardActionError(null);
+      setCardActionMessage("Kaart teruggezet uit de prullenbak.");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+        queryClient.invalidateQueries({ queryKey: ["board-recycle-bin"] })
+      ]);
+    },
+    onError: () => {
+      setCardActionMessage(null);
+      setCardActionError("Terugzetten van de kaart is mislukt. Probeer het opnieuw.");
+    }
+  });
 
   const uploadSelectedAttachments = async () => {
     if (!cardQuery.data?.card || isAttachmentUploading) return;
@@ -985,6 +1160,261 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       done: cards.filter((c) => c.column === "done").sort((a, b) => a.position - b.position)
     };
   }, [boardQuery.data]);
+
+  const activeCardCount = cardsByColumn.todo.length + cardsByColumn.doing.length + cardsByColumn.done.length;
+
+  const renderBoardCard = (card: BoardCard, column: "todo" | "doing" | "done", variant: "active" | "archive") => {
+    const isArchiveView = variant === "archive";
+    return (
+      <div key={card.id}>
+        {!isArchiveView && dragDropTarget?.column === column && dragDropTarget.cardId === card.id && dragDropTarget.placement === "before" && (
+          <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${column}-${card.id}-before`} aria-hidden="true" />
+        )}
+        <article
+          className={`vergaderborden-board-card${card.is_archived ? " is-archived" : ""}${isArchiveView ? " is-archive-view" : ""}`}
+          data-testid={`board-card-${card.id}`}
+          tabIndex={-1}
+          draggable={!isArchiveView}
+          onDragStart={
+            isArchiveView
+              ? undefined
+              : (e) => {
+                  setMoveError(null);
+                  const payload: DragCardMeta = { cardId: card.id, sourceColumn: card.column, sourcePosition: card.position };
+                  dragCardMetaRef.current = payload;
+                  e.dataTransfer.setData("application/json", JSON.stringify(payload));
+                  e.dataTransfer.setData("text/plain", card.id);
+                }
+          }
+          onDragOver={
+            isArchiveView
+              ? undefined
+              : (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (!dragCardMetaRef.current) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                  setDragDropTarget({ column, cardId: card.id, placement });
+                }
+          }
+          onDragLeave={
+            isArchiveView
+              ? undefined
+              : (e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setDragDropTarget((current) => (current?.cardId === card.id ? null : current));
+                }
+          }
+          onDragEnd={
+            isArchiveView
+              ? undefined
+              : () => {
+                  dragCardMetaRef.current = null;
+                  setDragDropTarget(null);
+                }
+          }
+          onDrop={
+            isArchiveView
+              ? undefined
+              : (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setDragDropTarget(null);
+                  const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
+                  if (!cardMeta || cardMeta.cardId === card.id) return;
+                  dragCardMetaRef.current = null;
+
+                  const targetCards = cardsByColumn[column] ?? [];
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
+                  const targetPosition = resolveMoveTargetPosition(targetCards, column, cardMeta, card.id, placement);
+
+                  setMoveError(null);
+                  setSavingCardId(cardMeta.cardId);
+                  moveCardMutation.mutate({ cardId: cardMeta.cardId, column, position: targetPosition });
+                }
+          }
+          onClick={(evt) => {
+            boardDetailTriggerRef.current = evt.currentTarget;
+            evt.currentTarget.focus();
+            setSelectedCardId(card.id);
+          }}
+        >
+          <strong className="vergaderborden-card-title">{card.title}</strong>
+          <div className="board-card-description-rich">
+            <CardDescriptionRenderer description={card.description} />
+          </div>
+          <AssignedUserAvatarRow assignments={card.assignments} />
+          <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
+          {isArchiveView ? (
+            <div className="board-card-recording-controls board-card-archive-controls">
+              <IconActionButton
+                label={`Kaart terugzetten: ${card.title}`}
+                title={`Kaart terugzetten: ${card.title}`}
+                disabled={restoreCardMutation.isPending}
+                onClick={() => restoreCardMutation.mutate(card.id)}
+              >
+                <RestoreIcon />
+              </IconActionButton>
+              <IconActionButton
+                label={`Kaart verwijderen: ${card.title}`}
+                title={`Kaart verwijderen: ${card.title}`}
+                disabled={deleteCardMutation.isPending}
+                onClick={() => {
+                  const shouldDelete = window.confirm("Weet je zeker dat je deze kaart wilt verwijderen? Dit kan later door een admin worden teruggezet.");
+                  if (!shouldDelete) return;
+                  deleteCardMutation.mutate(card.id);
+                }}
+              >
+                <TrashIcon />
+              </IconActionButton>
+            </div>
+          ) : (
+            <div className="board-card-recording-controls">
+              {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
+              <button
+                type="button"
+                className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
+                onClick={(evt) => {
+                  evt.stopPropagation();
+                  void startOrStopRecording(card.id);
+                }}
+                disabled={Boolean(recorder && activeRecordingCardId !== card.id)}
+                aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+                title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
+              >
+                <RecordIcon active={activeRecordingCardId === card.id} />
+              </button>
+            </div>
+          )}
+        </article>
+        {!isArchiveView && dragDropTarget?.column === column && dragDropTarget.cardId === card.id && dragDropTarget.placement === "after" && (
+          <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${column}-${card.id}-after`} aria-hidden="true" />
+        )}
+      </div>
+    );
+  };
+
+  const renderBoardColumn = (column: "todo" | "doing" | "done", variant: "active" | "archive") => {
+    const cards = variant === "active" ? cardsByColumn[column] : archivedCardsByColumn[column];
+    const isActiveView = variant === "active";
+
+    return (
+      <div
+        className={`vergaderborden-column${dragDropTarget?.column === column && isActiveView ? " is-drag-over" : ""}${savingCardId && isActiveView ? " is-saving" : ""}`}
+        key={column}
+        data-testid={`board-column-${column}`}
+        onDragOver={
+          isActiveView
+            ? (e) => {
+                e.preventDefault();
+                if (!dragCardMetaRef.current) return;
+                setDragDropTarget(resolveColumnDragTarget(e.currentTarget, column, e.clientY));
+              }
+            : undefined
+        }
+        onDragLeave={
+          isActiveView
+            ? (e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                setDragDropTarget((current) => (current?.column === column ? null : current));
+              }
+            : undefined
+        }
+        onDrop={
+          isActiveView
+            ? (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDragDropTarget(null);
+                const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
+                if (!cardMeta) return;
+                dragCardMetaRef.current = null;
+
+                const targetCards = cardsByColumn[column] ?? [];
+                const targetDrop = resolveColumnDragTarget(e.currentTarget, column, e.clientY);
+                const targetPosition = resolveMoveTargetPosition(targetCards, column, cardMeta, targetDrop.cardId, targetDrop.placement);
+
+                setMoveError(null);
+                setSavingCardId(cardMeta.cardId);
+                moveCardMutation.mutate({ cardId: cardMeta.cardId, column, position: targetPosition });
+              }
+            : undefined
+        }
+      >
+        <h3>{KOLOM_TITEL[column]}</h3>
+        {isActiveView ? (
+          activeCreateColumn !== column ? (
+            <button
+              type="button"
+              className="vergaderborden-card-add-toggle"
+              onClick={() => {
+                setCreateCardNotice(null);
+                setActiveCreateColumn(column);
+              }}
+            >
+              + Kaart toevoegen
+            </button>
+          ) : (
+            <CreateCardInline
+              users={boardAssignableUsers}
+              isLoading={boardQuery.isLoading}
+              hasError={boardQuery.isError}
+              onCreate={async (payload) => {
+                if (!resolvedProjectId) return false;
+                try {
+                  setCreateCardNotice(null);
+                  setCreateCardProgress("Kaart wordt aangemaakt…");
+                  const createdCard = await createCardMutation.mutateAsync({
+                    projectId: resolvedProjectId,
+                    column,
+                    title: payload.title,
+                    description: payload.description,
+                    assignment_user_ids: payload.assignment_user_ids
+                  });
+                  let uploadFailures = 0;
+                  for (const [index, file] of payload.attachments.entries()) {
+                    setCreateCardProgress(`Kaart is aangemaakt. Bijlage ${index + 1} van ${payload.attachments.length} wordt geüpload…`);
+                    try {
+                      await uploadBoardCardAttachment(createdCard.id, file);
+                    } catch {
+                      uploadFailures += 1;
+                    }
+                  }
+                  if (payload.attachments.length > 0) {
+                    setCreateCardProgress("Bijlagen verwerkt…");
+                    await Promise.all([
+                      queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
+                      queryClient.invalidateQueries({ queryKey: ["board-card", createdCard.id] })
+                    ]);
+                  }
+                  if (uploadFailures > 0) {
+                    setCreateCardNotice(
+                      `Kaart is aangemaakt, maar ${uploadFailures} van de ${payload.attachments.length} bijlagen konden niet worden geüpload. De kaart blijft beschikbaar.`
+                    );
+                  } else {
+                    setCreateCardNotice(null);
+                  }
+                  setCreateCardProgress(null);
+                  setActiveCreateColumn(null);
+                  return true;
+                } catch {
+                  setCreateCardProgress(null);
+                  return false;
+                }
+              }}
+              onCancel={() => setActiveCreateColumn(null)}
+            />
+          )
+        ) : null}
+        {cards.map((card) => renderBoardCard(card, column, variant))}
+        {isActiveView && dragDropTarget?.column === column && dragDropTarget.cardId === null && (
+          <div className="vergaderborden-drop-indicator vergaderborden-drop-indicator--end" data-testid={`board-drop-indicator-${column}-end`} aria-hidden="true" />
+        )}
+      </div>
+    );
+  };
 
   const resolveMoveTargetPosition = (
     targetCards: typeof cardsByColumn.todo,
@@ -1074,6 +1504,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   useEffect(() => {
     setDragDropTarget(null);
   }, [boardQuery.data?.project_id]);
+
+  useEffect(() => {
+    setBoardView("active");
+  }, [resolvedProjectId]);
+
+  useEffect(() => {
+    setCardActionMessage(null);
+    setCardActionError(null);
+  }, [resolvedProjectId]);
 
   useEffect(() => {
     return () => {
@@ -1249,9 +1688,41 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
   return (
     <section className="panel vergaderborden-page">
-      <div className="vergaderborden-header">
-        {resolvedProjectName && <h1>{resolvedProjectName}</h1>}
-        {resolvedProjectId && <BoardAccessBadges users={boardAccessUsers} />}
+      <div className="vergaderborden-board-header-row">
+        <div className="vergaderborden-header">
+          {resolvedProjectName && <h1>{resolvedProjectName}</h1>}
+          {resolvedProjectId && <BoardAccessBadges users={boardAccessUsers} />}
+        </div>
+        {resolvedProjectId && (
+          <div className="vergaderborden-board-tabs" role="group" aria-label="Kaartweergave">
+            <button
+              type="button"
+              aria-pressed={boardView === "active"}
+              className={boardView === "active" ? "is-active" : ""}
+              onClick={() => setBoardView("active")}
+            >
+              Actief ({activeCardCount})
+            </button>
+            <button
+              type="button"
+              aria-pressed={boardView === "archive"}
+              className={boardView === "archive" ? "is-active" : ""}
+              onClick={() => setBoardView("archive")}
+            >
+              Archief ({archivedCards.length})
+            </button>
+            {canManageProjects && (
+              <button
+                type="button"
+                aria-pressed={boardView === "recycle"}
+                className={boardView === "recycle" ? "is-active" : ""}
+                onClick={() => setBoardView("recycle")}
+              >
+                Prullenbak ({recycleBinCards.length})
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {canManageProjects && (
         <>
@@ -1261,193 +1732,81 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       )}
 
       {resolvedProjectId && (
-        <div className="board-grid">
-          {createCardProgress && <p className="vergaderborden-saving-indicator" role="status" aria-live="polite">{createCardProgress}</p>}
-          {createCardNotice && <p className="error vergaderborden-inline-error" role="alert">{createCardNotice}</p>}
-          {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
-          {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
-          {KOLOMMEN.map((kolom) => (
-            <div
-              className={`vergaderborden-column${dragDropTarget?.column === kolom ? " is-drag-over" : ""}${savingCardId ? " is-saving" : ""}`}
-              key={kolom}
-              data-testid={`board-column-${kolom}`}
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (!dragCardMetaRef.current) return;
-                setDragDropTarget(resolveColumnDragTarget(e.currentTarget, kolom, e.clientY));
-              }}
-              onDragLeave={(e) => {
-                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                setDragDropTarget((current) => (current?.column === kolom ? null : current));
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setDragDropTarget(null);
-                const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
-                if (!cardMeta) return;
-                dragCardMetaRef.current = null;
-
-                const targetCards = cardsByColumn[kolom] ?? [];
-                const targetDrop = resolveColumnDragTarget(e.currentTarget, kolom, e.clientY);
-                const targetPosition = resolveMoveTargetPosition(targetCards, kolom, cardMeta, targetDrop.cardId, targetDrop.placement);
-
-                setMoveError(null);
-                setSavingCardId(cardMeta.cardId);
-                moveCardMutation.mutate({ cardId: cardMeta.cardId, column: kolom, position: targetPosition });
-              }}
-            >
-              <h3>{KOLOM_TITEL[kolom]}</h3>
-              {activeCreateColumn !== kolom ? (
-                <button
-                  type="button"
-                  className="vergaderborden-card-add-toggle"
-                  onClick={() => {
-                    setCreateCardNotice(null);
-                    setActiveCreateColumn(kolom);
-                  }}
-                >
-                  + Kaart toevoegen
-                </button>
-              ) : (
-                <CreateCardInline
-                  users={boardAssignableUsers}
-                  isLoading={boardQuery.isLoading}
-                  hasError={boardQuery.isError}
-                  onCreate={async (payload) => {
-                    if (!resolvedProjectId) return false;
-                    try {
-                      setCreateCardNotice(null);
-                      setCreateCardProgress("Kaart wordt aangemaakt…");
-                      const createdCard = await createCardMutation.mutateAsync({
-                        projectId: resolvedProjectId,
-                        column: kolom,
-                        title: payload.title,
-                        description: payload.description,
-                        assignment_user_ids: payload.assignment_user_ids
-                      });
-                      let uploadFailures = 0;
-                      for (const [index, file] of payload.attachments.entries()) {
-                        setCreateCardProgress(`Kaart is aangemaakt. Bijlage ${index + 1} van ${payload.attachments.length} wordt geüpload…`);
-                        try {
-                          await uploadBoardCardAttachment(createdCard.id, file);
-                        } catch {
-                          uploadFailures += 1;
-                        }
-                      }
-                      if (payload.attachments.length > 0) {
-                        setCreateCardProgress("Bijlagen verwerkt…");
-                        await Promise.all([
-                          queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
-                          queryClient.invalidateQueries({ queryKey: ["board-card", createdCard.id] })
-                        ]);
-                      }
-                      if (uploadFailures > 0) {
-                        setCreateCardNotice(
-                          `Kaart is aangemaakt, maar ${uploadFailures} van de ${payload.attachments.length} bijlagen konden niet worden geüpload. De kaart blijft beschikbaar.`
-                        );
-                      } else {
-                        setCreateCardNotice(null);
-                      }
-                      setCreateCardProgress(null);
-                      setActiveCreateColumn(null);
-                      return true;
-                    } catch {
-                      setCreateCardProgress(null);
-                      return false;
-                    }
-                  }}
-                  onCancel={() => setActiveCreateColumn(null)}
-                />
+        <>
+          {(cardActionMessage || cardActionError) && (
+            <div className="vergaderborden-card-action-feedback">
+              {cardActionMessage && (
+                <p className="vergaderborden-saving-indicator" role="status" aria-live="polite">
+                  {cardActionMessage}
+                </p>
               )}
-              {cardsByColumn[kolom].map((card) => (
-                <div key={card.id}>
-                  {dragDropTarget?.column === kolom && dragDropTarget.cardId === card.id && dragDropTarget.placement === "before" && (
-                    <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${kolom}-${card.id}-before`} aria-hidden="true" />
-                  )}
-                  <article
-                    className="vergaderborden-board-card"
-                    data-testid={`board-card-${card.id}`}
-                    tabIndex={-1}
-                    draggable
-                    onDragStart={(e) => {
-                      setMoveError(null);
-                      const payload: DragCardMeta = { cardId: card.id, sourceColumn: card.column, sourcePosition: card.position };
-                      dragCardMetaRef.current = payload;
-                      e.dataTransfer.setData("application/json", JSON.stringify(payload));
-                      e.dataTransfer.setData("text/plain", card.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!dragCardMetaRef.current) return;
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                      setDragDropTarget({ column: kolom, cardId: card.id, placement });
-                    }}
-                    onDragLeave={(e) => {
-                      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
-                      setDragDropTarget((current) => (current?.cardId === card.id ? null : current));
-                    }}
-                    onDragEnd={() => {
-                      dragCardMetaRef.current = null;
-                      setDragDropTarget(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setDragDropTarget(null);
-                      const cardMeta = dragCardMetaRef.current ?? parseDragCardMeta(e.dataTransfer.getData("application/json"));
-                      if (!cardMeta || cardMeta.cardId === card.id) return;
-                      dragCardMetaRef.current = null;
-
-                      const targetCards = cardsByColumn[kolom] ?? [];
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const placement = e.clientY < rect.top + rect.height / 2 ? "before" : "after";
-                      const targetPosition = resolveMoveTargetPosition(targetCards, kolom, cardMeta, card.id, placement);
-
-                      setMoveError(null);
-                      setSavingCardId(cardMeta.cardId);
-                      moveCardMutation.mutate({ cardId: cardMeta.cardId, column: kolom, position: targetPosition });
-                    }}
-                    onClick={(evt) => {
-                      boardDetailTriggerRef.current = evt.currentTarget;
-                      evt.currentTarget.focus();
-                      setSelectedCardId(card.id);
-                    }}
-                  >
-                    <strong className="vergaderborden-card-title">{card.title}</strong>
-                    <div className="board-card-description-rich"><CardDescriptionRenderer description={card.description} /></div>
-                    <AssignedUserAvatarRow assignments={card.assignments} />
-                     <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
-                    <div className="board-card-recording-controls">
-                      {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
-                      <button
-                        type="button"
-                        className={`record-icon-button${activeRecordingCardId === card.id ? " is-active" : ""}`}
-                        onClick={(evt) => {
-                          evt.stopPropagation();
-                          void startOrStopRecording(card.id);
-                        }}
-                        disabled={Boolean(recorder && activeRecordingCardId !== card.id)}
-                        aria-label={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
-                        title={activeRecordingCardId === card.id ? `Stop opname voor ${card.title}` : `Start opname voor ${card.title}`}
-                      >
-                        <RecordIcon active={activeRecordingCardId === card.id} />
-                      </button>
-                    </div>
-                  </article>
-                  {dragDropTarget?.column === kolom && dragDropTarget.cardId === card.id && dragDropTarget.placement === "after" && (
-                    <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${kolom}-${card.id}-after`} aria-hidden="true" />
-                  )}
-                </div>
-              ))}
-              {dragDropTarget?.column === kolom && dragDropTarget.cardId === null && (
-                <div className="vergaderborden-drop-indicator vergaderborden-drop-indicator--end" data-testid={`board-drop-indicator-${kolom}-end`} aria-hidden="true" />
+              {cardActionError && (
+                <p className="error vergaderborden-inline-error" role="alert">
+                  {cardActionError}
+                </p>
               )}
             </div>
-          ))}
-        </div>
+          )}
+
+          {boardView === "active" && (
+            <div className="board-grid">
+              {createCardProgress && <p className="vergaderborden-saving-indicator" role="status" aria-live="polite">Kaart wordt aangemaakt…</p>}
+              {createCardNotice && <p className="error vergaderborden-inline-error" role="alert">{createCardNotice}</p>}
+              {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
+              {savingCardId && <p className="vergaderborden-saving-indicator" aria-live="polite">Kaart wordt opgeslagen…</p>}
+              {KOLOMMEN.map((kolom) => renderBoardColumn(kolom, "active"))}
+            </div>
+          )}
+
+          {boardView === "archive" && (
+            <section className="board-archive-panel" aria-label="Archief">
+              <div className="board-detail-section-heading">
+                <h3>Archief</h3>
+                <p className="board-section-help">Gearchiveerde kaarten blijven bewaard en kun je hier terugzetten.</p>
+              </div>
+              {archivedCards.length === 0 && <p className="board-archive-empty">Er zijn nog geen gearchiveerde kaarten.</p>}
+              <div className="board-grid board-archive-grid" aria-label="Gearchiveerde kaarten">
+                {KOLOMMEN.map((kolom) => renderBoardColumn(kolom, "archive"))}
+              </div>
+            </section>
+          )}
+
+          {boardView === "recycle" && canManageProjects && (
+            <section className="board-recycle-panel" aria-label="Prullenbak">
+              <div className="board-detail-section-heading">
+                <h3>Prullenbak</h3>
+                <p className="board-section-help">Hier staan kaarten die soft-verwijderd zijn en alleen door een admin kunnen worden teruggezet.</p>
+              </div>
+              {recycleBinCards.length === 0 ? (
+                <p className="board-archive-empty">De prullenbak is leeg.</p>
+              ) : (
+                <div className="board-archive-list" role="list" aria-label="Verwijderde kaarten">
+                  {recycleBinCards.map((card) => (
+                    <article key={card.id} className="board-archive-card" role="listitem">
+                      <div className="board-archive-card-copy">
+                        <strong>{card.title}</strong>
+                        <CardDescriptionRenderer description={card.description} emptyFallback={<>Geen beschrijving</>} />
+                        <small>
+                          Bord: {card.project_name} · Verwijderd door {card.deleted_by_display_name ?? card.deleted_by_username ?? "onbekend"}
+                        </small>
+                      </div>
+                      <div className="board-archive-card-actions">
+                        <IconActionButton
+                          label={`Kaart herstellen: ${card.title}`}
+                          title={`Kaart herstellen: ${card.title}`}
+                          disabled={restoreDeletedCardMutation.isPending}
+                          onClick={() => restoreDeletedCardMutation.mutate(card.id)}
+                        >
+                          <RestoreIcon />
+                        </IconActionButton>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+        </>
       )}
       {recordingError && <p className="error vergaderborden-inline-error">{recordingError}</p>}
 
@@ -1555,7 +1914,40 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 )}
                 <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
               </div>
-              <button type="button" className="board-detail-close" ref={boardDetailCloseButtonRef} onClick={closeCardDetail} aria-label="Kaartdetail sluiten">Sluiten</button>
+              <div className="board-detail-header-actions">
+                {cardQuery.data.card.is_archived ? (
+                  <IconActionButton
+                    label={`Kaart terugzetten: ${cardQuery.data.card.title}`}
+                    title={`Kaart terugzetten: ${cardQuery.data.card.title}`}
+                    disabled={restoreCardMutation.isPending}
+                    onClick={() => restoreCardMutation.mutate(cardQuery.data!.card.id)}
+                  >
+                    <RestoreIcon />
+                  </IconActionButton>
+                ) : (
+                  <IconActionButton
+                    label={`Kaart archiveren: ${cardQuery.data.card.title}`}
+                    title={`Kaart archiveren: ${cardQuery.data.card.title}`}
+                    disabled={archiveCardMutation.isPending}
+                    onClick={() => archiveCardMutation.mutate(cardQuery.data!.card.id)}
+                  >
+                    <ArchiveIcon />
+                  </IconActionButton>
+                )}
+                <IconActionButton
+                  label={`Kaart verwijderen: ${cardQuery.data.card.title}`}
+                  title={`Kaart verwijderen: ${cardQuery.data.card.title}`}
+                  disabled={deleteCardMutation.isPending}
+                  onClick={() => {
+                    const shouldDelete = window.confirm("Weet je zeker dat je deze kaart wilt verwijderen? Deze actie kan later door een admin worden teruggedraaid.");
+                    if (!shouldDelete) return;
+                    deleteCardMutation.mutate(cardQuery.data!.card.id);
+                  }}
+                >
+                  <TrashIcon />
+                </IconActionButton>
+                <button type="button" className="board-detail-close" ref={boardDetailCloseButtonRef} onClick={closeCardDetail} aria-label="Kaartdetail sluiten">Sluiten</button>
+              </div>
             </header>
 
             <section className="board-detail-section board-detail-description-panel">
@@ -1615,6 +2007,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   setUpdateError("Vul eerst een update in.");
                   return;
                 }
+                setIsNewUpdateToolbarVisible(false);
                 postUpdateMutation.mutate({ cardId: cardQuery.data!.card.id, message });
               }}
               >
@@ -1622,8 +2015,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <h3>Nieuwe update</h3>
               </div>
               <label className="vergaderborden-field">
-                <div className="board-update-editor-shell">
-                  <UpdateFormattingToolbar onAction={handleUpdateToolbarAction} />
+                <div className="board-update-editor-shell" onFocus={showNewUpdateToolbar} onBlur={hideNewUpdateToolbar}>
+                  {isNewUpdateToolbarVisible ? <UpdateFormattingToolbar onAction={handleUpdateToolbarAction} /> : null}
                   <textarea
                     ref={newUpdateTextareaRef}
                     className="board-update-textarea"
@@ -1639,7 +2032,13 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               </label>
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
               <div className="board-update-actions board-update-actions-editor">
-                <button type="submit" className="board-update-submit" disabled={postUpdateMutation.isPending}>
+                <button
+                  type="submit"
+                  className="board-update-submit"
+                  disabled={postUpdateMutation.isPending}
+                  onMouseDown={() => setIsNewUpdateToolbarVisible(false)}
+                  onClick={() => setIsNewUpdateToolbarVisible(false)}
+                >
                   {postUpdateMutation.isPending ? "Update plaatsen…" : "Update plaatsen"}
                 </button>
               </div>
@@ -1826,8 +2225,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       </div>
                       {updateEdit?.updateId === u.id && !isMoveUpdate ? (
                         <div className="board-update-editor">
-                          <div className="board-update-editor-shell">
-                            <UpdateFormattingToolbar onAction={handleUpdateEditToolbarAction} />
+                          <div className="board-update-editor-shell" onFocus={showUpdateEditToolbar} onBlur={hideUpdateEditToolbar}>
+                            {isUpdateEditToolbarVisible ? <UpdateFormattingToolbar onAction={handleUpdateEditToolbarAction} /> : null}
                             <textarea
                               ref={editUpdateTextareaRef}
                               className="board-update-textarea"
@@ -1863,6 +2262,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                               type="button"
                               disabled={editUpdateMutation.isPending}
                               onClick={() => {
+                                setIsUpdateEditToolbarVisible(false);
                                 const next = updateEdit.value.trim();
                                 if (!next) {
                                   setUpdateEdit((current) => (current ? { ...current, error: "Updatetekst mag niet leeg zijn" } : current));
@@ -1881,7 +2281,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                                   }
                                 });
                               }}
-                            >Opslaan</button>
+                            >
+                              Opslaan
+                            </button>
                             <button type="button" onClick={() => setUpdateEdit(null)} disabled={editUpdateMutation.isPending}>Annuleren</button>
                           </div>
                           {updateEdit.error && <p className="error vergaderborden-inline-error">{updateEdit.error}</p>}
@@ -1895,7 +2297,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                               <button
                                 type="button"
                                 className="board-update-action-link"
-                                onClick={() =>
+                                onClick={() => {
+                                  setIsNewUpdateToolbarVisible(false);
+                                  setIsUpdateEditToolbarVisible(false);
                                   setUpdateEdit({
                                     updateId: u.id,
                                     value: u.message,
@@ -1903,8 +2307,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                                     removeImage: false,
                                     newImage: null,
                                     error: null
-                                  })
-                                }
+                                  });
+                                }}
                               >
                                 Bewerken
                               </button>

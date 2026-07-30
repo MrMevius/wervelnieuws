@@ -57,9 +57,41 @@ class BoardRepository:
         return list(
             self.db.scalars(
                 select(BoardCard)
-                .where(BoardCard.project_id == project_id, BoardCard.is_archived.is_(False))
+                .where(
+                    BoardCard.project_id == project_id,
+                    BoardCard.is_archived.is_(False),
+                    BoardCard.deleted_at.is_(None),
+                )
                 .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user))
                 .order_by(BoardCard.column.asc(), BoardCard.position.asc(), BoardCard.created_at.asc())
+            ).unique().all()
+        )
+
+    def list_archived_project_cards(self, project_id: str) -> list[BoardCard]:
+        return list(
+            self.db.scalars(
+                select(BoardCard)
+                .where(
+                    BoardCard.project_id == project_id,
+                    BoardCard.is_archived.is_(True),
+                    BoardCard.deleted_at.is_(None),
+                )
+                .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user))
+                .order_by(BoardCard.position.asc(), BoardCard.created_at.asc())
+            ).unique().all()
+        )
+
+    def list_deleted_cards(self) -> list[BoardCard]:
+        return list(
+            self.db.scalars(
+                select(BoardCard)
+                .where(BoardCard.deleted_at.is_not(None))
+                .options(
+                    joinedload(BoardCard.project),
+                    joinedload(BoardCard.deleted_by),
+                    joinedload(BoardCard.assignments).joinedload(CardAssignment.user),
+                )
+                .order_by(BoardCard.deleted_at.desc(), BoardCard.created_at.desc())
             ).unique().all()
         )
 
@@ -92,8 +124,41 @@ class BoardRepository:
         self.db.flush()
         return card
 
-    def get_card(self, card_id: str) -> BoardCard | None:
-        return self.db.scalar(select(BoardCard).where(BoardCard.id == card_id).options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user)))
+    def get_card(self, card_id: str, *, include_deleted: bool = False) -> BoardCard | None:
+        stmt = select(BoardCard).where(BoardCard.id == card_id)
+        if not include_deleted:
+            stmt = stmt.where(BoardCard.deleted_at.is_(None))
+        return self.db.scalar(stmt.options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user)))
+
+    def archive_card(self, card: BoardCard) -> BoardCard:
+        card.is_archived = True
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
+    def restore_card(self, card: BoardCard) -> BoardCard:
+        card.is_archived = False
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
+    def soft_delete_card(self, card: BoardCard, deleted_by_user_id: str) -> BoardCard:
+        card.deleted_at = datetime.now(UTC)
+        card.deleted_by_user_id = deleted_by_user_id
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
+    def restore_deleted_card(self, card: BoardCard) -> BoardCard:
+        card.deleted_at = None
+        card.deleted_by_user_id = None
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
 
     def update_card_title(self, card: BoardCard, title: str) -> BoardCard:
         card.title = title.strip()
@@ -119,7 +184,13 @@ class BoardRepository:
         cards = list(
             self.db.scalars(
                 select(BoardCard)
-                .where(BoardCard.project_id == card.project_id, BoardCard.column == target_column, BoardCard.is_archived.is_(False), BoardCard.id != card.id)
+                .where(
+                    BoardCard.project_id == card.project_id,
+                    BoardCard.column == target_column,
+                    BoardCard.is_archived.is_(False),
+                    BoardCard.deleted_at.is_(None),
+                    BoardCard.id != card.id,
+                )
                 .order_by(BoardCard.position.asc(), BoardCard.created_at.asc())
             ).all()
         )

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VergaderbordenPage } from "./VergaderbordenPage";
@@ -14,6 +15,11 @@ const api = vi.hoisted(() => ({
   getCurrentUser: vi.fn(),
   createBoardProject: vi.fn(),
   createBoardCard: vi.fn(),
+  archiveBoardCard: vi.fn(),
+  restoreBoardCard: vi.fn(),
+  deleteBoardCard: vi.fn(),
+  listBoardRecycleBin: vi.fn(),
+  restoreDeletedBoardCard: vi.fn(),
   moveBoardCard: vi.fn(),
   updateBoardCardTitle: vi.fn(),
   updateBoardCardDescription: vi.fn(),
@@ -107,6 +113,11 @@ describe("Vergaderborden drag/drop", () => {
     api.getCurrentUser.mockResolvedValue({ id: "u1", username: "admin" });
     api.createBoardProject.mockResolvedValue({ id: "p2" });
     api.createBoardCard.mockResolvedValue({ id: "c2" });
+    api.archiveBoardCard.mockResolvedValue({ id: "c1" });
+    api.restoreBoardCard.mockResolvedValue({ id: "c1" });
+    api.deleteBoardCard.mockResolvedValue({ status: "deleted" });
+    api.listBoardRecycleBin.mockResolvedValue([]);
+    api.restoreDeletedBoardCard.mockResolvedValue({ id: "c1" });
     api.postBoardCardUpdate.mockResolvedValue({ id: "u2" });
     api.editBoardCardUpdate.mockResolvedValue({ id: "u3" });
     api.deleteBoardCardUpdate.mockResolvedValue(undefined);
@@ -706,16 +717,12 @@ describe("Vergaderborden drag/drop", () => {
     });
 
     await waitFor(() => {
-      const progressStatus = screen.getAllByRole("status").find((el) => el.textContent?.includes("Bijlage 2 van 2 wordt geüpload…"));
-      expect(progressStatus).toBeTruthy();
+      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c2", fileB);
     });
     await act(async () => {
       secondUpload.resolve({ id: "a2" });
     });
 
-    await waitFor(() => {
-      expect(api.uploadBoardCardAttachment).toHaveBeenNthCalledWith(2, "c2", fileB);
-    });
     await waitFor(() => {
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
     });
@@ -899,6 +906,8 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => {
       expect(api.getBoardCard).toHaveBeenCalledWith("c1");
     });
+    expect(await screen.findByRole("button", { name: "Kaart archiveren: Oude titel" })).toHaveAttribute("title", "Kaart archiveren: Oude titel");
+    expect(screen.getByRole("button", { name: "Kaart verwijderen: Oude titel" })).toHaveAttribute("title", "Kaart verwijderen: Oude titel");
     fireEvent.click(await screen.findByRole("button", { name: "Kaarttitel bewerken: Oude titel" }));
     const input = await screen.findByLabelText("Kaarttitel");
     fireEvent.change(input, { target: { value: "Niet opslaan" } });
@@ -1259,15 +1268,21 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.click(await screen.findByTestId("board-card-c1"));
 
     const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    fireEvent.focus(createTextarea);
+    const createToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
     fireEvent.change(createTextarea, { target: { value: "regel" } });
     createTextarea.setSelectionRange(0, 5);
-    const boldButtons = screen.getAllByRole("button", { name: "B" });
-    const underlineButtons = screen.getAllByRole("button", { name: "U" });
-    const bulletButtons = screen.getAllByRole("button", { name: "• Lijst" });
-    fireEvent.click(boldButtons[boldButtons.length - 1]);
-    fireEvent.click(underlineButtons[underlineButtons.length - 1]);
-    fireEvent.click(bulletButtons[bulletButtons.length - 1]);
-    fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
+    fireEvent.click(within(createToolbar).getByRole("button", { name: "B" }));
+    fireEvent.click(within(createToolbar).getByRole("button", { name: "U" }));
+    fireEvent.click(within(createToolbar).getByRole("button", { name: "• Lijst" }));
+    const updateSubmitButton = screen.getByRole("button", { name: "Update plaatsen" });
+    fireEvent.mouseDown(updateSubmitButton);
+    fireEvent.click(updateSubmitButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", expect.stringContaining("**regel**"));
@@ -1275,14 +1290,112 @@ describe("Vergaderborden drag/drop", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
     const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
-    editTextarea.focus();
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    fireEvent.focus(editTextarea);
+    const editToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
     editTextarea.setSelectionRange(0, 5);
-    const numberButtons = screen.getAllByRole("button", { name: "1. Lijst" });
-    fireEvent.click(numberButtons[numberButtons.length - 1]);
-    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    fireEvent.click(within(editToolbar).getByRole("button", { name: "1. Lijst" }));
+    const saveButton = screen.getByRole("button", { name: "Opslaan" });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
 
     await waitFor(() => {
       expect(api.editBoardCardUpdate).toHaveBeenCalledWith("c1", "u1", expect.objectContaining({ message: "1. Eigen update" }));
+    });
+  });
+
+  it("verbergt de update-toolbar zodra focus de volledige editor-shell verlaat", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        { id: "u1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Eigen update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T10:00:00Z" }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    const dialog = await screen.findByRole("dialog");
+    const closeButton = within(dialog).getByRole("button", { name: "Kaartdetail sluiten" });
+
+    const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+
+    fireEvent.focus(createTextarea);
+    const createToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    const createBoldButton = within(createToolbar).getByRole("button", { name: "B" });
+
+    fireEvent.blur(createTextarea, { relatedTarget: createBoldButton });
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    fireEvent.blur(createBoldButton, { relatedTarget: closeButton });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
+    const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+
+    fireEvent.focus(editTextarea);
+    const editToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    const editItalicButton = within(editToolbar).getByRole("button", { name: "I" });
+
+    fireEvent.blur(editTextarea, { relatedTarget: editItalicButton });
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    fireEvent.blur(editItalicButton, { relatedTarget: closeButton });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("houdt de update-toolbar zichtbaar tijdens Tab-navigatie binnen de editor-shell en verbergt die zodra focus de shell verlaat", async () => {
+    const user = userEvent.setup();
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        { id: "u1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Eigen update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T10:00:00Z" }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
+    fireEvent.focus(createTextarea);
+    const createToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    const createLastToolbarButton = within(createToolbar).getByRole("button", { name: "1. Lijst" });
+    createLastToolbarButton.focus();
+    expect(createLastToolbarButton).toHaveFocus();
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    await user.tab();
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
+    const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
+    fireEvent.focus(editTextarea);
+    const editToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    const editLastToolbarButton = within(editToolbar).getByRole("button", { name: "1. Lijst" });
+    editLastToolbarButton.focus();
+    expect(editLastToolbarButton).toHaveFocus();
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    fireEvent.blur(editTextarea, { relatedTarget: screen.getByRole("button", { name: "Opslaan" }) });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
     });
   });
 
@@ -1304,7 +1417,9 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.getByRole("img", { name: "Update-afbeelding" })).toHaveAttribute("src", "https://example.com/update.png");
     const editButtons = screen.getAllByRole("button", { name: "Bewerken" });
     expect(editButtons).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Verwijderen" })).toBeInTheDocument();
+    const ownUpdateArticle = screen.getByText("Eigen update").closest("article");
+    expect(ownUpdateArticle).not.toBeNull();
+    expect(within(ownUpdateArticle as HTMLElement).getByRole("button", { name: "Verwijderen" })).toBeInTheDocument();
     expect(screen.getByText("•")).toBeInTheDocument();
 
     fireEvent.click(editButtons[0]);
@@ -1332,7 +1447,10 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
-    fireEvent.click(await screen.findByRole("button", { name: "Verwijderen" }));
+    await screen.findByText("Eigen update");
+    const updateArticle = screen.getByText("Eigen update").closest("article");
+    expect(updateArticle).not.toBeNull();
+    fireEvent.click(within(updateArticle as HTMLElement).getByRole("button", { name: "Verwijderen" }));
 
     expect(api.deleteBoardCardUpdate).not.toHaveBeenCalled();
   });
@@ -1351,7 +1469,10 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
-    fireEvent.click(await screen.findByRole("button", { name: "Verwijderen" }));
+    await screen.findByText("Eigen update");
+    const updateArticle = screen.getByText("Eigen update").closest("article");
+    expect(updateArticle).not.toBeNull();
+    fireEvent.click(within(updateArticle as HTMLElement).getByRole("button", { name: "Verwijderen" }));
 
     await waitFor(() => {
       expect(api.deleteBoardCardUpdate).toHaveBeenCalledWith("c1", "u1");
@@ -1361,6 +1482,110 @@ describe("Vergaderborden drag/drop", () => {
       expect(api.getBoardProject).toHaveBeenCalledTimes(2);
     });
     expect(screen.queryByText("Eigen update")).not.toBeInTheDocument();
+  });
+
+  it("toont archiefkaarten in een aparte tab en laat archiveren herstellen of verwijderen na bevestiging", async () => {
+    const activeCard = { id: "c1", project_id: "p1", title: "Actief", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, is_archived: false };
+    const archivedCard = { id: "c2", project_id: "p1", title: "Gearchiveerd", description: "", column: "doing", position: 1, assignments: [], updates_count: 0, recordings_count: 0, is_archived: true };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [activeCard],
+      archived_cards: [archivedCard]
+    });
+    const confirmSpy = vi.spyOn(window, "confirm");
+
+    renderPage("/vergaderborden?project=p1", true);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Archief/ }));
+    expect(await screen.findByText("Gearchiveerd")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /\+ Kaart toevoegen/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Terugzetten")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verwijderen")).not.toBeInTheDocument();
+    expect(screen.getByTestId("board-card-c2")).toHaveAttribute("draggable", "false");
+    expect(screen.getByRole("button", { name: "Kaart terugzetten: Gearchiveerd" })).toHaveAttribute("title", "Kaart terugzetten: Gearchiveerd");
+    expect(screen.getByRole("button", { name: "Kaart verwijderen: Gearchiveerd" })).toHaveAttribute("title", "Kaart verwijderen: Gearchiveerd");
+
+    fireEvent.click(screen.getByRole("button", { name: "Kaart terugzetten: Gearchiveerd" }));
+    await waitFor(() => {
+      expect(api.restoreBoardCard).toHaveBeenCalledWith("c2");
+    });
+
+    confirmSpy.mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole("button", { name: "Kaart verwijderen: Gearchiveerd" }));
+    await waitFor(() => {
+      expect(api.deleteBoardCard).not.toHaveBeenCalled();
+    });
+
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole("button", { name: "Kaart verwijderen: Gearchiveerd" }));
+    await waitFor(() => {
+      expect(api.deleteBoardCard).toHaveBeenCalledWith("c2");
+    });
+    confirmSpy.mockRestore();
+  });
+
+  it("plaatst de boardtabs compact in de header en laat archief dezelfde kolommen zien als het actieve bord", async () => {
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { id: "c1", project_id: "p1", title: "Todo kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, is_archived: false }
+      ],
+      archived_cards: [
+        { id: "c2", project_id: "p1", title: "Archief kaart", description: "", column: "doing", position: 0, assignments: [], updates_count: 0, recordings_count: 0, is_archived: true }
+      ]
+    });
+
+    renderPage("/vergaderborden?project=p1");
+
+    const boardViewGroup = await screen.findByRole("group", { name: "Kaartweergave" });
+    expect(boardViewGroup).toBeInTheDocument();
+    expect(within(boardViewGroup).getAllByRole("button")).toHaveLength(2);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Archief/ }));
+    expect(await screen.findByTestId("board-column-todo")).toBeInTheDocument();
+    expect(await screen.findByTestId("board-column-doing")).toBeInTheDocument();
+    expect(await screen.findByTestId("board-column-done")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /\+ Kaart toevoegen/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Start opname voor/ })).not.toBeInTheDocument();
+    expect(within(boardViewGroup).getByRole("button", { name: /Archief/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("toont de admin-prullenbak en laat soft-verwijderde kaarten herstellen", async () => {
+    const recycleCard = {
+      id: "d1",
+      project_id: "p1",
+      project_name: "Project A",
+      title: "Verwijderd",
+      description: "",
+      column: "todo",
+      position: 0,
+      is_archived: false,
+      deleted_at: "2026-07-29T10:00:00Z",
+      deleted_by_user_id: "u1",
+      deleted_by_username: "admin",
+      deleted_by_display_name: "Admin",
+      assignments: [],
+      updates_count: 0,
+      recordings_count: 0,
+      attachments_count: 0
+    };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [], archived_cards: [] });
+    api.listBoardRecycleBin.mockResolvedValue([recycleCard]);
+
+    renderPage("/vergaderborden?project=p1", true);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Prullenbak/ }));
+    expect(await screen.findByText("Verwijderd")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Kaart herstellen: Verwijderd" })).toHaveAttribute("title", "Kaart herstellen: Verwijderd");
+
+    fireEvent.click(screen.getByRole("button", { name: "Kaart herstellen: Verwijderd" }));
+    await waitFor(() => {
+      expect(api.restoreDeletedBoardCard).toHaveBeenCalledWith("d1");
+    });
   });
 
   it("toont recordknoppen op alle kaarten en opent detail niet bij recordklik", async () => {
@@ -1571,6 +1796,35 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => {
       expect(api.deleteBoardCardAttachment).toHaveBeenCalledWith("c1", "a1");
     });
+    confirmSpy.mockRestore();
+  });
+
+  it("verwijdert een kaart vanuit detail en toont succesfeedback", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject
+      .mockResolvedValueOnce({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card], archived_cards: [] })
+      .mockResolvedValueOnce({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [], archived_cards: [] });
+    api.getBoardCard
+      .mockResolvedValueOnce({ card, updates: [], recordings: [] })
+      .mockResolvedValueOnce({ card: null, updates: [], recordings: [] });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    renderPage();
+
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Kaart verwijderen: Kaart" }));
+
+    await waitFor(() => {
+      expect(api.deleteBoardCard).toHaveBeenCalledWith("c1");
+    });
+    expect(confirmSpy).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Kaart verwijderd.")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     confirmSpy.mockRestore();
   });
 

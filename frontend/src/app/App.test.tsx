@@ -216,6 +216,8 @@ const mockApi = vi.hoisted(() => ({
     newsletter_prompt: "Schrijf overzichtelijk voor nieuwsbrief.",
     text_model: "gpt-4.1-mini",
     image_model: "gpt-image-1",
+    whisper_model: "whisper-1",
+    whisper_language: "nl",
     websearch_enabled: false,
     websearch_max_results: 3,
     has_api_key: false
@@ -231,6 +233,8 @@ const mockApi = vi.hoisted(() => ({
     newsletter_prompt: "Nieuwsbriefprompt",
     text_model: "gpt-4.1-mini",
     image_model: "gpt-image-1",
+    whisper_model: "whisper-1",
+    whisper_language: "nl",
     websearch_enabled: true,
     websearch_max_results: 4,
     has_api_key: true
@@ -286,6 +290,80 @@ const mockApi = vi.hoisted(() => ({
       uploaded_by_username: "admin",
       created_at: "2026-03-12T11:00:00Z"
     };
+  }),
+  listTopicDocuments: vi.fn().mockResolvedValue([
+    {
+      id: "audio-1",
+      filename: "opname.webm",
+      parent_source_document_id: null,
+      doc_type: "audio",
+      status: "uploaded",
+      duration_seconds: 120,
+      transcription_status: "failed",
+      transcription_attempts: 1,
+      extraction_error: "",
+      transcription_error: "Whisper faalde tijdelijk",
+      transcription_text: "",
+      transcription_model: "whisper-1",
+      transcription_language: "nl",
+      speaker_labels_json: "[]",
+      transcript_document_id: "transcript-1",
+      created_at: "2026-06-30T10:00:00Z"
+    },
+    {
+      id: "transcript-1",
+      filename: "opname.transcript.txt",
+      parent_source_document_id: "audio-1",
+      doc_type: "txt",
+      status: "indexed",
+      duration_seconds: null,
+      transcription_status: "not_applicable",
+      transcription_attempts: 0,
+      extraction_error: "",
+      transcription_error: "",
+      transcription_text: "De werkzaamheden starten maandag.",
+      transcription_model: "",
+      transcription_language: "",
+      speaker_labels_json: "[]",
+      transcript_document_id: null,
+      created_at: "2026-06-30T10:05:00Z"
+    }
+  ]),
+  uploadTopicDocument: vi.fn().mockResolvedValue({
+    id: "audio-2",
+    filename: "nieuw-opname.webm",
+    parent_source_document_id: null,
+    doc_type: "audio",
+    status: "uploaded",
+    duration_seconds: 90,
+    transcription_status: "queued",
+    transcription_attempts: 0,
+    extraction_error: "",
+    transcription_error: "",
+    transcription_text: "",
+    transcription_model: "",
+    transcription_language: "",
+    speaker_labels_json: "[]",
+    transcript_document_id: null,
+    created_at: "2026-06-30T10:10:00Z"
+  }),
+  retryTopicDocumentTranscription: vi.fn().mockResolvedValue({
+    id: "audio-1",
+    filename: "opname.webm",
+    parent_source_document_id: null,
+    doc_type: "audio",
+    status: "uploaded",
+    duration_seconds: 120,
+    transcription_status: "queued",
+    transcription_attempts: 1,
+    extraction_error: "",
+    transcription_error: "",
+    transcription_text: "",
+    transcription_model: "whisper-1",
+    transcription_language: "nl",
+    speaker_labels_json: "[]",
+    transcript_document_id: "transcript-1",
+    created_at: "2026-06-30T10:00:00Z"
   }),
   deleteDatabaseDocument: vi.fn().mockResolvedValue({ status: "ok" }),
   bulkDeleteDatabaseDocuments: vi.fn().mockResolvedValue({ status: "ok", affected: 1 }),
@@ -524,11 +602,42 @@ const mockApi = vi.hoisted(() => ({
   regenerateContent: vi.fn().mockResolvedValue({ version_id: "v2" }),
   approveTopic: vi.fn().mockResolvedValue({ status: "approved" }),
   getGeneratedImageBlob: vi.fn().mockResolvedValue(new Blob(["img"], { type: "image/png" })),
+  listBoardRecycleBin: vi.fn().mockResolvedValue([]),
   getAboutContent: vi.fn().mockResolvedValue({
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
     developed_by: "Energiek Daarle",
     changelog: [
+      {
+        iteration: "92",
+        date: "2026-07-29",
+        title: "Vergaderborden verfijnen tabs, tooltips en archief",
+        highlights: [
+          "De actieknoppen staan nu compact rechtsboven in de bordheader en wrappen netjes op smalle schermen.",
+          "Kaartacties zijn icon-only met native tooltips en duidelijke labels, zodat de UI rustiger oogt zonder functies te verbergen.",
+          "Het archief gebruikt dezelfde kaartopbouw als het actieve bord, terwijl add-card en drag/drop daar zijn uitgeschakeld."
+        ]
+      },
+      {
+        iteration: "91",
+        date: "2026-07-29",
+        title: "Lichtmodusknoppen en invoervelden zijn duidelijker",
+        highlights: [
+          "De knoppen in het vergaderbord-detail zijn nu beter zichtbaar in lichte weergave, inclusief sluit-, upload- en actieknoppen.",
+          "Invoervelden, statuslabels en modals gebruiken rustiger oppervlaktes en duidelijkere contrasten zonder de workflow te veranderen.",
+          "De interface blijft hetzelfde in opbouw, maar lichtmodus is nu minder gevoelig voor contrastregressies."
+        ]
+      },
+      {
+        iteration: "89",
+        date: "2026-07-28",
+        title: "Vergaderborden krijgen een duidelijke paarse stijl",
+        highlights: [
+          "Vergaderbordkolommen, knoppen, badges en focusstates hebben nu een herkenbare paarse accentkleur.",
+          "De rest van de interface blijft rustig en goed leesbaar, ook in donkere weergave.",
+          "Modals en overlays sluiten nu visueel aan op de paarse bordstijl zonder dat je werkwijze verandert."
+        ]
+      },
       {
         iteration: "73",
         date: "2026-06-11",
@@ -986,6 +1095,9 @@ describe("App", () => {
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
     expect(headings).toEqual([
+      "Iteratie 92 - Vergaderborden verfijnen tabs, tooltips en archief",
+      "Iteratie 91 - Lichtmodusknoppen en invoervelden zijn duidelijker",
+      "Iteratie 89 - Vergaderborden krijgen een duidelijke paarse stijl",
       "Iteratie 73 - WindWilly-startpagina duidelijker en rijker",
       "Iteratie 03 - Aparte changelog",
       "Iteratie 02 - Nieuwe shell",
@@ -2391,6 +2503,33 @@ describe("App", () => {
     });
   });
 
+  it("shows audio transcription status and retry action on planning detail page", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickWervelSubmenu("Planning");
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" })).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Open planningsregel Onderwerp test" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Bronbestanden" })).toBeInTheDocument();
+      expect(screen.getByText("Audio-opname · 2 min")).toBeInTheDocument();
+      expect(screen.getByText("Transcriptie mislukt")).toBeInTheDocument();
+      expect(screen.getByText("Transcriptie uit audio (read-only)")).toBeInTheDocument();
+      expect(screen.getByText("De werkzaamheden starten maandag.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Transcriptie opnieuw proberen" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Transcriptie opnieuw proberen" }));
+
+    await waitFor(() => {
+      expect(mockApi.retryTopicDocumentTranscription).toHaveBeenCalledWith("abc12345-1111", "audio-1");
+      expect(screen.getByText("Transcriptie opnieuw ingepland.")).toBeInTheDocument();
+    });
+  });
+
   it("rejects text part with global text note", async () => {
     renderApp();
     await loginIntoApp();
@@ -2769,6 +2908,12 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Website prompt"), {
       target: { value: "Websiteprompt iteratie 9" }
     });
+    fireEvent.change(screen.getByLabelText("Whisper-model"), {
+      target: { value: "whisper-1" }
+    });
+    fireEvent.change(screen.getByLabelText("Whisper-taal"), {
+      target: { value: "nl" }
+    });
     fireEvent.click(screen.getByLabelText("Websearch inschakelen (standaard uit)"));
     fireEvent.change(screen.getByLabelText(/OpenAI API key/i), {
       target: { value: "new-api-key" }
@@ -2779,6 +2924,8 @@ describe("App", () => {
       expect(mockApi.updateAdminGenAIConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           website_prompt: "Websiteprompt iteratie 9",
+          whisper_model: "whisper-1",
+          whisper_language: "nl",
           websearch_enabled: true,
           openai_api_key: "new-api-key"
         })
