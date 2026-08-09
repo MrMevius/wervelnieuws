@@ -1018,6 +1018,396 @@ export function approveTopic(topicId: string) {
   return request<{ status: string }>(`/content/${topicId}/approve`, { method: "POST" });
 }
 
+export type WorkHourProject = {
+  id: string;
+  display_name?: string;
+  name?: string;
+  description?: string;
+  selectable?: boolean;
+  is_active?: boolean;
+  is_archived?: boolean;
+  archived_at?: string | null;
+  row_version?: number;
+};
+
+export type WorkHourPost = {
+  id: string;
+  project_selection_key?: string;
+  project_id?: string;
+  display_name?: string;
+  name?: string;
+  description?: string;
+  selectable?: boolean;
+  is_active?: boolean;
+  is_archived?: boolean;
+  archived_at?: string | null;
+  row_version?: number;
+};
+
+export type WorkHourExternalPerson = {
+  id: string;
+  display_name: string;
+  email?: string | null;
+  note?: string;
+  selectable?: boolean;
+  is_active?: boolean;
+  deleted_at?: string | null;
+  row_version?: number;
+};
+
+export type WorkHourHistoricalIdentity = {
+  id: string;
+  display_name?: string;
+  source_key?: string;
+  snapshot_name?: string;
+  snapshot_email?: string | null;
+  snapshot_display_label?: string;
+  linked_user_id?: string | null;
+  linked_at?: string | null;
+  selectable?: boolean;
+  is_active?: boolean;
+};
+
+export type WorkHourEligibleUser = {
+  id: string;
+  display_name?: string;
+  username?: string;
+  full_name?: string | null;
+  email?: string | null;
+  selectable?: boolean;
+};
+
+export type WorkHourParticipant = {
+  id: string;
+  participant_kind?: "live_user" | "external_person" | "historical_identity";
+  user_id?: string | null;
+  external_person_id?: string | null;
+  historical_identity_id?: string | null;
+  display_name_snapshot: string;
+  display_email_snapshot?: string | null;
+  display_type_snapshot: string;
+  sort_order: number;
+};
+
+export type WorkHourGroup = {
+  id: string;
+  work_date: string;
+  project_id: string;
+  project_name: string;
+  post_id: string;
+  post_name: string;
+  description: string;
+  duration_half_hours: number;
+  duration_hours: number;
+  person_count: number;
+  person_hours: number;
+  row_version: number;
+  deleted_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  participants: WorkHourParticipant[];
+};
+
+export type WorkHourTotals = {
+  total_groups: number;
+  total_people: number;
+  total_duration_hours: number;
+  total_person_hours: number;
+};
+
+export type WorkHourSortKey = "work_date" | "name_person" | "type_person" | "project" | "post" | "duration_half_hours" | "created_at" | "updated_at";
+
+export type WorkHourList = {
+  items: WorkHourGroup[];
+  total: number;
+  page: number;
+  page_size: number;
+  sort_key: WorkHourSortKey;
+  sort_direction: string;
+  page_sizes: number[];
+  totals: WorkHourTotals;
+};
+
+export type WorkHourQueryParams = {
+  work_date?: string;
+  project_id?: string;
+  post_id?: string;
+  participant_kind?: string;
+  query?: string;
+  include_deleted?: boolean;
+  deleted_only?: boolean;
+  page?: number;
+  page_size?: number;
+  sort_key?: WorkHourSortKey;
+  sort_direction?: "asc" | "desc";
+};
+
+export function buildWorkHourQueryParams(params: WorkHourQueryParams) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    search.set(key, String(value));
+  }
+  return search;
+}
+
+export type WorkHourMeta = {
+  projects: WorkHourProject[];
+  posts: WorkHourPost[];
+  external_people: WorkHourExternalPerson[];
+  historical_identities: WorkHourHistoricalIdentity[];
+  eligible_users: WorkHourEligibleUser[];
+  is_admin: boolean;
+};
+
+export type WorkHourImportEnvelope = {
+  format_version: string;
+  backup_version: string;
+  projects: WorkHourProject[];
+  posts: WorkHourPost[];
+  external_people: WorkHourExternalPerson[];
+  historical_identities: WorkHourHistoricalIdentity[];
+  groups: Array<{
+    id: string;
+    work_date: string;
+    project_id: string;
+    post_id: string;
+    description: string;
+    duration_half_hours: number;
+    participants: WorkHourParticipant[];
+  }>;
+};
+
+export type WorkHourPreview = {
+  batch_id: string;
+  status: string;
+  counts: Record<string, number>;
+  warnings: string[];
+  errors: string[];
+  backup_download_url: string | null;
+};
+
+export type WorkHourCommit = {
+  batch_id: string;
+  status: string;
+  backup_download_url: string | null;
+};
+
+export function listWorkHoursMeta() {
+  return request<WorkHourMeta>("/urenverantwoording/meta");
+}
+
+export function listWorkHourGroups(params: WorkHourQueryParams) {
+  const search = buildWorkHourQueryParams(params);
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return request<WorkHourList>(`/urenverantwoording/groepen${suffix}`);
+}
+
+export function createWorkHourGroup(payload: {
+  work_date: string;
+  project_id: string;
+  post_id: string;
+  description: string;
+  duration_half_hours: number;
+  participants: Array<{
+    participant_kind: "live_user" | "external_person" | "historical_identity";
+    user_id?: string | null;
+    external_person_id?: string | null;
+    historical_identity_id?: string | null;
+    display_name_snapshot: string;
+    display_email_snapshot?: string | null;
+    display_type_snapshot: string;
+    sort_order?: number;
+  }>;
+  }) {
+  return request<WorkHourGroup>("/urenverantwoording/groepen", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateWorkHourGroup(groupId: string, payload: Omit<Partial<Parameters<typeof createWorkHourGroup>[0]>, "participants"> & {
+  expected_row_version?: number;
+  participants?: Array<{
+    id?: string | null;
+    participant_kind?: "live_user" | "external_person" | "historical_identity";
+    user_id?: string | null;
+    external_person_id?: string | null;
+    historical_identity_id?: string | null;
+    display_name_snapshot?: string;
+    display_email_snapshot?: string | null;
+    display_type_snapshot?: string;
+    sort_order?: number;
+  }>;
+}) {
+  return request<WorkHourGroup>(`/urenverantwoording/groepen/${groupId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deleteWorkHourGroup(groupId: string, expectedRowVersion: number) {
+  return request<{ status: string }>(`/urenverantwoording/groepen/${groupId}?expected_row_version=${expectedRowVersion}`, {
+    method: "DELETE"
+  });
+}
+
+export function restoreWorkHourGroup(groupId: string, expectedRowVersion: number) {
+  return request<WorkHourGroup>(`/urenverantwoording/groepen/${groupId}/herstellen?expected_row_version=${expectedRowVersion}`, {
+    method: "POST"
+  });
+}
+
+export function createWorkExternalPerson(payload: { display_name: string; email?: string | null; note?: string; force_create?: boolean }) {
+  return request<WorkHourExternalPerson>("/urenverantwoording/externe-personen", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateWorkExternalPerson(personId: string, payload: { display_name?: string | null; email?: string | null; note?: string | null; expected_row_version?: number }) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function deactivateWorkExternalPerson(personId: string, expectedRowVersion: number) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}/deactiveren?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function activateWorkExternalPerson(personId: string, expectedRowVersion: number) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}/activeren?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function archiveWorkExternalPerson(personId: string, expectedRowVersion: number) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}/archiveren?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function restoreWorkExternalPerson(personId: string, expectedRowVersion: number) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}/herstellen?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function mergeWorkExternalPerson(personId: string, payload: { target_id: string; note?: string | null; expected_source_row_version?: number; expected_target_row_version?: number }) {
+  return request<WorkHourExternalPerson>(`/urenverantwoording/externe-personen/${personId}/merge`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function createWorkProject(payload: { name: string; description: string }) {
+  return request<WorkHourProject>("/urenverantwoording/projecten", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateWorkProject(projectId: string, payload: { name?: string; description?: string; expected_row_version?: number }) {
+  return request<WorkHourProject>(`/urenverantwoording/projecten/${projectId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function archiveWorkProject(projectId: string, expectedRowVersion: number) {
+  return request<WorkHourProject>(`/urenverantwoording/projecten/${projectId}/archiveren?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function restoreWorkProject(projectId: string, expectedRowVersion: number) {
+  return request<WorkHourProject>(`/urenverantwoording/projecten/${projectId}/herstellen?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function deleteWorkProject(projectId: string, expectedRowVersion: number) {
+  return request<{ status: string }>(`/urenverantwoording/projecten/${projectId}?expected_row_version=${expectedRowVersion}`, { method: "DELETE" });
+}
+
+export function createWorkPost(payload: { project_id: string; name: string; description: string }) {
+  return request<WorkHourPost>("/urenverantwoording/posten", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function updateWorkPost(postId: string, payload: { name?: string; description?: string; expected_row_version?: number }) {
+  return request<WorkHourPost>(`/urenverantwoording/posten/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function archiveWorkPost(postId: string, expectedRowVersion: number) {
+  return request<WorkHourPost>(`/urenverantwoording/posten/${postId}/archiveren?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function restoreWorkPost(postId: string, expectedRowVersion: number) {
+  return request<WorkHourPost>(`/urenverantwoording/posten/${postId}/herstellen?expected_row_version=${expectedRowVersion}`, { method: "POST" });
+}
+
+export function deleteWorkPost(postId: string, expectedRowVersion: number) {
+  return request<{ status: string }>(`/urenverantwoording/posten/${postId}?expected_row_version=${expectedRowVersion}`, { method: "DELETE" });
+}
+
+export function downloadWorkHoursCsv(params: WorkHourQueryParams) {
+  const search = buildWorkHourQueryParams(params);
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return requestBlob(`/urenverantwoording/export.csv${suffix}`);
+}
+
+export function previewWorkHoursImport(payload: WorkHourImportEnvelope, mode: "merge" | "full_restore") {
+  return request<WorkHourPreview>(`/urenverantwoording/import/preview?mode=${mode}`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function commitWorkHoursImport(batchId: string, payload: WorkHourImportEnvelope, mode: "merge" | "full_restore") {
+  return request<WorkHourCommit>(`/urenverantwoording/import/commit?batch_id=${encodeURIComponent(batchId)}&mode=${mode}`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+}
+
+export function downloadWorkHoursBackup(batchId: string) {
+  return requestBlob(`/urenverantwoording/import/batches/${encodeURIComponent(batchId)}/backup`);
+}
+
+export type WorkHoursAuditFilters = {
+  actor?: string;
+  action?: string;
+  result?: string;
+  method?: string;
+  path?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  page_size?: 25 | 50 | 100;
+};
+
+export function listWorkHoursAudit(filters: WorkHoursAuditFilters = {}) {
+  const search = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) search.set(key, String(value));
+  });
+  const suffix = search.toString() ? `?${search.toString()}` : "";
+  return request<{ items: Array<{ id: string; event_type: string; actor_user_id: string | null; actor_display_name: string; action: string; result: string; request_method: string; request_path: string; details_json: string; created_at: string }>; total: number; page: number; page_size: number }>(`/urenverantwoording/audit${suffix}`);
+}
+
+export function listWorkHoursAdminHistory(params: { page?: number; page_size?: 25 | 50 | 100; kind?: "project" | "post" | "external_person" | "historical_identity"; query?: string; sort_key?: "display_name" | "id"; sort_direction?: "asc" | "desc" } = {}) {
+  const search = buildWorkHourQueryParams(params as WorkHourQueryParams);
+  return request<{ items: Array<{ kind: "project" | "post" | "external_person" | "historical_identity"; id: string; display_name: string; row_version: number; linked_user_id?: string | null; deleted_at?: string | null }>; total: number; page: number; page_size: number }>(`/urenverantwoording/admin/history?${search.toString()}`);
+}
+
+export function listWorkHoursAdminMasterdata() {
+  return request<{ projects: Required<WorkHourProject>[]; posts: Required<WorkHourPost>[]; external_people: Required<WorkHourExternalPerson>[] }>("/urenverantwoording/admin/masterdata");
+}
+
+export function relinkWorkHistoricalIdentity(identityId: string, linkedUserId: string, expectedRowVersion: number) {
+  return request<WorkHourHistoricalIdentity>(`/urenverantwoording/historische-identiteiten/${identityId}/koppelen`, {
+    method: "POST",
+    body: JSON.stringify({ linked_user_id: linkedUserId, expected_row_version: expectedRowVersion })
+  });
+}
+
 export function rejectTopic(topicId: string) {
   return request<{ status: string }>(`/content/${topicId}/reject`, { method: "POST" });
 }

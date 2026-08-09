@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
+import { Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AdminTheme,
   AdminUser,
@@ -83,10 +83,16 @@ import { WERVEL_PATHS, WINDWILLY_PATHS } from "../routes/paths";
 import { useMainDashboardData } from "../features/main/hooks/useMainDashboardData";
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
 import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
+import { UrenverantwoordingPage } from "../features/urenverantwoording/UrenverantwoordingPage";
 import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
 } from "../features/admin/vergaderbordenProjectSelection";
+
+export function LegacyWorkHoursRedirect() {
+  const location = useLocation();
+  return <Navigate to={`${WERVEL_PATHS.urenverantwoording}${location.search}${location.hash}`} replace />;
+}
 
 const ADMIN_AVATAR_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const ADMIN_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
@@ -560,7 +566,7 @@ export function App() {
               ))}
             </nav>
           </div>
-          <NavLink to="/urenverantwoording">Urenverantwoording</NavLink>
+          <NavLink to={WERVEL_PATHS.urenverantwoording}>Urenverantwoording</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
         <div className="user-menu-wrap">
@@ -650,7 +656,8 @@ export function App() {
           />
           <Route path={WERVEL_PATHS.about} element={<AboutPage about={aboutQuery.data} isLoading={aboutQuery.isLoading} hasError={aboutQuery.isError} />} />
 
-          <Route path="/urenverantwoording" element={<SuitePlaceholderPage title="Urenverantwoording" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
+          <Route path={WERVEL_PATHS.urenverantwoording} element={<UrenverantwoordingPage />} />
+          <Route path="/urenverantwoording" element={<LegacyWorkHoursRedirect />} />
           <Route path={WINDWILLY_PATHS.vergaderborden} element={<VergaderbordenPage />} />
           <Route path="/participatiemomenten" element={<SuitePlaceholderPage title="Participatiemomenten" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
 

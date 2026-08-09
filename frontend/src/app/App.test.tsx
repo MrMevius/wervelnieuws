@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App, LegacyWorkHoursRedirect } from "./App";
 import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./features/admin/vergaderbordenProjectSelection";
 
 const mockApi = vi.hoisted(() => ({
@@ -291,6 +291,67 @@ const mockApi = vi.hoisted(() => ({
       created_at: "2026-03-12T11:00:00Z"
     };
   }),
+  listWorkHoursMeta: vi.fn().mockResolvedValue({
+    projects: [
+      {
+        id: "whp1",
+        name: "Project Uren",
+        description: "",
+        is_active: true,
+        is_archived: false,
+        archived_at: null
+      }
+    ],
+    posts: [
+      {
+        id: "whpost1",
+        project_id: "whp1",
+        name: "Post A",
+        description: "",
+        is_active: true,
+        is_archived: false,
+        archived_at: null
+      }
+    ],
+    external_people: [],
+    historical_identities: [],
+    is_admin: true
+  }),
+  listWorkHourGroups: vi.fn().mockResolvedValue({
+    items: [],
+    total: 0,
+    page: 1,
+    page_size: 25,
+    sort_key: "work_date",
+    sort_direction: "desc",
+    page_sizes: [25, 50, 100],
+    totals: { total_groups: 0, total_people: 0, total_duration_hours: 0, total_person_hours: 0 }
+  }),
+  listWorkHoursAudit: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 }),
+  listWorkHoursAdminHistory: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 }),
+  listWorkHoursAdminMasterdata: vi.fn().mockResolvedValue({ projects: [], posts: [], external_people: [] }),
+  relinkWorkHistoricalIdentity: vi.fn().mockResolvedValue({ id: "history-1" }),
+  createWorkHourGroup: vi.fn().mockResolvedValue({ id: "group-1" }),
+  updateWorkHourGroup: vi.fn().mockResolvedValue({ id: "group-1" }),
+  deleteWorkHourGroup: vi.fn().mockResolvedValue({ status: "deleted" }),
+  restoreWorkHourGroup: vi.fn().mockResolvedValue({ status: "restored" }),
+  createWorkExternalPerson: vi.fn().mockResolvedValue({ id: "person-1" }),
+  updateWorkExternalPerson: vi.fn().mockResolvedValue({ id: "person-1" }),
+  archiveWorkExternalPerson: vi.fn().mockResolvedValue({ id: "person-1" }),
+  restoreWorkExternalPerson: vi.fn().mockResolvedValue({ id: "person-1" }),
+  mergeWorkExternalPerson: vi.fn().mockResolvedValue({ id: "person-1" }),
+  createWorkProject: vi.fn().mockResolvedValue({ id: "whp2" }),
+  updateWorkProject: vi.fn().mockResolvedValue({ id: "whp2" }),
+  archiveWorkProject: vi.fn().mockResolvedValue({ id: "whp2" }),
+  restoreWorkProject: vi.fn().mockResolvedValue({ id: "whp2" }),
+  createWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
+  updateWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
+  archiveWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
+  restoreWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
+  downloadWorkHoursCsv: vi.fn().mockResolvedValue(new Blob(["csv"], { type: "text/csv" })),
+  downloadWorkHoursBackup: vi.fn().mockResolvedValue(new Blob(["backup"], { type: "application/json" })),
+  previewWorkHoursImport: vi.fn().mockResolvedValue({ batch_id: "batch-1", status: "previewed", counts: {}, warnings: [], errors: [] }),
+  commitWorkHoursImport: vi.fn().mockResolvedValue({ batch_id: "batch-1", status: "completed", backup_download_url: null }),
   listTopicDocuments: vi.fn().mockResolvedValue([
     {
       id: "audio-1",
@@ -686,6 +747,23 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
+function LocationEcho() {
+  const location = useLocation();
+  return <p>{`${location.pathname}${location.search}${location.hash}`}</p>;
+}
+
+function renderHoursCompatibility(entry: string) {
+  return render(
+    <MemoryRouter initialEntries={[entry]}>
+      <Routes>
+        <Route path="/urenverantwoording" element={<LegacyWorkHoursRedirect />} />
+        <Route path="/wervelnieuws/urenverantwoording" element={<LocationEcho />} />
+        <Route path="/api/urenverantwoording/*" element={<p>API-route</p>} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
   async function loginIntoApp() {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
@@ -730,6 +808,24 @@ describe("App", () => {
     mockApi.getCurrentUser.mockReset();
     mockApi.getCurrentUser.mockRejectedValue(new Error("401"));
     mockApi.logout.mockClear();
+  });
+
+  it("preserves direct urenverantwoording compatibility route with query and hash", async () => {
+    renderHoursCompatibility("/urenverantwoording?project_id=p1#overzicht");
+    expect(await screen.findByText("/wervelnieuws/urenverantwoording?project_id=p1#overzicht")).toBeInTheDocument();
+  });
+
+  it("does not loop redirect or intercept urenverantwoording api requests", async () => {
+    renderHoursCompatibility("/api/urenverantwoording/groepen?project_id=p1");
+    expect(await screen.findByText("API-route")).toBeInTheDocument();
+  });
+
+  it("renders the same module on canonical and compatibility navigation without placeholder or 404", async () => {
+    const first = renderHoursCompatibility("/urenverantwoording");
+    expect(await screen.findByText("/wervelnieuws/urenverantwoording")).toBeInTheDocument();
+    first.unmount();
+    renderHoursCompatibility("/wervelnieuws/urenverantwoording");
+    expect(await screen.findByText("/wervelnieuws/urenverantwoording")).toBeInTheDocument();
   });
 
   it("bootstraps authenticated session via /auth/me", async () => {

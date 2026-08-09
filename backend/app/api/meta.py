@@ -29,6 +29,33 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "95",
+                "date": "2026-08-04",
+                "title": "Urenregistratie sluit import, audit en historie veiliger af",
+                "highlights": [
+                    "Imports worden vóór verwerking volledig gecontroleerd, audits zijn beter doorzoekbaar en gepagineerd, en urenoverzichten tonen datums consequent in Nederlandse notatie.",
+                ],
+            },
+            {
+                "iteration": "94",
+                "date": "2026-08-04",
+                "title": "Urenregistratie beschermt historie en persoonsgegevens beter",
+                "highlights": [
+                    "Exports, imports, herstel en samenvoegen volgen nu dezelfde strikte controles, terwijl historische namen intact blijven en modals beter met toetsenbord en schermlezer werken.",
+                ],
+            },
+            {
+                "iteration": "93",
+                "date": "2026-08-04",
+                "title": "Urenregistratie is veiliger en beter controleerbaar",
+                "highlights": [
+                    "Deelnemers worden bij aanmaken, bewerken en importeren volledig gecontroleerd voordat gegevens worden opgeslagen.",
+                    "De personenkeuze bevat alle actieve WindWilly-gebruikers en externe personen, met historische deelnemers alleen-lezen.",
+                    "Beheerders kunnen het uren-auditlog gerichter filteren en importconflicten worden duidelijk en zonder gedeeltelijke opslag afgehandeld.",
+                    "Back-ups, herstel, gelijktijdig bewerken en totalen zijn extra beveiligd, terwijl mobiel gebruik en toetsenbordbediening toegankelijker zijn.",
+                ],
+            },
+            {
                 "iteration": "92",
                 "date": "2026-07-29",
                 "title": "Vergaderbord-kaarten krijgen archief en prullenbak",

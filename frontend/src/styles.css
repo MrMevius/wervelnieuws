@@ -77,6 +77,30 @@
   --landing-hero-border: #d4c8f2;
 }
 
+/* Urenverantwoording: accessible responsive cards, charts and dialogs. */
+.work-hours-mobile-cards { display: none; }
+.work-hours-chart { display: grid; gap: 10px; margin: 14px 0; }
+.work-hours-chart-bars { display: grid; gap: 6px; }
+.work-hours-chart-bars span { display: block; min-width: 2px; height: 10px; border-radius: 999px; background: var(--accent); }
+.work-hours-chart-values { display: flex; flex-wrap: wrap; gap: 16px; margin: 0; }
+.work-hours-chart-values div { display: flex; gap: 6px; }
+.work-hours-chart-values dd { margin: 0; font-weight: 700; }
+.work-hours-modal-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 16px; background: rgb(0 0 0 / 55%); }
+.work-hours-modal { width: min(760px, 100%); max-height: calc(100dvh - 32px); overflow: auto; }
+
+@media (max-width: 560px) {
+  .uren-module-page { min-width: 0; max-width: 100%; overflow-x: clip; }
+  .uren-module-page .table-wrap { display: none; }
+  .work-hours-mobile-cards { display: grid; gap: 12px; min-width: 0; }
+  .work-hours-card { min-width: 0; overflow-wrap: anywhere; border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--surface-muted); }
+  .work-hours-card dl { display: grid; gap: 6px; }
+  .work-hours-card dl div { display: grid; grid-template-columns: minmax(90px, 0.45fr) minmax(0, 1fr); gap: 8px; }
+  .work-hours-card dt { font-weight: 700; }
+  .work-hours-card dd { margin: 0; min-width: 0; }
+  .work-hours-modal-backdrop { padding: 8px; }
+  .work-hours-modal { max-height: calc(100dvh - 16px); }
+}
+
 :root[data-theme="dark"] {
   --bg: #16111f;
   --surface: #1f1830;

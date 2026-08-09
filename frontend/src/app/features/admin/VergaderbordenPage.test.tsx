@@ -1371,29 +1371,104 @@ describe("Vergaderborden drag/drop", () => {
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
 
+    const closeButton = await screen.findByRole("button", { name: "Kaartdetail sluiten" });
+    await waitFor(() => expect(closeButton).toHaveFocus());
     const createTextarea = await screen.findByPlaceholderText("Beschrijf kort de voortgang") as HTMLTextAreaElement;
-    fireEvent.focus(createTextarea);
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    await user.click(createTextarea);
     const createToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    expect(createTextarea).toHaveFocus();
     const createLastToolbarButton = within(createToolbar).getByRole("button", { name: "1. Lijst" });
-    createLastToolbarButton.focus();
+    const createShell = createTextarea.closest(".board-update-editor-shell") as HTMLElement;
+
+    await user.tab({ shift: true });
     expect(createLastToolbarButton).toHaveFocus();
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    await user.tab();
+    expect(createTextarea).toHaveFocus();
     expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
 
     await user.tab();
     await waitFor(() => {
       expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
     });
+    expect(createShell).not.toContainElement(document.activeElement as HTMLElement);
 
-    fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
+    await user.tab({ shift: true });
+    await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    expect(createTextarea).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).getByRole("button", { name: "1. Lijst" })).toHaveFocus();
+    for (let index = 0; index < 5; index += 1) await user.tab({ shift: true });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+    expect(createShell).not.toContainElement(document.activeElement as HTMLElement);
+
+    await user.click(screen.getByRole("button", { name: "Bewerken" }));
     const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
-    fireEvent.focus(editTextarea);
+    expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    await user.click(editTextarea);
     const editToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    expect(editTextarea).toHaveFocus();
     const editLastToolbarButton = within(editToolbar).getByRole("button", { name: "1. Lijst" });
-    editLastToolbarButton.focus();
+    const editShell = editTextarea.closest(".board-update-editor-shell") as HTMLElement;
+
+    await user.tab({ shift: true });
     expect(editLastToolbarButton).toHaveFocus();
     expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
 
-    fireEvent.blur(editTextarea, { relatedTarget: screen.getByRole("button", { name: "Opslaan" }) });
+    await user.tab();
+    expect(editTextarea).toHaveFocus();
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    await user.tab();
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+    expect(editShell).not.toContainElement(document.activeElement as HTMLElement);
+
+    await user.tab({ shift: true });
+    await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    expect(editTextarea).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(within(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).getByRole("button", { name: "1. Lijst" })).toHaveFocus();
+    for (let index = 0; index < 5; index += 1) await user.tab({ shift: true });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
+    });
+    expect(editShell).not.toContainElement(document.activeElement as HTMLElement);
+  });
+
+  it("houdt de update-toolbar zichtbaar wanneer focus van de textarea naar een toolbar-knop verhuist", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [
+        { id: "u1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Eigen update", image_url: null, edited_from_update_id: null, created_at: "2026-05-28T10:00:00Z" }
+      ],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bewerken" }));
+    const editTextarea = await screen.findByLabelText("Update bewerken") as HTMLTextAreaElement;
+
+    fireEvent.focus(editTextarea);
+    const editToolbar = await screen.findByRole("toolbar", { name: "Opmaak knoppen" });
+    const editBoldButton = within(editToolbar).getByRole("button", { name: "B" });
+    const saveButton = screen.getByRole("button", { name: "Opslaan" });
+
+    fireEvent.blur(editTextarea, { relatedTarget: null });
+    fireEvent.focus(editBoldButton);
+
+    expect(screen.getByRole("toolbar", { name: "Opmaak knoppen" })).toBeInTheDocument();
+
+    fireEvent.blur(editBoldButton, { relatedTarget: saveButton });
     await waitFor(() => {
       expect(screen.queryByRole("toolbar", { name: "Opmaak knoppen" })).not.toBeInTheDocument();
     });

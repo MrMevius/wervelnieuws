@@ -1,1 +1,1 @@
-export { App } from "./shell/AppShell";
+export { App, LegacyWorkHoursRedirect } from "./shell/AppShell";

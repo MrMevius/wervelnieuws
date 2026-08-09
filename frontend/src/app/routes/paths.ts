@@ -3,6 +3,7 @@ export const WERVEL_PATHS = {
   main: "/wervelnieuws/main",
   planning: "/wervelnieuws/planning",
   database: "/wervelnieuws/database",
+  urenverantwoording: "/wervelnieuws/urenverantwoording",
   log: "/wervelnieuws/log",
   about: "/wervelnieuws/about",
   settings: "/wervelnieuws/settings",

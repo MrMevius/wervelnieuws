@@ -1,10 +1,12 @@
 import json
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
+    Date,
     DateTime,
     Enum,
     ForeignKey,
@@ -13,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    event,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -664,6 +667,329 @@ class RetryJob(Base, TimestampMixin):
     next_run_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
     )
+
+
+class WorkProject(Base, TimestampMixin):
+    __tablename__ = "work_projects"
+    __table_args__ = (
+        Index("ix_work_projects_is_active", "is_active"),
+        Index("ix_work_projects_is_archived", "is_archived"),
+        Index("ix_work_projects_deleted_at", "deleted_at"),
+        UniqueConstraint("name", name="uq_work_projects_name"),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
+            name="ck_work_projects_deleted_tuple",
+        ),
+        CheckConstraint(
+            "(is_archived = false AND archived_at IS NULL AND archived_by_user_id IS NULL) OR "
+            "(is_archived = true AND is_active = false AND archived_at IS NOT NULL AND archived_by_user_id IS NOT NULL)",
+            name="ck_work_projects_archived_tuple",
+        ),
+        CheckConstraint(
+            "NOT (is_active = true AND (is_archived = true OR deleted_at IS NOT NULL))",
+            name="ck_work_projects_active_state",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_user_id])
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    posts: Mapped[list["WorkPost"]] = relationship(back_populates="project")
+    groups: Mapped[list["WorkHourGroup"]] = relationship(back_populates="project")
+
+
+class WorkPost(Base, TimestampMixin):
+    __tablename__ = "work_posts"
+    __table_args__ = (
+        Index("ix_work_posts_project_id", "project_id"),
+        Index("ix_work_posts_is_active", "is_active"),
+        Index("ix_work_posts_is_archived", "is_archived"),
+        Index("ix_work_posts_deleted_at", "deleted_at"),
+        UniqueConstraint("project_id", "name", name="uq_work_posts_project_name"),
+        CheckConstraint("(deleted_at IS NULL) = (deleted_by_user_id IS NULL)", name="ck_work_posts_deleted_tuple"),
+        CheckConstraint(
+            "(is_archived = false AND archived_at IS NULL AND archived_by_user_id IS NULL) OR "
+            "(is_archived = true AND is_active = false AND archived_at IS NOT NULL AND archived_by_user_id IS NOT NULL)",
+            name="ck_work_posts_archived_tuple",
+        ),
+        CheckConstraint("NOT (is_active = true AND (is_archived = true OR deleted_at IS NOT NULL))", name="ck_work_posts_active_state"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_projects.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    archived_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    project: Mapped[WorkProject] = relationship(back_populates="posts")
+    archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_user_id])
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    groups: Mapped[list["WorkHourGroup"]] = relationship(back_populates="post")
+
+
+class WorkExternalPerson(Base, TimestampMixin):
+    __tablename__ = "work_external_people"
+    __table_args__ = (
+        Index("ix_work_external_people_normalized_name", "normalized_name"),
+        Index("ix_work_external_people_normalized_email", "normalized_email"),
+        Index("ix_work_external_people_is_active", "is_active"),
+        Index("ix_work_external_people_deleted_at", "deleted_at"),
+        UniqueConstraint("normalized_name", "normalized_email", name="uq_work_external_people_name_email"),
+        UniqueConstraint("normalized_email", name="uq_work_external_people_normalized_email"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    display_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    normalized_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    note: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    participants: Mapped[list["WorkHourGroupParticipant"]] = relationship(
+        back_populates="external_person"
+    )
+
+
+class WorkHistoricalUserIdentity(Base, TimestampMixin):
+    __tablename__ = "work_historical_user_identities"
+    __table_args__ = (
+        Index("ix_work_historical_user_identities_source_key", "source_key", unique=True),
+        Index("ix_work_historical_user_identities_linked_user_id", "linked_user_id"),
+        Index("ix_work_historical_user_identities_deleted_at", "deleted_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    source_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    source_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    snapshot_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    snapshot_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    snapshot_display_label: Mapped[str] = mapped_column(String(200), nullable=False)
+    linked_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    linked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    linked_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    updated_by_user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    source_user: Mapped[User | None] = relationship(foreign_keys=[source_user_id])
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    linked_user: Mapped[User | None] = relationship(foreign_keys=[linked_user_id])
+    linked_by: Mapped[User | None] = relationship(foreign_keys=[linked_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    participants: Mapped[list["WorkHourGroupParticipant"]] = relationship(
+        back_populates="historical_identity"
+    )
+
+
+class WorkImportBatch(Base, TimestampMixin):
+    __tablename__ = "work_import_batches"
+    __table_args__ = (
+        Index("ix_work_import_batches_status", "status"),
+        Index("ix_work_import_batches_requested_by_user_id", "requested_by_user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    requested_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    format_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    backup_version: Mapped[str] = mapped_column(String(40), nullable=False)
+    mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    pre_import_backup_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="preview", nullable=False)
+    counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+    warnings_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+    errors_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
+
+    requested_by: Mapped[User | None] = relationship(foreign_keys=[requested_by_user_id])
+
+
+class WorkHourGroup(Base, TimestampMixin):
+    __tablename__ = "work_hour_groups"
+    __table_args__ = (
+        Index("ix_work_hour_groups_work_date", "work_date"),
+        Index("ix_work_hour_groups_project_id", "project_id"),
+        Index("ix_work_hour_groups_post_id", "post_id"),
+        Index("ix_work_hour_groups_deleted_at", "deleted_at"),
+        Index("ix_work_hour_groups_created_at", "created_at"),
+        Index("ix_work_hour_groups_updated_at", "updated_at"),
+        CheckConstraint(
+            "duration_half_hours >= 1 AND duration_half_hours <= 48",
+            name="ck_work_hour_groups_duration_half_hours",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    work_date: Mapped[date] = mapped_column(Date, nullable=False)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_projects.id"), nullable=False)
+    post_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_posts.id"), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    duration_half_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_import_batch_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("work_import_batches.id"), nullable=True
+    )
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+
+    project: Mapped[WorkProject] = relationship(back_populates="groups")
+    post: Mapped[WorkPost] = relationship(back_populates="groups")
+    source_import_batch: Mapped[WorkImportBatch | None] = relationship()
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    participants: Mapped[list["WorkHourGroupParticipant"]] = relationship(
+        back_populates="group", cascade="all"
+    )
+
+
+class WorkHourGroupParticipant(Base, TimestampMixin):
+    __tablename__ = "work_hour_group_participants"
+    __table_args__ = (
+        Index("ix_work_hour_group_participants_group_id", "group_id"),
+        Index("ix_work_hour_group_participants_participant_kind", "participant_kind"),
+        Index("ix_work_hour_group_participants_deleted_at", "deleted_at"),
+        CheckConstraint(
+            "((user_id IS NOT NULL) + (external_person_id IS NOT NULL) + (historical_identity_id IS NOT NULL)) = 1",
+            name="ck_work_hour_group_participants_exactly_one_identity",
+        ),
+        UniqueConstraint(
+            "group_id",
+            "active_identity_key",
+            name="uq_work_hour_group_participants_active_identity",
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    group_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_hour_groups.id"), nullable=False)
+    participant_kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    external_person_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("work_external_people.id"), nullable=True
+    )
+    historical_identity_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("work_historical_user_identities.id"), nullable=True
+    )
+    display_name_snapshot: Mapped[str] = mapped_column(String(160), nullable=False)
+    display_email_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_type_snapshot: Mapped[str] = mapped_column(String(80), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    updated_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
+    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    # A nullable materialized key gives SQLite and PostgreSQL the same
+    # race-safe uniqueness semantics while allowing any amount of deleted
+    # participant history (NULL values are not mutually unique).
+    active_identity_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+    group: Mapped[WorkHourGroup] = relationship(back_populates="participants")
+    user: Mapped[User | None] = relationship(foreign_keys=[user_id])
+    external_person: Mapped[WorkExternalPerson | None] = relationship(back_populates="participants")
+    historical_identity: Mapped[WorkHistoricalUserIdentity | None] = relationship(
+        back_populates="participants"
+    )
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
+    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
+    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+
+
+@event.listens_for(WorkHourGroupParticipant, "before_insert")
+@event.listens_for(WorkHourGroupParticipant, "before_update")
+def _set_work_participant_active_identity_key(_mapper, _connection, target: WorkHourGroupParticipant) -> None:
+    if target.deleted_at is not None:
+        target.active_identity_key = None
+        return
+    identity_id = (
+        target.user_id if target.participant_kind == "live_user"
+        else target.external_person_id if target.participant_kind == "external_person"
+        else target.historical_identity_id
+    )
+    target.active_identity_key = f"{target.participant_kind}:{identity_id or ''}"
 
 
 class RateLimitEvent(Base):

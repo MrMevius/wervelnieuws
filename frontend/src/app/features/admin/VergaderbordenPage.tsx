@@ -830,20 +830,42 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
   const hideNewUpdateToolbar = (evt: FocusEvent<HTMLDivElement>) => {
     const relatedTarget = evt.relatedTarget as Node | null;
-    if (relatedTarget && evt.currentTarget.contains(relatedTarget)) {
+    if (relatedTarget) {
+      if (evt.currentTarget.contains(relatedTarget)) {
+        return;
+      }
+      setIsNewUpdateToolbarVisible(false);
       return;
     }
-    setIsNewUpdateToolbarVisible(false);
+
+    const shell = evt.currentTarget;
+    window.requestAnimationFrame(() => {
+      if (shell.contains(document.activeElement)) {
+        return;
+      }
+      setIsNewUpdateToolbarVisible(false);
+    });
   };
 
   const showUpdateEditToolbar = () => setIsUpdateEditToolbarVisible(true);
 
   const hideUpdateEditToolbar = (evt: FocusEvent<HTMLDivElement>) => {
     const relatedTarget = evt.relatedTarget as Node | null;
-    if (relatedTarget && evt.currentTarget.contains(relatedTarget)) {
+    if (relatedTarget) {
+      if (evt.currentTarget.contains(relatedTarget)) {
+        return;
+      }
+      setIsUpdateEditToolbarVisible(false);
       return;
     }
-    setIsUpdateEditToolbarVisible(false);
+
+    const shell = evt.currentTarget;
+    window.requestAnimationFrame(() => {
+      if (shell.contains(document.activeElement)) {
+        return;
+      }
+      setIsUpdateEditToolbarVisible(false);
+    });
   };
 
   const handleDetailDescriptionToolbarAction = (action: UpdateToolbarAction) => {

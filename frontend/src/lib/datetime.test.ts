@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatAmsterdamDateTime } from "./datetime";
+import { formatAmsterdamDateInput, formatAmsterdamDateTime } from "./datetime";
 
 describe("formatAmsterdamDateTime", () => {
   it("formats UTC summer timestamps in Amsterdam local time", () => {
@@ -16,5 +16,9 @@ describe("formatAmsterdamDateTime", () => {
 
   it("returns a stable fallback for invalid timestamps", () => {
     expect(formatAmsterdamDateTime("niet-een-datum")).toBe("Datum onbekend");
+  });
+
+  it("formats the Amsterdam calendar date for date inputs", () => {
+    expect(formatAmsterdamDateInput("2026-06-01T22:30:00Z")).toBe("2026-06-02");
   });
 });
