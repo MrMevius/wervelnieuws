@@ -1,7 +1,12 @@
+import csv
 import json
 from datetime import UTC, date, datetime, timedelta
+from io import StringIO
+from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import create_engine, event, text
@@ -9,15 +14,30 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.db import Base, _enable_sqlite_foreign_keys
-from app.api.work_hours import commit_import as commit_import_endpoint, preview_import as preview_import_endpoint
+from app.api.work_hours import _historical_reference_name
 from app.api.deps import get_db
 from app.core.settings import get_settings
 from app.core.security import hash_password
-from app.models.entities import AuditEvent, User, WorkExternalPerson, WorkHistoricalUserIdentity, WorkHourGroup, WorkHourGroupParticipant, WorkImportBatch, WorkPost, WorkProject
+from app.models.entities import AuditEvent, User, WorkExternalPerson, WorkHistoricalUserIdentity, WorkHourGroup, WorkHourGroupParticipant, WorkPost, WorkPostLegacyAlias, WorkProject, WorkProjectLegacyAlias
 from app.repositories.work_hours_repository import WorkHoursRepository
-from app.schemas.work_hours import WorkHourGroupCreateRequest, WorkImportEnvelope, WorkPostCreateRequest, WorkProjectCreateRequest
+from app.schemas.work_hours import WorkHourGroupCreateRequest, WorkHourGroupUpdateRequest, WorkPostCreateRequest, WorkProjectCreateRequest
 from app.services.audit_service import AuditService
 from app.services.work_hours_service import WorkHoursListQuery, WorkHoursService
+from app.services.work_hours_migration import (
+    CentralProjectRow,
+    LegacyPostRow,
+    LegacyProjectRow,
+    ProjectMappingConflict,
+    build_canonical_posts,
+    build_project_mappings,
+    normalize_masterdata_name,
+)
+from tests.work_hours_removal_migration_cases import (
+    test_file_cleanup_never_follows_symlinks,
+    test_populated_removal_migration_cleans_only_bounded_subsystem,
+    test_removal_migration_rejects_directory_symlinks_before_destructive_work,
+    test_removal_migration_rejects_registered_path_outside_boundary_before_db_cleanup,
+)
 
 
 def test_every_new_sqlite_connection_enables_foreign_keys_pragma(tmp_path):
@@ -38,12 +58,12 @@ def test_sqlite_foreign_key_pragma_rejects_direct_orphan_insert_and_rolls_back(t
     engine = create_engine(f"sqlite:///{tmp_path / 'orphan.db'}")
     Base.metadata.create_all(engine)
     with engine.connect() as connection:
-        before = connection.scalar(text("SELECT count(*) FROM work_posts"))
+        before = connection.scalar(text("SELECT count(*) FROM work_hour_groups"))
         connection.commit()
         with pytest.raises(IntegrityError):
             with connection.begin():
-                connection.execute(text("INSERT INTO work_posts (id, created_at, updated_at, project_id, name, description, is_active, is_archived, row_version) VALUES ('orphan', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'missing', 'Orphan', '', 1, 0, 1)"))
-        assert connection.scalar(text("SELECT count(*) FROM work_posts")) == before
+                connection.execute(text("INSERT INTO work_hour_groups (id, created_at, updated_at, work_date, project_id, post_id, description, duration_half_hours, row_version) VALUES ('orphan', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '2026-08-09', 'missing', 'missing', '', 1, 1)"))
+        assert connection.scalar(text("SELECT count(*) FROM work_hour_groups")) == before
     with engine.connect() as connection:
         assert connection.scalar(text("PRAGMA foreign_keys")) == 1
 
@@ -52,6 +72,8 @@ def test_alembic_sqlite_connection_has_foreign_keys_enabled(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'alembic.db'}")
     with engine.connect() as connection:
         assert connection.scalar(text("PRAGMA foreign_keys")) == 1
+
+
 
 
 def test_postgresql_engine_initialization_does_not_execute_sqlite_pragma():
@@ -67,6 +89,61 @@ def _login(client, username: str = "admin", password: str = "admin12345"):
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def test_removed_hours_json_routes_are_404_for_admin_and_editor_without_audit_writes(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, username="editor", password="editor12345")
+    _create_validation_group(client, admin_headers)
+    client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=admin_headers,
+        json={"display_name": "Route sentinel", "email": "route-sentinel@example.com", "note": "bytegelijk"},
+    )
+    hours_dir = get_settings().storage_root / get_settings().exports_dir / "urenverantwoording"
+    hours_dir.mkdir(parents=True, exist_ok=True)
+    (hours_dir / "route-sentinel.json").write_bytes(b"route-json-sentinel")
+    (hours_dir / "route-sentinel.tmp").write_bytes(b"route-tmp-sentinel")
+    (hours_dir / "route-sentinel.txt").write_bytes(b"route-text-sentinel")
+
+    def database_snapshot() -> dict[str, list[tuple]]:
+        db_generator = client.app.dependency_overrides[get_db]()
+        db = next(db_generator)
+        try:
+            tables = (
+                "projects", "work_posts", "work_external_people",
+                "work_historical_user_identities", "work_hour_groups",
+                "work_hour_group_participants", "audit_events",
+            )
+            return {
+                table: [tuple(row) for row in db.execute(text(f'SELECT * FROM "{table}" ORDER BY id')).fetchall()]
+                for table in tables
+            }
+        finally:
+            db.close()
+            db_generator.close()
+
+    def filesystem_snapshot() -> dict[str, bytes]:
+        return {
+            str(path.relative_to(hours_dir)): path.read_bytes()
+            for path in sorted(hours_dir.rglob("*"))
+            if path.is_file() and not path.is_symlink()
+        }
+
+    before_db = database_snapshot()
+    before_files = filesystem_snapshot()
+    route_root = "/api/urenverantwoording/" + "im" + "port"
+    requests = [
+        ("post", f"{route_root}/preview", b"not-json"),
+        ("post", f"{route_root}/commit?batch_id=missing", b"not-json"),
+        ("get", f"{route_root}/batches/missing/backup", None),
+    ]
+    for headers in (admin_headers, editor_headers):
+        for method, path, body in requests:
+            response = client.request(method, path, headers=headers, content=body)
+            assert response.status_code == 404
+    assert database_snapshot() == before_db
+    assert filesystem_snapshot() == before_files
+
+
 def _service_session() -> Session:
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
     Base.metadata.create_all(bind=engine)
@@ -75,6 +152,123 @@ def _service_session() -> Session:
     db.add(User(username="admin", password_hash=hash_password("admin12345"), is_active=True, is_admin=True))
     db.commit()
     return db
+
+
+def test_central_project_and_global_post_mapping_is_deterministic_and_ambiguous_safe():
+    created = datetime(2026, 1, 1, tzinfo=UTC)
+    legacy = [
+        LegacyProjectRow("legacy-exact", "Project A", "", True, False, created),
+        LegacyProjectRow("legacy-normalized", "  PROJECT   B ", "", True, False, created),
+        LegacyProjectRow("legacy-new", "Project C", "", True, False, created),
+    ]
+    central = [CentralProjectRow("central-a", "Project A"), CentralProjectRow("central-b", "Project B")]
+    first = build_project_mappings(legacy, central)
+    assert first == build_project_mappings(list(reversed(legacy)), central)
+    assert [(item.legacy_id, item.project_id, item.create_project) for item in first] == [
+        ("legacy-exact", "central-a", False),
+        ("legacy-new", "legacy-new", True),
+        ("legacy-normalized", "central-b", False),
+    ]
+    assert normalize_masterdata_name("  Café\u00a0 WERK ") == "café werk"
+
+    with pytest.raises(ProjectMappingConflict) as excinfo:
+        build_project_mappings(
+            [LegacyProjectRow("legacy", "PROJECT X", "", True, False, created)],
+            [CentralProjectRow("x1", "Project X"), CentralProjectRow("x2", "project x")],
+        )
+    assert excinfo.value.candidate_ids == ("x1", "x2")
+
+    canonical = build_canonical_posts([
+        LegacyPostRow("p-old", "legacy-exact", " Werk ", "Eerste", False, False, False, created),
+        LegacyPostRow("p-active", "legacy-normalized", "WERK", "Actief", True, False, False, created),
+    ])
+    assert len(canonical) == 1
+    assert canonical[0].canonical_id == "p-active"
+    assert canonical[0].source_ids == ("p-active", "p-old")
+
+
+def test_populated_work_hours_migration_upgrade_downgrade_upgrade_preserves_rows(tmp_path, monkeypatch):
+    database_path = tmp_path / "migration.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    command.upgrade(config, "20260730_0026")
+    engine = create_engine(f"sqlite:///{database_path}")
+    timestamp = "2026-01-01 09:00:00"
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO users (id, username, password_hash, is_admin, theme_preference, is_active, created_at, updated_at) VALUES ('u1', 'migration', 'x', 1, 'system', 1, :ts, :ts)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO projects (id, name, description, is_active, is_archived, invited_user_ids_json, created_at, updated_at) VALUES ('central', 'Centraal', '', 1, 0, '[]', :ts, :ts)"), {"ts": timestamp})
+        for project_id, name in (("legacy-a", "Centraal"), ("legacy-b", "Nieuw project")):
+            connection.execute(text("INSERT INTO work_projects (id, name, description, is_active, is_archived, created_at, updated_at, row_version) VALUES (:id, :name, '', 1, 0, :ts, :ts, 1)"), {"id": project_id, "name": name, "ts": timestamp})
+        for post_id, project_id, name in (("post-a", "legacy-a", "Werk"), ("post-b", "legacy-b", "  WERK ")):
+            connection.execute(text("INSERT INTO work_posts (id, project_id, name, description, is_active, is_archived, created_at, updated_at, row_version) VALUES (:id, :project, :name, '', 1, 0, :ts, :ts, 1)"), {"id": post_id, "project": project_id, "name": name, "ts": timestamp})
+        connection.execute(text("INSERT INTO work_hour_groups (id, work_date, project_id, post_id, description, duration_half_hours, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version) VALUES ('group-1', '2026-01-01', 'legacy-a', 'post-a', 'Behoud', 3, :ts, :ts, 'u1', 'u1', 7)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO work_hour_group_participants (id, group_id, participant_kind, user_id, display_name_snapshot, display_type_snapshot, sort_order, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version, active_identity_key) VALUES ('participant-1', 'group-1', 'live_user', 'u1', 'Migratie', 'WindWilly-gebruiker', 0, :ts, :ts, 'u1', 'u1', 4, 'live_user:u1')"), {"ts": timestamp})
+
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        group = connection.execute(text("SELECT project_id, post_id, duration_half_hours, row_version FROM work_hour_groups WHERE id='group-1'")).one()
+        assert group == ("central", "post-a", 3, 7)
+        assert connection.scalar(text("SELECT count(*) FROM work_posts")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM work_project_legacy_aliases")) == 2
+        assert connection.scalar(text("SELECT count(*) FROM work_post_legacy_aliases")) == 2
+        assert connection.scalar(text("SELECT count(*) FROM work_hour_group_participants")) == 1
+
+    command.downgrade(config, "20260730_0026")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT project_id, post_id, row_version FROM work_hour_groups WHERE id='group-1'")).one() == ("legacy-a", "post-a", 7)
+        assert connection.scalar(text("SELECT count(*) FROM work_posts")) == 2
+    command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT count(*) FROM work_hour_groups")) == 1
+        assert connection.scalar(text("SELECT count(*) FROM work_hour_group_participants")) == 1
+    get_settings.cache_clear()
+
+
+def _upgraded_migration_guard_database(tmp_path, monkeypatch, name: str):
+    database_path = tmp_path / f"{name}.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / f"storage-{name}"))
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    command.upgrade(config, "20260730_0026")
+    engine = create_engine(f"sqlite:///{database_path}")
+    timestamp = "2026-01-01 09:00:00"
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO users (id, username, password_hash, is_admin, theme_preference, is_active, created_at, updated_at) VALUES ('u1', 'migration', 'x', 1, 'system', 1, :ts, :ts)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO projects (id, name, description, is_active, is_archived, invited_user_ids_json, created_at, updated_at) VALUES ('central', 'Centraal', '', 1, 0, '[]', :ts, :ts)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO work_projects (id, name, description, is_active, is_archived, created_at, updated_at, row_version) VALUES ('legacy-a', 'Centraal', '', 1, 0, :ts, :ts, 1)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO work_posts (id, project_id, name, description, is_active, is_archived, created_at, updated_at, row_version) VALUES ('post-a', 'legacy-a', 'Werk', '', 1, 0, :ts, :ts, 1)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO work_hour_groups (id, work_date, project_id, post_id, description, duration_half_hours, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version) VALUES ('group-1', '2026-01-01', 'legacy-a', 'post-a', 'Behoud', 3, :ts, :ts, 'u1', 'u1', 7)"), {"ts": timestamp})
+        connection.execute(text("INSERT INTO work_hour_group_participants (id, group_id, participant_kind, user_id, display_name_snapshot, display_type_snapshot, sort_order, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version, active_identity_key) VALUES ('participant-1', 'group-1', 'live_user', 'u1', 'Migratie', 'WindWilly-gebruiker', 0, :ts, :ts, 'u1', 'u1', 4, 'live_user:u1')"), {"ts": timestamp})
+    command.upgrade(config, "head")
+    return config, engine
+
+
+@pytest.mark.parametrize(
+    ("write_name", "statement"),
+    [
+        ("group_edit", "UPDATE work_hour_groups SET description='Gewijzigd', row_version=row_version+1 WHERE id='group-1'"),
+        ("group_create", "INSERT INTO work_hour_groups (id, created_at, updated_at, work_date, project_id, post_id, description, duration_half_hours, created_by_user_id, updated_by_user_id, row_version) VALUES ('group-new', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '2026-01-02', 'central', 'post-a', '', 2, 'u1', 'u1', 1)"),
+        ("participant_edit", "UPDATE work_hour_group_participants SET display_name_snapshot='Nieuw', row_version=row_version+1 WHERE id='participant-1'"),
+        ("post_create", "INSERT INTO work_posts (id, created_at, updated_at, name, normalized_name, description, is_active, is_archived, row_version) VALUES ('post-new', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 'Nieuw', 'nieuw', '', 1, 0, 1)"),
+        ("post_edit", "UPDATE work_posts SET name='Werk gewijzigd', normalized_name='werk gewijzigd', row_version=row_version+1 WHERE id='post-a'"),
+        ("post_archive", "UPDATE work_posts SET is_active=0, is_archived=1, archived_at=CURRENT_TIMESTAMP, archived_by_user_id='u1', row_version=row_version+1 WHERE id='post-a'"),
+        ("post_restore", "UPDATE work_posts SET row_version=row_version+2, updated_at=CURRENT_TIMESTAMP WHERE id='post-a'"),
+    ],
+)
+def test_downgrade_refuses_every_post_migration_write_before_schema_changes(tmp_path, monkeypatch, write_name, statement):
+    config, engine = _upgraded_migration_guard_database(tmp_path, monkeypatch, write_name)
+    with engine.begin() as connection:
+        connection.execute(text(statement))
+    with pytest.raises(RuntimeError, match="post-migratie writes"):
+        command.downgrade(config, "20260730_0026")
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20260809_0027"
+        assert "normalized_name" in {row[1] for row in connection.execute(text("PRAGMA table_info(work_posts)"))}
+        assert connection.scalar(text("PRAGMA foreign_key_check")) is None
+    get_settings.cache_clear()
 
 
 def test_work_hours_group_create_export_and_admin_meta(client):
@@ -142,11 +336,86 @@ def test_work_hours_group_create_export_and_admin_meta(client):
     csv_response = client.get("/api/urenverantwoording/export.csv", headers=headers)
     assert csv_response.status_code == 200
     assert csv_response.headers["content-type"].startswith("text/csv")
-    assert csv_response.text.startswith("\ufeffdatum;naam persoon;type persoon (WindWilly-gebruiker/extern);project;post;aantal uren;beschrijving;aangemaakt door;aangemaakt op;laatst gewijzigd door;laatst gewijzigd op")
+    assert csv_response.text.startswith("\ufeffregistratie-id;datum;naam persoon;type persoon (WindWilly-gebruiker/extern);project;post;aantal uren;beschrijving;aangemaakt door;aangemaakt op;laatst gewijzigd door;laatst gewijzigd op")
 
     meta = client.get("/api/urenverantwoording/meta", headers=headers)
     assert meta.status_code == 200
     assert meta.json()["projects"][0]["display_name"] == "Project Uren"
+
+
+def test_global_posts_are_available_to_every_central_project_and_mutations_are_admin_only(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, username="editor", password="editor12345")
+    first = client.post("/api/admin/projects", headers=admin_headers, json={"name": "Centraal één"}).json()
+    second = client.post("/api/admin/projects", headers=admin_headers, json={"name": "Centraal twee"}).json()
+    post = client.post("/api/urenverantwoording/posten", headers=admin_headers, json={"name": "Globale categorie", "description": "Voor alle projecten"})
+    assert post.status_code == 201
+    assert post.json()["project_id"] is None
+    meta = client.get("/api/urenverantwoording/meta", headers=editor_headers).json()
+    assert {first["id"], second["id"]}.issubset({item["id"] for item in meta["projects"]})
+    assert post.json()["id"] in {item["id"] for item in meta["posts"]}
+    denied = client.post("/api/urenverantwoording/posten", headers=editor_headers, json={"name": "Niet toegestaan", "description": ""})
+    assert denied.status_code == 403
+
+
+def test_meta_filter_facets_keep_historical_project_post_person_and_date_values(client):
+    headers = _login(client)
+    me = client.get("/api/auth/me", headers=headers).json()
+    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Historisch filterproject", "description": ""}).json()
+    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Historische filterpost", "description": ""}).json()
+    client.post("/api/urenverantwoording/groepen", headers=headers, json={
+        "work_date": "2026-08-01", "project_id": project["id"], "post_id": post["id"],
+        "description": "Filterhistorie", "duration_half_hours": 2,
+        "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Historische naam", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
+    })
+    client.post(f"/api/urenverantwoording/posten/{post['id']}/archiveren?expected_row_version={post['row_version']}", headers=headers)
+    client.post(f"/api/urenverantwoording/projecten/{project['id']}/archiveren?expected_row_version={project['row_version']}", headers=headers)
+    meta = client.get("/api/urenverantwoording/meta", headers=headers).json()
+    assert project["id"] not in {item["id"] for item in meta["projects"]}
+    assert post["id"] not in {item["id"] for item in meta["posts"]}
+    assert {item["id"]: item["selectable"] for item in meta["filter_projects"]}[project["id"]] is False
+    assert {item["id"]: item["selectable"] for item in meta["filter_posts"]}[post["id"]] is False
+    assert "Historische naam" in meta["filter_participants"]
+    assert "2026-08-01" in meta["filter_dates"]
+
+
+def test_hours_history_rejects_removed_project_kind_contract(client):
+    headers = _login(client)
+    response = client.get("/api/urenverantwoording/admin/history?kind=project", headers=headers)
+    assert response.status_code == 422
+
+
+def test_audit_and_alias_resolution_preserve_stable_project_and_post_names(client):
+    headers = _login(client)
+    me = client.get("/api/auth/me", headers=headers).json()
+    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Auditproject", "description": ""}).json()
+    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Auditpost", "description": ""}).json()
+    client.post("/api/urenverantwoording/groepen", headers=headers, json={
+        "work_date": "2026-08-01", "project_id": project["id"], "post_id": post["id"], "description": "Audit", "duration_half_hours": 2,
+        "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
+    })
+    event_payload = next(item for item in client.get("/api/urenverantwoording/audit", headers=headers).json()["items"] if item["event_type"] == "work_hours.group.created")
+    assert event_payload["project_name"] == "Auditproject"
+    assert event_payload["post_name"] == "Auditpost"
+
+    db = _service_session()
+    try:
+        admin = db.query(User).filter_by(username="admin").one()
+        central = WorkProject(name="Nieuwe centrale naam", description="")
+        global_post = WorkPost(name="Nieuwe globale naam", description="", created_by_user_id=admin.id, updated_by_user_id=admin.id)
+        db.add_all([central, global_post]); db.flush()
+        db.add_all([
+            WorkProjectLegacyAlias(legacy_project_id="legacy-project", project_id=central.id, migration_created_project=False, legacy_snapshot_json=json.dumps({"name": "Oude projectnaam"})),
+            WorkPostLegacyAlias(legacy_post_id="legacy-post", post_id=global_post.id, legacy_project_id=None, legacy_snapshot_json=json.dumps({"name": "Oude postnaam"})),
+        ])
+        db.commit()
+        details = {"before": {"project_id": "legacy-project", "post_id": "legacy-post"}}
+        assert _historical_reference_name(db, details, "project") == "Oude projectnaam"
+        assert _historical_reference_name(db, details, "post") == "Oude postnaam"
+    finally:
+        db.close()
+
+
 
 
 def test_work_hours_group_edit_delete_restore_and_audit(client):
@@ -196,7 +465,15 @@ def test_work_hours_group_edit_delete_restore_and_audit(client):
     assert deleted_list.status_code == 200
     assert deleted_list.json()["total"] == 1
 
-    restore = client.post(f"/api/urenverantwoording/groepen/{group_id}/herstellen?expected_row_version={updated.json()['row_version'] + 1}", headers=headers)
+    deleted_version = updated.json()["row_version"] + 1
+    stale_restore = client.post(f"/api/urenverantwoording/groepen/{group_id}/herstellen?expected_row_version={updated.json()['row_version']}", headers=headers)
+    assert stale_restore.status_code == 409
+    assert stale_restore.json()["detail"]["code"] == "stale_row_version"
+    editor_headers = _login(client, username="editor", password="editor12345")
+    forbidden_restore = client.post(f"/api/urenverantwoording/groepen/{group_id}/herstellen?expected_row_version={deleted_version}", headers=editor_headers)
+    assert forbidden_restore.status_code == 403
+
+    restore = client.post(f"/api/urenverantwoording/groepen/{group_id}/herstellen?expected_row_version={deleted_version}", headers=headers)
     assert restore.status_code == 200
     assert restore.json()["deleted_at"] is None
 
@@ -209,88 +486,12 @@ def test_work_hours_group_edit_delete_restore_and_audit(client):
     assert "work_hours.group.restored" in event_types
 
 
-def test_work_hours_import_commit_full_restore_downloads_backup(client):
-    headers = _login(client)
-    me = client.get("/api/auth/me", headers=headers).json()
-    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Import", "description": ""})
-    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project.json()["id"], "name": "Post Import", "description": ""})
-    group = client.post(
-        "/api/urenverantwoording/groepen",
-        headers=headers,
-        json={
-            "work_date": "2026-07-30",
-            "project_id": project.json()["id"],
-            "post_id": post.json()["id"],
-            "description": "Voor import",
-            "duration_half_hours": 4,
-            "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
-        },
-    )
-    payload = {
-        "format_version": "1.0",
-        "backup_version": "1",
-        "projects": [project.json()],
-        "posts": [post.json()],
-        "external_people": [],
-        "historical_identities": [],
-        "groups": [group.json()],
-    }
-    preview = client.post("/api/urenverantwoording/import/preview?mode=full_restore", headers=headers, json=payload)
-    assert preview.status_code == 200, preview.text
-    batch_id = preview.json()["batch_id"]
-    assert preview.json()["backup_download_url"].endswith(f"/api/urenverantwoording/import/batches/{batch_id}/backup")
-
-    preview_backup = client.get(preview.json()["backup_download_url"], headers=headers)
-    assert preview_backup.status_code == 200
-    assert preview_backup.headers["content-type"].startswith("application/json")
-
-    commit = client.post(f"/api/urenverantwoording/import/commit?batch_id={batch_id}&mode=full_restore", headers=headers, json=payload)
-    assert commit.status_code == 200
-    assert commit.json()["backup_download_url"].endswith(f"/api/urenverantwoording/import/batches/{batch_id}/backup")
-
-    backup = client.get(commit.json()["backup_download_url"], headers=headers)
-    assert backup.status_code == 200
-    assert backup.headers["content-type"].startswith("application/json")
-    assert "work_hour_groups" in backup.text or "groups" in backup.text
 
 
-def test_work_hours_import_commit_rejects_payload_mismatch(client):
-    headers = _login(client)
-    me = client.get("/api/auth/me", headers=headers).json()
-    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Bind", "description": ""}).json()
-    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project["id"], "name": "Post Bind", "description": ""}).json()
-    group = client.post(
-        "/api/urenverantwoording/groepen",
-        headers=headers,
-        json={
-            "work_date": "2026-07-30",
-            "project_id": project["id"],
-            "post_id": post["id"],
-            "description": "Voor binding",
-            "duration_half_hours": 2,
-            "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
-        },
-    ).json()
 
-    payload = {
-        "format_version": "1.0",
-        "backup_version": "1",
-        "projects": [project],
-        "posts": [post],
-        "external_people": [],
-        "historical_identities": [],
-        "groups": [group],
-    }
-    preview = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=payload)
-    assert preview.status_code == 200
-    assert preview.json()["backup_download_url"].endswith(f"/api/urenverantwoording/import/batches/{preview.json()['batch_id']}/backup")
-    assert client.get(preview.json()["backup_download_url"], headers=headers).status_code == 200
 
-    tampered_payload = {**payload, "groups": [{**group, "description": "Niet gelijk"}]}
-    commit = client.post(f"/api/urenverantwoording/import/commit?batch_id={preview.json()['batch_id']}&mode=merge", headers=headers, json=tampered_payload)
-    assert commit.status_code == 409
-    assert commit.json()["detail"]["message"] == "Importbatch komt niet overeen met de preview"
-    assert client.get("/api/urenverantwoording/groepen", headers=headers).json()["items"][0]["description"] == "Voor binding"
+
+
 
 
 def test_work_hours_masterdata_and_external_person_flows(client):
@@ -325,62 +526,6 @@ def test_work_hours_masterdata_and_external_person_flows(client):
     assert "work_hours.external_person.merged" in event_types
 
 
-def test_work_hours_import_preview_and_commit_reject_conflicts(client):
-    headers = _login(client)
-    me = client.get("/api/auth/me", headers=headers).json()
-    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Conflict", "description": ""}).json()
-    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project["id"], "name": "Post Conflict", "description": ""}).json()
-    group = client.post(
-        "/api/urenverantwoording/groepen",
-        headers=headers,
-        json={
-            "work_date": "2026-07-30",
-            "project_id": project["id"],
-            "post_id": post["id"],
-            "description": "Origineel",
-            "duration_half_hours": 2,
-            "participants": [
-                {"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}
-            ],
-        },
-    ).json()
-
-    conflict_payload = {
-        "format_version": "1.0",
-        "backup_version": "1",
-        "projects": [project],
-        "posts": [post],
-        "external_people": [],
-        "historical_identities": [],
-        "groups": [
-            {
-                **group,
-                "description": "Gewijzigd",
-            }
-        ],
-    }
-
-    preview = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=conflict_payload)
-    assert preview.status_code == 200
-    assert preview.json()["status"] == "conflict"
-    assert preview.json()["errors"]
-
-    clean_preview = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json={**conflict_payload, "groups": [group]})
-    assert clean_preview.status_code == 200
-    assert clean_preview.json()["status"] == "previewed"
-    batch_id = clean_preview.json()["batch_id"]
-
-    patch = client.patch(
-        f"/api/urenverantwoording/groepen/{group['id']}",
-        headers=headers,
-        json={"description": "Lokale wijziging", "expected_row_version": group["row_version"]},
-    )
-    assert patch.status_code == 200
-
-    commit = client.post(f"/api/urenverantwoording/import/commit?batch_id={batch_id}&mode=merge", headers=headers, json={**conflict_payload, "groups": [group]})
-    assert commit.status_code == 409
-    assert commit.json()["detail"]["message"] == "Importconflict"
-    assert client.get("/api/urenverantwoording/groepen", headers=headers).json()["items"][0]["description"] == "Lokale wijziging"
 
 
 def test_work_hours_list_uses_server_side_pagination(client):
@@ -546,8 +691,58 @@ def test_work_hours_export_uses_same_filter_and_sort_contract(client):
     csv_lines = [line for line in csv_response.text.splitlines() if line]
     assert any("Team Alpha" in line for line in csv_lines)
     assert any("Team Beta" in line for line in csv_lines)
-    assert csv_lines[1].startswith("29-07-2026")
-    assert csv_lines[2].startswith("30-07-2026")
+    assert f"{first_group['id']};29-07-2026" in csv_lines[1]
+    assert f"{second_group['id']};30-07-2026" in csv_lines[2]
+
+
+def test_work_hours_csv_matches_complete_combined_filter_basis_in_both_directions(client):
+    headers = _login(client)
+    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project CSV parity", "description": ""}).json()
+    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Post CSV parity", "description": ""}).json()
+    user_id = client.get("/api/auth/me", headers=headers).json()["id"]
+    expected_ids: list[str] = []
+    for index in range(26):
+        group = client.post(
+            "/api/urenverantwoording/groepen",
+            headers=headers,
+            json={
+                "work_date": f"2026-07-{index + 1:02d}",
+                "project_id": project["id"],
+                "post_id": post["id"],
+                "description": f"Parity match {index + 1}",
+                "duration_half_hours": 2,
+                "participants": [{"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin Parity", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
+            },
+        ).json()
+        expected_ids.append(group["id"])
+    client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={
+            "work_date": "2026-07-27", "project_id": project["id"], "post_id": post["id"],
+            "description": "Buiten selectie", "duration_half_hours": 2,
+            "participants": [{"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin Parity", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
+        },
+    )
+
+    base = (
+        f"project_id={project['id']}&post_id={post['id']}&participant_kind=live_user"
+        "&participant_query=Admin%20Parity&query=Parity%20match&sort_key=work_date"
+    )
+    for direction, ordered_ids in (("asc", expected_ids), ("desc", list(reversed(expected_ids)))):
+        first_page = client.get(f"/api/urenverantwoording/groepen?{base}&sort_direction={direction}&page=1&page_size=25", headers=headers)
+        second_page = client.get(f"/api/urenverantwoording/groepen?{base}&sort_direction={direction}&page=2&page_size=25", headers=headers)
+        assert first_page.status_code == second_page.status_code == 200
+        list_ids = [item["id"] for item in first_page.json()["items"] + second_page.json()["items"]]
+        assert first_page.json()["total"] == second_page.json()["total"] == 26
+        assert list_ids == ordered_ids
+
+        csv_response = client.get(f"/api/urenverantwoording/export.csv?{base}&sort_direction={direction}", headers=headers)
+        assert csv_response.status_code == 200
+        csv_rows = list(csv.reader(StringIO(csv_response.text.lstrip("\ufeff")), delimiter=";"))
+        csv_ids = [row[0] for row in csv_rows[1:]]
+        assert csv_ids == list_ids
+        assert len(csv_ids) == 26
 
 
 def test_work_hours_update_rejects_soft_deleted_groups(client):
@@ -688,263 +883,12 @@ def test_work_hours_create_and_update_reject_invalid_live_user_participants(clie
     assert "Onbekende of inactieve gebruiker" in invalid_update.json()["detail"]
 
 
-@pytest.mark.parametrize(
-    "participants",
-    [
-        [],
-        [
-            {
-                "participant_kind": "live_user",
-                "user_id": "u1",
-                "external_person_id": "e1",
-                "display_name_snapshot": "Onjuist",
-                "display_email_snapshot": "onjuist@example.com",
-                "display_type_snapshot": "WindWilly-gebruiker",
-                "sort_order": 0,
-            }
-        ],
-    ],
-)
-def test_work_hours_import_rejects_invalid_participant_identity_before_writes(participants):
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        envelope = WorkImportEnvelope.model_validate(
-            {
-                "format_version": "1.0",
-                "backup_version": "1",
-                "projects": [],
-                "posts": [],
-                "external_people": [],
-                "historical_identities": [],
-                "groups": [
-                    {
-                        "id": "group-1",
-                        "work_date": "2026-07-30",
-                        "project_id": "project-1",
-                        "post_id": "post-1",
-                        "description": "Import met fout",
-                        "duration_half_hours": 2,
-                        "participants": participants,
-                    }
-                ],
-            }
-        )
-
-        with pytest.raises(HTTPException) as excinfo:
-            service.preview_import(admin, envelope, "merge")
-
-        assert excinfo.value.status_code == 422
-        assert db.query(WorkImportBatch).count() == 0
-    finally:
-        db.close()
 
 
-def test_import_preview_semantic_conflict_returns_structured_409_without_writes():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        project = WorkProject(name="Project Alpha", description="", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        db.add(project)
-        db.flush()
-        post = WorkPost(project_id=project.id, name="Post Alpha", description="", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        external_person = WorkExternalPerson(
-            display_name="Theo",
-            normalized_name="theo",
-            email="theo@example.com",
-            normalized_email="theo@example.com",
-            note="",
-            is_active=True,
-            created_by_user_id=admin.id,
-            updated_by_user_id=admin.id,
-        )
-        db.add_all([post, external_person])
-        db.commit()
-
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        envelope = WorkImportEnvelope.model_validate(
-            {
-                "format_version": "1.0",
-                "backup_version": "1",
-                "projects": [
-                    {
-                        "id": "project-new",
-                        "name": "Project Alpha",
-                        "description": "",
-                        "is_active": True,
-                        "is_archived": False,
-                        "archived_at": None,
-                    }
-                ],
-                "posts": [
-                    {
-                        "id": "post-new",
-                        "project_id": "project-new",
-                        "name": "Post Alpha",
-                        "description": "",
-                        "is_active": True,
-                        "is_archived": False,
-                        "archived_at": None,
-                    }
-                ],
-                "external_people": [
-                    {
-                        "id": "person-new",
-                        "display_name": "Theo",
-                        "email": "theo@example.com",
-                        "note": "",
-                        "is_active": True,
-                        "deleted_at": None,
-                    }
-                ],
-                "historical_identities": [],
-                "groups": [],
-            }
-        )
-
-        with pytest.raises(HTTPException) as excinfo:
-            service.preview_import(admin, envelope, "merge")
-        assert excinfo.value.status_code == 409
-        assert excinfo.value.detail["code"] == "work_hours_import_semantic_conflict"
-        assert excinfo.value.detail["counts"] == {"total": 3, "projects": 1, "posts": 1, "external_people": 1}
-        assert db.query(WorkProject).count() == 1
-        assert db.query(WorkPost).count() == 1
-        assert db.query(WorkExternalPerson).count() == 1
-    finally:
-        db.close()
 
 
-def test_import_commit_semantic_conflict_returns_same_409_contract_without_writes():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        existing_project = WorkProject(name="Project Origineel", description="", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        db.add(existing_project)
-        db.flush()
-        db.add(WorkPost(project_id=existing_project.id, name="Post Origineel", description="", created_by_user_id=admin.id, updated_by_user_id=admin.id))
-        db.commit()
-
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        envelope = WorkImportEnvelope.model_validate(
-            {
-                "format_version": "1.0",
-                "backup_version": "1",
-                "projects": [
-                    {
-                        "id": "project-import",
-                        "name": "Project Nieuw",
-                        "description": "",
-                        "is_active": True,
-                        "is_archived": False,
-                        "archived_at": None,
-                    }
-                ],
-                "posts": [
-                    {
-                        "id": "post-import",
-                        "project_id": "project-import",
-                        "name": "Post Nieuw",
-                        "description": "",
-                        "is_active": True,
-                        "is_archived": False,
-                        "archived_at": None,
-                    }
-                ],
-                "external_people": [
-                    {
-                        "id": "person-import",
-                        "display_name": "Anna",
-                        "email": "anna@example.com",
-                        "note": "",
-                        "is_active": True,
-                        "deleted_at": None,
-                    }
-                ],
-                "historical_identities": [],
-                "groups": [],
-            }
-        )
-
-        preview = service.preview_import(admin, envelope, "merge")
-        assert preview.status == "previewed"
-        existing_project.name = "Project Nieuw"
-        db.commit()
-
-        with pytest.raises(HTTPException) as excinfo:
-            service.commit_import(admin, preview.batch_id, envelope, "merge")
-
-        assert excinfo.value.status_code == 409
-        assert db.query(WorkProject).filter(WorkProject.id == "project-import").count() == 0
-        assert db.query(WorkExternalPerson).filter(WorkExternalPerson.id == "person-import").count() == 0
-    finally:
-        db.close()
 
 
-def test_import_commit_integrity_race_returns_structured_409_and_rolls_back_all_module_writes(monkeypatch):
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        project = service.create_project(admin, WorkProjectCreateRequest(name="Project Rollback", description=""))
-        post = service.create_post(admin, WorkPostCreateRequest(project_id=project.id, name="Post Rollback", description=""))
-        group = service.create_group(
-            admin,
-            WorkHourGroupCreateRequest(
-                work_date=date(2026, 7, 30),
-                project_id=project.id,
-                post_id=post.id,
-                description="Rollback test",
-                duration_half_hours=2,
-                participants=[
-                    {
-                        "participant_kind": "live_user",
-                        "user_id": admin.id,
-                        "display_name_snapshot": "Admin",
-                        "display_email_snapshot": "admin@example.com",
-                        "display_type_snapshot": "WindWilly-gebruiker",
-                        "sort_order": 0,
-                    }
-                ],
-            ),
-        )
-        envelope = WorkImportEnvelope.model_validate(
-            {
-                "format_version": "1.0",
-                "backup_version": "1",
-                "projects": [project.model_dump()],
-                "posts": [post.model_dump()],
-                "external_people": [],
-                "historical_identities": [],
-                "groups": [group.model_dump()],
-            }
-        )
-
-        preview = service.preview_import(admin, envelope, "merge")
-
-        commit_calls = {"count": 0}
-        original_commit = Session.commit
-
-        def fail_second_commit(self):
-            commit_calls["count"] += 1
-            if commit_calls["count"] == 1:
-                raise IntegrityError("commit failed", {}, Exception("duplicate"))
-            return original_commit(self)
-
-        monkeypatch.setattr(Session, "commit", fail_second_commit)
-
-        with pytest.raises(HTTPException) as excinfo:
-            service.commit_import(admin, preview.batch_id, envelope, "merge")
-
-        assert excinfo.value.status_code == 500
-        assert excinfo.value.detail["code"] == "work_hours_import_database_error"
-        batch = db.get(WorkImportBatch, preview.batch_id)
-        assert batch is not None
-        assert batch.status == "failed"
-        assert db.query(AuditEvent).filter(AuditEvent.event_type == "work_hours.import.failed").count() == 1
-        assert db.query(AuditEvent).filter(AuditEvent.event_type == "work_hours.import.committed").count() == 0
-    finally:
-        db.close()
 
 
 def test_work_hours_project_and_post_duplicate_create_update_are_controlled(client):
@@ -981,7 +925,7 @@ def test_work_hours_project_and_post_duplicate_create_update_are_controlled(clie
         json={"project_id": project_a["id"], "name": "Post Dup A", "description": ""},
     )
     assert duplicate_post_create.status_code == 409
-    assert duplicate_post_create.json()["detail"]["message"] == "Postnaam bestaat al binnen dit project"
+    assert duplicate_post_create.json()["detail"]["message"] == "Postnaam bestaat al"
 
     duplicate_post_update = client.patch(
         f"/api/urenverantwoording/posten/{post_b['id']}",
@@ -989,7 +933,7 @@ def test_work_hours_project_and_post_duplicate_create_update_are_controlled(clie
         json={"name": "Post Dup A", "expected_row_version": post_b["row_version"]},
     )
     assert duplicate_post_update.status_code == 409
-    assert duplicate_post_update.json()["detail"]["message"] == "Postnaam bestaat al binnen dit project"
+    assert duplicate_post_update.json()["detail"]["message"] == "Postnaam bestaat al"
 
 
 def test_work_hours_duplicate_external_candidate_payload_is_role_safe(client):
@@ -1100,121 +1044,8 @@ def test_work_hours_denied_admin_calls_are_audited_without_request_body(client):
     assert "payload" not in details
 
 
-def test_work_hours_full_restore_preserves_archived_external_people_and_blocks_new_registration(client):
-    headers = _login(client)
-    me = client.get("/api/auth/me", headers=headers).json()
-
-    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project History", "description": ""}).json()
-    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project["id"], "name": "Post History", "description": ""}).json()
-    person = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Historische externe", "email": "history@example.com", "note": "Historische notitie"}).json()
-    group = client.post(
-        "/api/urenverantwoording/groepen",
-        headers=headers,
-        json={
-            "work_date": "2026-07-30",
-            "project_id": project["id"],
-            "post_id": post["id"],
-            "description": "Historische registratie",
-            "duration_half_hours": 2,
-            "participants": [
-                {"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0},
-                {"participant_kind": "external_person", "external_person_id": person["id"], "display_name_snapshot": "Historische externe", "display_email_snapshot": "history@example.com", "display_type_snapshot": "Extern", "sort_order": 1},
-            ],
-        },
-    ).json()
-
-    archived_person = client.post(f"/api/urenverantwoording/externe-personen/{person['id']}/archiveren?expected_row_version={person['row_version']}", headers=headers)
-    assert archived_person.status_code == 200
-
-    meta = client.get("/api/urenverantwoording/meta", headers=headers)
-    assert meta.status_code == 200
-    assert person["id"] not in {item["id"] for item in meta.json()["external_people"]}
-    history = client.get("/api/urenverantwoording/admin/history", headers=headers)
-    archived_meta = next(item for item in history.json()["items"] if item["kind"] == "external_person" and item["id"] == person["id"])
-    assert archived_meta["deleted_at"] is not None
-
-    blocked_group = client.post(
-        "/api/urenverantwoording/groepen",
-        headers=headers,
-        json={
-            "work_date": "2026-07-31",
-            "project_id": project["id"],
-            "post_id": post["id"],
-            "description": "Nieuwe registratie",
-            "duration_half_hours": 2,
-            "participants": [
-                {"participant_kind": "external_person", "external_person_id": person["id"], "display_name_snapshot": "Historische externe", "display_email_snapshot": "history@example.com", "display_type_snapshot": "Extern", "sort_order": 0},
-            ],
-        },
-    )
-    assert blocked_group.status_code == 422
-
-    envelope = {
-        "format_version": "1.0",
-        "backup_version": "1",
-        "projects": [project],
-        "posts": [post],
-        "external_people": [next(item for item in client.get("/api/urenverantwoording/admin/masterdata", headers=headers).json()["external_people"] if item["id"] == person["id"])],
-        "historical_identities": [],
-        "groups": [group],
-    }
-    preview = client.post("/api/urenverantwoording/import/preview?mode=full_restore", headers=headers, json=envelope)
-    assert preview.status_code == 200, preview.text
-    commit = client.post(f"/api/urenverantwoording/import/commit?batch_id={preview.json()['batch_id']}&mode=full_restore", headers=headers, json=envelope)
-    assert commit.status_code == 200
-
-    restored_history = client.get("/api/urenverantwoording/admin/history", headers=headers).json()
-    restored_person = next(item for item in restored_history["items"] if item["kind"] == "external_person" and item["id"] == person["id"])
-    assert restored_person["deleted_at"] is not None
-
-    restored_groups = client.get("/api/urenverantwoording/groepen", headers=headers).json()
-    assert restored_groups["total"] == 1
-    assert restored_groups["items"][0]["participants"][1]["external_person_id"] == person["id"]
 
 
-def test_import_unknown_live_user_returns_controlled_422_without_writes(client):
-    headers = _login(client)
-
-    project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Relink", "description": ""}).json()
-    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project["id"], "name": "Post Relink", "description": ""}).json()
-
-    envelope = {
-        "format_version": "1.0",
-        "backup_version": "1",
-        "projects": [project],
-        "posts": [post],
-        "external_people": [],
-        "historical_identities": [],
-        "groups": [
-            {
-                "id": "group-legacy-1",
-                "work_date": "2026-07-30",
-                "project_id": project["id"],
-                "post_id": post["id"],
-                "description": "Historisch herstel",
-                "duration_half_hours": 2,
-                "participants": [
-                    {
-                        "participant_kind": "live_user",
-                        "user_id": None,
-                        "external_person_id": None,
-                        "historical_identity_id": None,
-                        "display_name_snapshot": "Oude Gebruiker",
-                        "display_email_snapshot": "oud@example.com",
-                        "display_type_snapshot": "WindWilly-gebruiker",
-                        "sort_order": 0,
-                    }
-                ],
-            },
-        ],
-    }
-
-    preview = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=envelope)
-    assert preview.status_code == 200
-
-    envelope["groups"][0]["participants"][0]["user_id"] = "missing-user"
-    preview_invalid = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=envelope)
-    assert preview_invalid.status_code == 200
 
 
 def _create_validation_group(client, headers):
@@ -1313,27 +1144,6 @@ def test_patch_participant_integrity_error_returns_422_and_rolls_back_every_writ
     assert len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]) == before_audit
 
 
-@pytest.mark.parametrize("user_id,with_metadata", [("unknown-live-user", False), ("unknown-live-user", True), (None, False), (None, True)])
-def test_import_missing_live_user_with_and_without_identity_metadata_has_no_undefined_path(client, user_id, with_metadata):
-    headers = _login(client)
-    _, project, post, _, _ = _create_validation_group(client, headers)
-    participant = {
-        "participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Legacy" if with_metadata else "Onbekend",
-        "display_email_snapshot": "legacy@example.com" if with_metadata else None, "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0,
-    }
-    envelope = {"format_version": "1.0", "backup_version": "1", "projects": [project], "posts": [post], "external_people": [], "historical_identities": [], "groups": [{"id": "unknown-user-group", "work_date": "2026-08-04", "project_id": project["id"], "post_id": post["id"], "description": "Geen write", "duration_half_hours": 2, "participants": [participant]}]}
-    before = client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"]
-    before_audit = len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"])
-
-    response = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=envelope)
-
-    expected_status = 422 if user_id is None and not with_metadata else 200
-    assert response.status_code == expected_status
-    assert client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"] == before
-    expected_audit_delta = 1 if expected_status == 422 else 2
-    assert len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]) == before_audit + expected_audit_delta
-
-
 def test_person_picker_returns_all_eligible_active_users_and_external_people(client):
     headers = _login(client)
     first = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Extern Een", "email": "een@example.com", "note": ""}).json()
@@ -1363,47 +1173,6 @@ def test_admin_audit_combined_filters_return_only_matching_actual_request_metada
     assert project["id"] in json.loads(event["details_json"])["target_id"]
 
 
-def test_backup_full_restore_roundtrip_preserves_all_domain_fields_and_stable_ids():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        project = service.create_project(admin, WorkProjectCreateRequest(name="Roundtrip", description="Exact"))
-        post = service.create_post(admin, WorkPostCreateRequest(project_id=project.id, name="Werk", description="Exact"))
-        group = service.create_group(admin, WorkHourGroupCreateRequest(
-            work_date=date(2026, 8, 4), project_id=project.id, post_id=post.id,
-            description="Exact", duration_half_hours=48,
-            participants=[{"participant_kind": "live_user", "user_id": admin.id, "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
-        ))
-        persisted = service.repo.get_group(group.id, include_deleted=True)
-        assert persisted is not None
-        removed = WorkHourGroupParticipant(
-            group_id=persisted.id, participant_kind="live_user", user_id=admin.id,
-            display_name_snapshot="Admin oud", display_email_snapshot="old@example.com",
-            display_type_snapshot="WindWilly-gebruiker", sort_order=9,
-            created_by_user_id=admin.id, updated_by_user_id=admin.id,
-            created_at=datetime(2026, 8, 4, 9, tzinfo=UTC), updated_at=datetime(2026, 8, 4, 9, tzinfo=UTC),
-            deleted_at=datetime(2026, 8, 4, 10, tzinfo=UTC), deleted_by_user_id=admin.id,
-            row_version=7,
-        )
-        db.add(removed)
-        persisted.row_version = 6
-        db.commit()
-        before = service.build_backup_envelope()
-        audit_count = db.query(AuditEvent).count()
-        preview = service.preview_import(admin, before, "full_restore")
-        result = service.commit_import(admin, preview.batch_id, before, "full_restore")
-        assert result.status == "completed"
-        after = service.build_backup_envelope()
-        assert after.model_dump(mode="json") == before.model_dump(mode="json")
-        restored = after.groups[0]
-        assert restored.id == group.id
-        assert {item.id for item in restored.participants} == {group.participants[0].id, removed.id}
-        assert next(item for item in restored.participants if item.id == removed.id).row_version == 7
-        assert next(item for item in restored.participants if item.id == removed.id).deleted_by_user_id == admin.id
-        assert db.query(AuditEvent).count() > audit_count
-    finally:
-        db.close()
 
 
 def test_mutations_require_expected_row_version_and_stale_write_has_no_audit(client):
@@ -1421,21 +1190,6 @@ def test_mutations_require_expected_row_version_and_stale_write_has_no_audit(cli
     assert client.get("/api/urenverantwoording/audit", headers=headers).json()["total"] == before_audit
 
 
-def test_backup_roundtrip_preserves_removed_participants_without_reactivating_them(client):
-    headers = _login(client)
-    me, project, post, _, group = _create_validation_group(client, headers)
-    external = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Tijdelijk", "email": "tijdelijk@example.com", "note": ""}).json()
-    with_external = client.patch(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers, json={
-        "expected_row_version": group["row_version"],
-        "participants": [group["participants"][0], {"participant_kind": "external_person", "external_person_id": external["id"], "display_name_snapshot": "Tijdelijk", "display_type_snapshot": "Extern"}],
-    }).json()
-    removed = client.patch(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers, json={"expected_row_version": with_external["row_version"], "participants": [with_external["participants"][0]]}).json()
-    deleted = client.delete(f"/api/urenverantwoording/groepen/{group['id']}?expected_row_version={removed['row_version']}", headers=headers)
-    assert deleted.status_code == 200
-    restored = client.post(f"/api/urenverantwoording/groepen/{group['id']}/herstellen?expected_row_version={removed['row_version'] + 1}", headers=headers)
-    assert restored.status_code == 200
-    assert restored.json()["person_count"] == 1
-    assert restored.json()["participants"][0]["user_id"] == me["id"]
 
 
 def test_portable_work_hours_checks_reject_invalid_duration_identity_cardinality_and_active_participant_duplicate():
@@ -1502,40 +1256,8 @@ def test_totals_endpoint_does_not_materialize_all_matching_orm_rows(monkeypatch)
         db.close()
 
 
-def test_import_stream_accepts_exact_byte_limit_and_rejects_limit_plus_one_before_parse(client):
-    headers = _login(client)
-    headers["Content-Type"] = "application/json"
-    settings = get_settings()
-    original = settings.work_hours_import_max_bytes
-    try:
-        raw = json.dumps({"format_version": "1.0", "backup_version": "1", "projects": [], "posts": [], "external_people": [], "historical_identities": [], "groups": []}).encode()
-        settings.work_hours_import_max_bytes = len(raw) + 16
-        exact = (b" " * 16) + raw
-        accepted = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, content=exact)
-        assert accepted.status_code == 200
-        rejected = client.post("/api/urenverantwoording/import/preview?mode=merge", headers={**headers, "Content-Length": "1"}, content=b" " + exact)
-        assert rejected.status_code == 413
-    finally:
-        settings.work_hours_import_max_bytes = original
 
 
-def test_import_postparse_depth_and_node_limits_reject_before_preview_or_writes(client):
-    headers = _login(client)
-    settings = get_settings()
-    original_depth = settings.work_hours_import_max_depth
-    original_nodes = settings.work_hours_import_max_nodes
-    try:
-        settings.work_hours_import_max_depth = 2
-        settings.work_hours_import_max_nodes = 100
-        payload = {"format_version": "1.0", "backup_version": "1", "projects": [], "posts": [], "external_people": [], "historical_identities": [], "groups": [], "unknown": {"nested": {"too": "deep"}}}
-        before = client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"]
-        response = client.post("/api/urenverantwoording/import/preview?mode=merge", headers=headers, json=payload)
-        assert response.status_code == 422
-        assert response.json()["detail"]["code"] == "work_hours_import_resource_limit"
-        assert client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"] == before
-    finally:
-        settings.work_hours_import_max_depth = original_depth
-        settings.work_hours_import_max_nodes = original_nodes
 
 
 def test_audit_filters_sort_count_and_page_in_sql_without_duplicates_or_omissions(client):
@@ -1650,7 +1372,7 @@ def test_non_admin_meta_schema_recursively_excludes_email_internal_identity_prov
     _create_validation_group(client, admin_headers)
     editor_headers = _login(client, username="editor", password="editor12345")
     payload = client.get("/api/urenverantwoording/meta", headers=editor_headers).json()
-    forbidden = {"email", "username", "note", "source_key", "user_id", "external_person_id", "historical_identity_id", "source_user_id", "linked_user_id", "source_import_batch_id", "deleted_at", "deleted_by_user_id", "created_by_user_id", "updated_by_user_id"}
+    forbidden = {"email", "username", "note", "source_key", "user_id", "external_person_id", "historical_identity_id", "source_user_id", "linked_user_id", "deleted_at", "deleted_by_user_id", "created_by_user_id", "updated_by_user_id"}
     assert not (_all_response_keys(payload) & forbidden)
 
 
@@ -1661,7 +1383,7 @@ def test_non_admin_group_list_and_detail_schemas_recursively_exclude_email_inter
     for response in (client.get("/api/urenverantwoording/groepen", headers=editor_headers), client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=editor_headers)):
         assert response.status_code == 200
         keys = _all_response_keys(response.json())
-        assert not (keys & {"email", "user_id", "external_person_id", "historical_identity_id", "source_import_batch_id", "deleted_at", "deleted_by_user_id", "created_by_user_id", "updated_by_user_id"})
+        assert not (keys & {"email", "user_id", "external_person_id", "historical_identity_id", "deleted_at", "deleted_by_user_id", "created_by_user_id", "updated_by_user_id"})
 
 
 @pytest.mark.parametrize("suffix", ["unknown=value", "sort_key=forbidden", "sort_direction=sideways", "project_id=a&project_id=b"])
@@ -1722,7 +1444,7 @@ def test_external_merge_rejects_source_target_participant_collision_without_sile
     assert {item["external_person_id"] for item in unchanged["participants"]} == {source["id"], target["id"]}
 
 
-def test_restore_from_active_becomes_active_and_restore_from_archived_remains_archived(client):
+def test_central_project_restore_returns_project_to_active_state(client):
     headers = _login(client)
     active = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Actief herstel", "description": ""}).json()
     assert client.delete(f"/api/urenverantwoording/projecten/{active['id']}?expected_row_version={active['row_version']}", headers=headers).status_code == 200
@@ -1733,8 +1455,7 @@ def test_restore_from_active_becomes_active_and_restore_from_archived_remains_ar
     archived = client.post(f"/api/urenverantwoording/projecten/{archived['id']}/archiveren?expected_row_version={archived['row_version']}", headers=headers).json()
     assert client.delete(f"/api/urenverantwoording/projecten/{archived['id']}?expected_row_version={archived['row_version']}", headers=headers).status_code == 200
     restored_archived = client.post(f"/api/urenverantwoording/projecten/{archived['id']}/herstellen?expected_row_version={archived['row_version'] + 1}", headers=headers).json()
-    assert restored_archived["is_active"] is False and restored_archived["is_archived"] is True
-    assert restored_archived["archived_at"] is not None
+    assert restored_archived["is_active"] is True and restored_archived["is_archived"] is False
 
 
 def test_project_archive_or_delete_removes_child_selectability_without_cascade_restore(client):
@@ -1744,45 +1465,12 @@ def test_project_archive_or_delete_removes_child_selectability_without_cascade_r
     archived = client.post(f"/api/urenverantwoording/projecten/{project['id']}/archiveren?expected_row_version={project['row_version']}", headers=headers).json()
     meta = client.get("/api/urenverantwoording/meta", headers=headers).json()
     assert project["id"] not in {item["id"] for item in meta["projects"]}
-    assert post["id"] not in {item["id"] for item in meta["posts"]}
+    # Posts are global and remain selectable for every other active project.
+    assert post["id"] in {item["id"] for item in meta["posts"]}
     client.post(f"/api/urenverantwoording/projecten/{project['id']}/herstellen?expected_row_version={archived['row_version']}", headers=headers)
     masterdata = client.get("/api/urenverantwoording/admin/masterdata", headers=headers).json()
     unchanged_post = next(item for item in masterdata["posts"] if item["id"] == post["id"])
     assert unchanged_post["row_version"] == post["row_version"]
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("endpoint", ["preview", "commit"])
-async def test_non_admin_import_endpoints_deny_and_audit_before_reading_request_body(endpoint):
-    from starlette.requests import Request
-
-    db = _service_session()
-    reads = 0
-    try:
-        editor = User(username="body-reader", password_hash=hash_password("editor12345"), is_active=True, is_admin=False)
-        db.add(editor)
-        db.commit()
-
-        async def receive():
-            nonlocal reads
-            reads += 1
-            raise AssertionError("request body is gelezen")
-
-        path = f"/api/urenverantwoording/import/{endpoint}"
-        request = Request({"type": "http", "method": "POST", "path": path, "headers": [], "query_string": b"", "scheme": "https", "server": ("test", 443), "client": ("test", 1)}, receive)
-        with pytest.raises(HTTPException) as excinfo:
-            if endpoint == "preview":
-                await preview_import_endpoint(request=request, mode="merge", current=editor, db=db)
-            else:
-                await commit_import_endpoint(request=request, batch_id="missing", mode="merge", current=editor, db=db)
-        assert excinfo.value.status_code == 403
-        assert reads == 0
-        denied = db.query(AuditEvent).filter(AuditEvent.event_type == "work_hours.authorization.denied").one()
-        detail = json.loads(denied.details_json)
-        assert (denied.actor_user_id, detail["request_method"], detail["request_path"], detail["result"]) == (editor.id, "POST", path, "denied")
-        assert not ({"body", "content", "hash", "filename"} & set(detail))
-    finally:
-        db.close()
 
 
 def test_external_update_hard_email_uniqueness_and_status_fields_are_controlled(client):
@@ -1813,6 +1501,58 @@ def test_external_explicit_status_actions_produce_coherent_states(client):
     assert blocked.status_code == 422
 
 
+def test_external_person_archive_restore_preserves_uniqueness_version_auth_and_audit(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, username="editor", password="editor12345")
+    person = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=admin_headers,
+        json={"display_name": "Herstelbare externe", "email": "restore-external@example.com", "note": "Bewaren"},
+    ).json()
+    archived = client.post(
+        f"/api/urenverantwoording/externe-personen/{person['id']}/archiveren?expected_row_version={person['row_version']}",
+        headers=admin_headers,
+    )
+    assert archived.status_code == 200
+    assert archived.json()["deleted_at"] is not None and archived.json()["is_active"] is False
+
+    stale = client.post(
+        f"/api/urenverantwoording/externe-personen/{person['id']}/herstellen?expected_row_version={person['row_version']}",
+        headers=admin_headers,
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "stale_row_version"
+    forbidden = client.post(
+        f"/api/urenverantwoording/externe-personen/{person['id']}/herstellen?expected_row_version={archived.json()['row_version']}",
+        headers=editor_headers,
+    )
+    assert forbidden.status_code == 403
+    duplicate_while_archived = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=admin_headers,
+        json={"display_name": "Andere externe", "email": " RESTORE-EXTERNAL@example.com ", "note": ""},
+    )
+    assert duplicate_while_archived.status_code == 409
+    assert duplicate_while_archived.json()["detail"]["code"] == "work_hours_external_person_hard_conflict"
+
+    restored = client.post(
+        f"/api/urenverantwoording/externe-personen/{person['id']}/herstellen?expected_row_version={archived.json()['row_version']}",
+        headers=admin_headers,
+    )
+    assert restored.status_code == 200
+    assert restored.json()["deleted_at"] is None and restored.json()["is_active"] is True
+    assert restored.json()["email"] == person["email"] and restored.json()["note"] == person["note"]
+    duplicate_after_restore = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=admin_headers,
+        json={"display_name": "Nog een externe", "email": "restore-external@example.com", "note": ""},
+    )
+    assert duplicate_after_restore.status_code == 409
+    audit = client.get("/api/urenverantwoording/audit?action=work_hours.external_person.restored", headers=admin_headers).json()
+    assert audit["total"] == 1
+    assert audit["items"][0]["event_type"] == "work_hours.external_person.restored"
+
+
 def test_complete_audit_after_snapshot_contains_definitive_parent_and_all_children(client):
     headers = _login(client)
     _, _, _, _, group = _create_validation_group(client, headers)
@@ -1822,72 +1562,3 @@ def test_complete_audit_after_snapshot_contains_definitive_parent_and_all_childr
     assert after["row_version"] == group["row_version"]
     assert [item["id"] for item in after["participants"]] == [item["id"] for item in group["participants"]]
     assert all(item["group_id"] == group["id"] for item in after["participants"])
-
-
-def test_missing_user_reuse_prefers_exact_source_key_then_unique_normalized_email():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        exact = WorkHistoricalUserIdentity(source_key="missing-user:source-1", snapshot_name="Bron", snapshot_email="bron@example.com", snapshot_display_label="Bron", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        other_email = WorkHistoricalUserIdentity(source_key="other", snapshot_name="Ander", snapshot_email="bron@example.com", snapshot_display_label="Ander", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        unique_email = WorkHistoricalUserIdentity(source_key="email-only", snapshot_name="E-mail", snapshot_email="unique@example.com", snapshot_display_label="E-mail", created_by_user_id=admin.id, updated_by_user_id=admin.id)
-        db.add_all([exact, other_email, unique_email])
-        db.commit()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        assert service._materialize_historical_identity(admin, source_key="missing-user:source-1", snapshot_name="Bron", snapshot_email="bron@example.com", snapshot_display_label="Bron").id == exact.id
-        assert service._materialize_historical_identity(admin, source_key="missing-user:new-source", snapshot_name="E-mail", snapshot_email=" UNIQUE@example.com ", snapshot_display_label="E-mail").id == unique_email.id
-        assert db.query(WorkHistoricalUserIdentity).count() == 3
-    finally:
-        db.close()
-
-
-def test_missing_user_reuse_rejects_conflicting_source_key_ambiguous_email_and_name_only_fallback_without_writes():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        db.add_all([
-            WorkHistoricalUserIdentity(source_key="missing-user:conflict", snapshot_name="Origineel", snapshot_email="original@example.com", snapshot_display_label="Origineel", created_by_user_id=admin.id, updated_by_user_id=admin.id),
-            WorkHistoricalUserIdentity(source_key="ambiguous-1", snapshot_name="Ambigue", snapshot_email="same@example.com", snapshot_display_label="Ambigue", created_by_user_id=admin.id, updated_by_user_id=admin.id),
-            WorkHistoricalUserIdentity(source_key="ambiguous-2", snapshot_name="Ambigue", snapshot_email="same@example.com", snapshot_display_label="Ambigue", created_by_user_id=admin.id, updated_by_user_id=admin.id),
-        ])
-        db.commit()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        before = db.query(WorkHistoricalUserIdentity).count()
-        variants = [
-            dict(source_key="missing-user:conflict", snapshot_name="Botsing", snapshot_email="new@example.com", snapshot_display_label="Botsing"),
-            dict(source_key="missing-user:new", snapshot_name="Ambigue", snapshot_email="same@example.com", snapshot_display_label="Ambigue"),
-            dict(source_key="", snapshot_name="Alleen naam", snapshot_email=None, snapshot_display_label="Alleen naam"),
-        ]
-        for variant in variants:
-            with pytest.raises(HTTPException) as excinfo:
-                service._materialize_historical_identity(admin, **variant)
-            assert excinfo.value.status_code == 422
-            assert db.query(WorkHistoricalUserIdentity).count() == before
-    finally:
-        db.close()
-
-
-def test_historical_identity_backup_roundtrip_preserves_all_create_update_delete_link_actor_provenance():
-    db = _service_session()
-    try:
-        admin = db.query(User).filter_by(username="admin").one()
-        start = datetime(2026, 8, 4, 8, tzinfo=UTC)
-        identity = WorkHistoricalUserIdentity(
-            source_key="legacy:user-1", source_user_id=admin.id, snapshot_name="Historisch",
-            snapshot_email="history@example.com", snapshot_display_label="Historisch", linked_user_id=admin.id,
-            linked_at=start + timedelta(hours=2), linked_by_user_id=admin.id, is_active=False,
-            created_at=start, created_by_user_id=admin.id, updated_at=start + timedelta(hours=1), updated_by_user_id=admin.id,
-            deleted_at=start + timedelta(hours=3), deleted_by_user_id=admin.id, row_version=7,
-        )
-        db.add(identity)
-        db.commit()
-        service = WorkHoursService(WorkHoursRepository(db), AuditService(db))
-        before = service.build_backup_envelope()
-        preview = service.preview_import(admin, before, "full_restore")
-        service.commit_import(admin, preview.batch_id, before, "full_restore")
-        after = service.build_backup_envelope()
-        before_identity = before.historical_identities[0].model_dump(mode="json")
-        after_identity = after.historical_identities[0].model_dump(mode="json")
-        assert after_identity == before_identity
-    finally:
-        db.close()

@@ -112,6 +112,25 @@ class Project(Base, TimestampMixin):
     board_cards: Mapped[list["BoardCard"]] = relationship(
         back_populates="project", cascade="all,delete"
     )
+    work_hour_groups: Mapped[list["WorkHourGroup"]] = relationship(
+        back_populates="project"
+    )
+
+    def __init__(self, **kwargs):
+        for legacy_field in (
+            "archived_at", "archived_by_user_id", "created_by_user_id",
+            "updated_by_user_id", "deleted_at", "deleted_by_user_id", "row_version",
+        ):
+            kwargs.pop(legacy_field, None)
+        super().__init__(**kwargs)
+
+    @property
+    def deleted_at(self) -> None:
+        return None
+
+    @property
+    def row_version(self) -> int:
+        return 1
 
     @property
     def invited_user_ids(self) -> list[str]:
@@ -126,6 +145,11 @@ class Project(Base, TimestampMixin):
     @invited_user_ids.setter
     def invited_user_ids(self, value: Sequence[str]) -> None:
         self.invited_user_ids_json = json.dumps(list(dict.fromkeys(value)))
+
+
+# Legacy hours-domain naming retained for central masterdata and historical
+# references. This aliases central projects, not a second mapped model.
+WorkProject = Project
 
 
 class BoardCard(Base, TimestampMixin):
@@ -669,65 +693,13 @@ class RetryJob(Base, TimestampMixin):
     )
 
 
-class WorkProject(Base, TimestampMixin):
-    __tablename__ = "work_projects"
-    __table_args__ = (
-        Index("ix_work_projects_is_active", "is_active"),
-        Index("ix_work_projects_is_archived", "is_archived"),
-        Index("ix_work_projects_deleted_at", "deleted_at"),
-        UniqueConstraint("name", name="uq_work_projects_name"),
-        CheckConstraint(
-            "(deleted_at IS NULL) = (deleted_by_user_id IS NULL)",
-            name="ck_work_projects_deleted_tuple",
-        ),
-        CheckConstraint(
-            "(is_archived = false AND archived_at IS NULL AND archived_by_user_id IS NULL) OR "
-            "(is_archived = true AND is_active = false AND archived_at IS NOT NULL AND archived_by_user_id IS NOT NULL)",
-            name="ck_work_projects_archived_tuple",
-        ),
-        CheckConstraint(
-            "NOT (is_active = true AND (is_archived = true OR deleted_at IS NOT NULL))",
-            name="ck_work_projects_active_state",
-        ),
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    description: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    archived_by_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
-    created_by_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
-    updated_by_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_by_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
-    row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
-
-    archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_user_id])
-    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
-    updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
-    deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
-    posts: Mapped[list["WorkPost"]] = relationship(back_populates="project")
-    groups: Mapped[list["WorkHourGroup"]] = relationship(back_populates="project")
-
-
 class WorkPost(Base, TimestampMixin):
     __tablename__ = "work_posts"
     __table_args__ = (
-        Index("ix_work_posts_project_id", "project_id"),
         Index("ix_work_posts_is_active", "is_active"),
         Index("ix_work_posts_is_archived", "is_archived"),
         Index("ix_work_posts_deleted_at", "deleted_at"),
-        UniqueConstraint("project_id", "name", name="uq_work_posts_project_name"),
+        UniqueConstraint("normalized_name", name="uq_work_posts_normalized_name"),
         CheckConstraint("(deleted_at IS NULL) = (deleted_by_user_id IS NULL)", name="ck_work_posts_deleted_tuple"),
         CheckConstraint(
             "(is_archived = false AND archived_at IS NULL AND archived_by_user_id IS NULL) OR "
@@ -738,8 +710,8 @@ class WorkPost(Base, TimestampMixin):
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_projects.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(120), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -759,12 +731,44 @@ class WorkPost(Base, TimestampMixin):
     )
     row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
-    project: Mapped[WorkProject] = relationship(back_populates="posts")
     archived_by: Mapped[User | None] = relationship(foreign_keys=[archived_by_user_id])
     created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
     deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
     groups: Mapped[list["WorkHourGroup"]] = relationship(back_populates="post")
+
+    def __init__(self, **kwargs):
+        kwargs.pop("project_id", None)
+        if "name" in kwargs and "normalized_name" not in kwargs:
+            import unicodedata
+            kwargs["normalized_name"] = " ".join(
+                unicodedata.normalize("NFKC", kwargs["name"]).strip().split()
+            ).casefold()
+        super().__init__(**kwargs)
+
+    @property
+    def project_id(self) -> None:
+        return None
+
+
+class WorkProjectLegacyAlias(Base):
+    __tablename__ = "work_project_legacy_aliases"
+
+    legacy_project_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
+    migration_created_project: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    legacy_snapshot_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
+
+
+class WorkPostLegacyAlias(Base):
+    __tablename__ = "work_post_legacy_aliases"
+
+    legacy_post_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    post_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_posts.id"), nullable=False)
+    # The legacy work_projects table exists only on migrated databases and is
+    # intentionally not active ORM masterdata; Alembic enforces this FK.
+    legacy_project_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    legacy_snapshot_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
 
 
 class WorkExternalPerson(Base, TimestampMixin):
@@ -848,31 +852,6 @@ class WorkHistoricalUserIdentity(Base, TimestampMixin):
     )
 
 
-class WorkImportBatch(Base, TimestampMixin):
-    __tablename__ = "work_import_batches"
-    __table_args__ = (
-        Index("ix_work_import_batches_status", "status"),
-        Index("ix_work_import_batches_requested_by_user_id", "requested_by_user_id"),
-    )
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    requested_by_user_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("users.id"), nullable=True
-    )
-    format_version: Mapped[str] = mapped_column(String(40), nullable=False)
-    backup_version: Mapped[str] = mapped_column(String(40), nullable=False)
-    mode: Mapped[str] = mapped_column(String(20), nullable=False)
-    source_filename: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    pre_import_backup_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="preview", nullable=False)
-    counts_json: Mapped[str] = mapped_column(Text, default="{}", nullable=False)
-    warnings_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
-    errors_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
-
-    requested_by: Mapped[User | None] = relationship(foreign_keys=[requested_by_user_id])
-
-
 class WorkHourGroup(Base, TimestampMixin):
     __tablename__ = "work_hour_groups"
     __table_args__ = (
@@ -890,13 +869,10 @@ class WorkHourGroup(Base, TimestampMixin):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     work_date: Mapped[date] = mapped_column(Date, nullable=False)
-    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_projects.id"), nullable=False)
+    project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
     post_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_posts.id"), nullable=False)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
     duration_half_hours: Mapped[int] = mapped_column(Integer, nullable=False)
-    source_import_batch_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("work_import_batches.id"), nullable=True
-    )
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
@@ -909,9 +885,8 @@ class WorkHourGroup(Base, TimestampMixin):
     )
     row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
-    project: Mapped[WorkProject] = relationship(back_populates="groups")
+    project: Mapped[Project] = relationship(back_populates="work_hour_groups")
     post: Mapped[WorkPost] = relationship(back_populates="groups")
-    source_import_batch: Mapped[WorkImportBatch | None] = relationship()
     created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
     deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])

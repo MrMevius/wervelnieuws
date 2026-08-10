@@ -14,28 +14,14 @@ import {
   archiveWorkExternalPerson,
   restoreWorkExternalPerson,
   mergeWorkExternalPerson,
-  createWorkProject,
-  updateWorkProject,
-  archiveWorkProject,
-  restoreWorkProject,
-  createWorkPost,
-  updateWorkPost,
-  archiveWorkPost,
-  restoreWorkPost,
   downloadWorkHoursCsv,
-  downloadWorkHoursBackup,
-  previewWorkHoursImport,
-  commitWorkHoursImport,
   restoreWorkHourGroup,
   listWorkHoursAdminHistory,
   listWorkHoursAdminMasterdata,
   relinkWorkHistoricalIdentity,
-  type WorkHourImportEnvelope,
   type WorkHourGroup,
   type WorkHourParticipant,
   type WorkHourExternalPerson,
-  type WorkHourProject,
-  type WorkHourPost,
   type WorkHourSortKey
 } from "../../../lib/api/client";
 import { formatAmsterdamDateInput, formatAmsterdamDateTime, formatAmsterdamDisplayDate } from "../../../lib/datetime";
@@ -59,6 +45,19 @@ type ExternalPersonDraft = {
   email: string | null;
   note: string;
 };
+
+function ColumnFilter({ label, active, search, setSearch, onReset, children, searchable = true }: { label: string; active: boolean; search: string; setSearch: (value: string) => void; onReset: () => void; children: ReactNode; searchable?: boolean }) {
+  return (
+    <details className="work-hours-column-filter">
+      <summary aria-label={`Filter ${label}`} title={`Filter ${label}`}>{label}<span aria-hidden="true"> ▾</span>{active && <span className="filter-active-dot" aria-label="filter actief">●</span>}</summary>
+      <div className="work-hours-filter-menu">
+        {searchable && <label><span>Zoek {label.toLowerCase()}</span><input value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
+        <div className="work-hours-filter-options">{children}</div>
+        <button type="button" onClick={onReset}>Filter {label.toLowerCase()} wissen</button>
+      </div>
+    </details>
+  );
+}
 
 function downloadBlob(blob: Blob, fileName: string) {
   const url = window.URL.createObjectURL(blob);
@@ -125,6 +124,8 @@ function AccessibleModal({ title, onClose, children, committing = false }: { tit
 
 export function UrenverantwoordingPage() {
   const queryClient = useQueryClient();
+  const desktopCreateFormRef = useRef<HTMLFormElement>(null);
+  const mobileCreateFormRef = useRef<HTMLFormElement>(null);
   const currentUserQuery = useQuery({ queryKey: ["work-hours-current-user"], queryFn: getCurrentUser });
   const metaQuery = useQuery({ queryKey: ["work-hours-meta"], queryFn: listWorkHoursMeta });
   const [auditFilters, setAuditFilters] = useState({ actor: "", action: "", result: "", method: "", path: "", from: "", to: "" });
@@ -147,11 +148,12 @@ export function UrenverantwoordingPage() {
   const [query, setQuery] = useState("");
   const [workDateFilter, setWorkDateFilter] = useState("");
   const [participantKind, setParticipantKind] = useState<"" | "live_user" | "external_person" | "historical_identity">("");
+  const [participantQuery, setParticipantQuery] = useState("");
   const [sortKey, setSortKey] = useState<WorkHourSortKey>("work_date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [showDeleted, setShowDeleted] = useState(false);
   const [editingGroup, setEditingGroup] = useState<WorkHourGroup | null>(null);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showParticipantEditor, setShowParticipantEditor] = useState(false);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<WorkHourGroup | null>(null);
   const [restoreGroupTarget, setRestoreGroupTarget] = useState<WorkHourGroup | null>(null);
   const [forceCreateConfirm, setForceCreateConfirm] = useState(false);
@@ -160,19 +162,11 @@ export function UrenverantwoordingPage() {
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [historyPage, setHistoryPage] = useState(1);
   const [historyPageSize, setHistoryPageSize] = useState<25 | 50 | 100>(25);
-  const [historyKind, setHistoryKind] = useState<"" | "project" | "post" | "external_person" | "historical_identity">("");
+  const [historyKind, setHistoryKind] = useState<"" | "post" | "external_person" | "historical_identity">("");
   const [historyQueryText, setHistoryQueryText] = useState("");
-  const [editingProject, setEditingProject] = useState<WorkHourProject | null>(null);
-  const [editingPost, setEditingPost] = useState<WorkHourPost | null>(null);
   const [editingPerson, setEditingPerson] = useState<WorkHourExternalPerson | null>(null);
-  const [importJson, setImportJson] = useState("{\n  \"format_version\": \"1.0\",\n  \"backup_version\": \"2\",\n  \"projects\": [],\n  \"posts\": [],\n  \"external_people\": [],\n  \"historical_identities\": [],\n  \"groups\": []\n}");
-  const [importMode, setImportMode] = useState<"merge" | "full_restore">("merge");
-  const [previewBatchId, setPreviewBatchId] = useState("");
-  const [showImportModal, setShowImportModal] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [backupDownloadUrl, setBackupDownloadUrl] = useState<string | null>(null);
-  const [previewResult, setPreviewResult] = useState<{ batch_id: string; status: string; counts: Record<string, number>; warnings: string[]; errors: string[]; backup_download_url: string | null } | null>(null);
   const [participants, setParticipants] = useState<ParticipantDraft[]>([]);
   const [editParticipants, setEditParticipants] = useState<ParticipantEditDraft[]>([]);
   const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
@@ -181,6 +175,7 @@ export function UrenverantwoordingPage() {
   const [selectedExternalPersonId, setSelectedExternalPersonId] = useState("");
   const [selectedExternalPersonCandidate, setSelectedExternalPersonCandidate] = useState<DuplicateCandidate | null>(null);
   const [selectedUserId, setSelectedUserId] = useState("");
+  const [filterSearches, setFilterSearches] = useState({ project: "", post: "", person: "", type: "" });
 
   const sharedFilters = useMemo(
     () => ({
@@ -188,11 +183,12 @@ export function UrenverantwoordingPage() {
       post_id: postId || undefined,
       work_date: workDateFilter || undefined,
       participant_kind: participantKind || undefined,
+      participant_query: participantQuery || undefined,
       query: query || undefined,
       sort_key: sortKey,
       sort_direction: sortDirection
     }),
-    [projectId, postId, workDateFilter, participantKind, query, sortKey, sortDirection]
+    [projectId, postId, workDateFilter, participantKind, participantQuery, query, sortKey, sortDirection]
   );
 
   const listQueryParams = useMemo(
@@ -226,23 +222,30 @@ export function UrenverantwoordingPage() {
   });
 
   const projectOptions = useMemo(() => (metaQuery.data?.projects ?? []).map((project) => ({ ...project, name: project.name ?? project.display_name ?? "", description: project.description ?? "", row_version: project.row_version ?? 1 })), [metaQuery.data?.projects]);
-  const normalizedPosts = useMemo(() => (metaQuery.data?.posts ?? []).map((post) => ({ ...post, name: post.name ?? post.display_name ?? "", project_id: post.project_id ?? post.project_selection_key ?? "", description: post.description ?? "", row_version: post.row_version ?? 1 })), [metaQuery.data?.posts]);
-  const postOptions = useMemo(() => (projectId ? normalizedPosts.filter((post) => post.project_id === projectId) : normalizedPosts), [normalizedPosts, projectId]);
+  const normalizedPosts = useMemo(() => (metaQuery.data?.posts ?? []).map((post) => ({ ...post, name: post.name ?? post.display_name ?? "", description: post.description ?? "", row_version: post.row_version ?? 1 })), [metaQuery.data?.posts]);
+  const postOptions = normalizedPosts;
+  const filterProjectOptions = useMemo(() => {
+    const combined = [...projectOptions, ...(metaQuery.data?.filter_projects ?? []).map((item) => ({ ...item, name: item.name ?? item.display_name ?? "" }))];
+    return Array.from(new Map(combined.map((item) => [item.id, item])).values());
+  }, [projectOptions, metaQuery.data?.filter_projects]);
+  const filterPostOptions = useMemo(() => {
+    const combined = [...postOptions, ...(metaQuery.data?.filter_posts ?? []).map((item) => ({ ...item, name: item.name ?? item.display_name ?? "" }))];
+    return Array.from(new Map(combined.map((item) => [item.id, item])).values());
+  }, [postOptions, metaQuery.data?.filter_posts]);
   const externalPeople = useMemo(() => (metaQuery.data?.external_people ?? []).map((person) => ({ ...person, email: person.email ?? null, note: person.note ?? "", is_active: person.is_active ?? person.selectable ?? true, row_version: person.row_version ?? 1 })), [metaQuery.data?.external_people]);
   const activeExternalPeople = useMemo(() => externalPeople.filter((person) => person.is_active && !person.deleted_at), [externalPeople]);
   const inactiveHistoricalExternalPeople = useMemo(() => externalPeople.filter((person) => !person.is_active || person.deleted_at), [externalPeople]);
   const historicalIdentities = useMemo(() => (metaQuery.data?.historical_identities ?? []).map((identity) => ({ ...identity, snapshot_display_label: identity.snapshot_display_label ?? identity.display_name ?? "Historische identiteit", snapshot_name: identity.snapshot_name ?? identity.display_name ?? "" })), [metaQuery.data?.historical_identities]);
   const eligibleUsers = useMemo(() => (metaQuery.data?.eligible_users ?? []).map((user) => ({ ...user, username: user.username ?? user.display_name ?? "Gebruiker", full_name: user.full_name ?? user.display_name ?? null, email: user.email ?? null })), [metaQuery.data?.eligible_users]);
+  const filterParticipantNames = useMemo(() => Array.from(new Set([...(metaQuery.data?.filter_participants ?? []), ...eligibleUsers.map((item) => item.full_name || item.username), ...activeExternalPeople.map((item) => item.display_name)])), [metaQuery.data?.filter_participants, eligibleUsers, activeExternalPeople]);
   const currentUser = currentUserQuery.data;
   const isAdmin = Boolean(currentUser?.is_admin);
   const historyParams = { page: historyPage, page_size: historyPageSize, kind: historyKind || undefined, query: historyQueryText.trim() || undefined, sort_key: "display_name" as const, sort_direction: "asc" as const };
   const historyQuery = useQuery({ queryKey: ["work-hours-admin-history", historyParams], queryFn: () => listWorkHoursAdminHistory(historyParams), enabled: isAdmin });
   const adminMasterdataQuery = useQuery({ queryKey: ["work-hours-admin-masterdata"], queryFn: listWorkHoursAdminMasterdata, enabled: isAdmin });
   const totalPages = Math.max(1, Math.ceil((groupsQuery.data?.total ?? 0) / pageSize));
-  const newGroupPostOptions = useMemo(() => (newGroupProjectId ? normalizedPosts.filter((post) => post.project_id === newGroupProjectId) : []), [normalizedPosts, newGroupProjectId]);
-  const editingGroupPostOptions = useMemo(() => (editingGroupProjectId ? normalizedPosts.filter((post) => post.project_id === editingGroupProjectId) : []), [normalizedPosts, editingGroupProjectId]);
-  const adminProjects = adminMasterdataQuery.data?.projects ?? [];
-  const adminPosts = adminMasterdataQuery.data?.posts ?? [];
+  const newGroupPostOptions = normalizedPosts;
+  const editingGroupPostOptions = normalizedPosts;
   const adminPeople = adminMasterdataQuery.data?.external_people ?? [];
 
   async function invalidateAdminMasterdata() {
@@ -252,16 +255,6 @@ export function UrenverantwoordingPage() {
   }
 
   useEffect(() => {
-    if (!newGroupProjectId && projectOptions[0]?.id) {
-      setNewGroupProjectId(projectOptions[0].id);
-    }
-  }, [projectOptions, newGroupProjectId]);
-
-  useEffect(() => {
-    if (!newGroupProjectId) {
-      setNewGroupPostId("");
-      return;
-    }
     if (newGroupPostOptions.length === 0) {
       setNewGroupPostId("");
       return;
@@ -269,7 +262,7 @@ export function UrenverantwoordingPage() {
     if (!newGroupPostOptions.some((post) => post.id === newGroupPostId)) {
       setNewGroupPostId("");
     }
-  }, [newGroupPostId, newGroupPostOptions, newGroupProjectId]);
+  }, [newGroupPostId, newGroupPostOptions]);
 
   useEffect(() => {
     if (!editingGroup) {
@@ -282,10 +275,6 @@ export function UrenverantwoordingPage() {
   }, [editingGroup]);
 
   useEffect(() => {
-    if (!editingGroupProjectId) {
-      setEditingGroupPostId("");
-      return;
-    }
     if (editingGroupPostOptions.length === 0) {
       setEditingGroupPostId("");
       return;
@@ -293,17 +282,7 @@ export function UrenverantwoordingPage() {
     if (!editingGroupPostOptions.some((post) => post.id === editingGroupPostId)) {
       setEditingGroupPostId("");
     }
-  }, [editingGroupPostId, editingGroupPostOptions, editingGroupProjectId]);
-
-  useEffect(() => {
-    if (!selectedExternalPersonId && activeExternalPeople[0]?.id) {
-      setSelectedExternalPersonId(activeExternalPeople[0].id);
-    }
-  }, [activeExternalPeople, selectedExternalPersonId]);
-
-  useEffect(() => {
-    if (!selectedUserId && eligibleUsers[0]?.id) setSelectedUserId(eligibleUsers[0].id);
-  }, [eligibleUsers, selectedUserId]);
+  }, [editingGroupPostId, editingGroupPostOptions]);
 
   function parseApiDetail(error: unknown): { detail?: { code?: string; message?: string; candidates?: DuplicateCandidate[] } } | null {
     if (!(error instanceof Error)) return null;
@@ -334,9 +313,7 @@ export function UrenverantwoordingPage() {
     mutationFn: createWorkHourGroup,
     onSuccess: async () => {
       setStatusMessage("Registratie opgeslagen.");
-      setErrorMessage(null);
-      setParticipants([]);
-      setShowCreateModal(false);
+      resetCreate();
       await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] });
       await queryClient.invalidateQueries({ queryKey: ["work-hours-audit"] });
     },
@@ -383,38 +360,6 @@ export function UrenverantwoordingPage() {
     });
   }, [errorMessage]);
 
-  const projectMutation = useMutation({
-    mutationFn: createWorkProject,
-    onSuccess: invalidateAdminMasterdata
-  });
-  const updateProjectMutation = useMutation({
-    mutationFn: ({ projectId, payload }: { projectId: string; payload: Parameters<typeof updateWorkProject>[1] }) => updateWorkProject(projectId, payload),
-    onSuccess: invalidateAdminMasterdata
-  });
-  const archiveProjectMutation = useMutation({
-    mutationFn: (project: WorkHourProject) => archiveWorkProject(project.id, project.row_version ?? 1),
-    onSuccess: invalidateAdminMasterdata
-  });
-  const restoreProjectMutation = useMutation({
-    mutationFn: (project: WorkHourProject) => restoreWorkProject(project.id, project.row_version ?? 1),
-    onSuccess: invalidateAdminMasterdata
-  });
-  const postMutation = useMutation({
-    mutationFn: createWorkPost,
-    onSuccess: invalidateAdminMasterdata
-  });
-  const updatePostMutation = useMutation({
-    mutationFn: ({ postId, payload }: { postId: string; payload: Parameters<typeof updateWorkPost>[1] }) => updateWorkPost(postId, payload),
-    onSuccess: invalidateAdminMasterdata
-  });
-  const archivePostMutation = useMutation({
-    mutationFn: (post: WorkHourPost) => archiveWorkPost(post.id, post.row_version ?? 1),
-    onSuccess: invalidateAdminMasterdata
-  });
-  const restorePostMutation = useMutation({
-    mutationFn: (post: WorkHourPost) => restoreWorkPost(post.id, post.row_version ?? 1),
-    onSuccess: invalidateAdminMasterdata
-  });
   const personMutation = useMutation({
     mutationFn: createWorkExternalPerson,
     onSuccess: async (created) => {
@@ -424,6 +369,7 @@ export function UrenverantwoordingPage() {
       setDuplicateCandidates([]);
       setDuplicateConflictCode("");
       setPendingExternalPerson(null);
+      setParticipants((current) => current.some((item) => item.kind === "external_person" && item.external_person_id === created.id) ? current : [...current, { kind: "external_person", external_person_id: created.id, display_name_snapshot: created.display_name, display_email_snapshot: created.email || "", display_type_snapshot: "Extern" }]);
       await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
     }
   });
@@ -454,9 +400,6 @@ export function UrenverantwoordingPage() {
     onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Koppelen mislukt")
   });
 
-  const previewImportMutation = useMutation({ mutationFn: ({ payload, mode }: { payload: WorkHourImportEnvelope; mode: "merge" | "full_restore" }) => previewWorkHoursImport(payload, mode) });
-  const commitImportMutation = useMutation({ mutationFn: ({ batchId, payload, mode }: { batchId: string; payload: Parameters<typeof previewWorkHoursImport>[0]; mode: "merge" | "full_restore" }) => commitWorkHoursImport(batchId, payload, mode) });
-
   function addUserParticipant(target: "create" | "edit") {
     const user = eligibleUsers.find((item) => item.id === selectedUserId);
     if (!user) return;
@@ -472,7 +415,8 @@ export function UrenverantwoordingPage() {
     if (selectedExternalPersonCandidate) {
       return selectedExternalPersonCandidate.selectable === false ? undefined : selectedExternalPersonCandidate;
     }
-    return (selectedExternalPersonId ? activeExternalPeople.find((person) => person.id === selectedExternalPersonId) : undefined) ?? activeExternalPeople[0];
+    if (!selectedExternalPersonId) return undefined;
+    return activeExternalPeople.find((person) => person.id === selectedExternalPersonId);
   }
 
   function addExternalParticipant(target: "create" | "edit") {
@@ -537,16 +481,32 @@ export function UrenverantwoordingPage() {
     setEditParticipants((current) => current.filter((_, currentIndex) => currentIndex !== index));
   }
 
-  function startEditingProject(project: WorkHourProject) {
-    setEditingProject(project);
-    setStatusMessage(null);
-    setErrorMessage(null);
+  function clearCreateError(field: string) {
+    setCreateErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
   }
 
-  function startEditingPost(post: WorkHourPost) {
-    setEditingPost(post);
-    setStatusMessage(null);
+  function resetCreate(form?: HTMLFormElement | null) {
+    form?.reset();
+    desktopCreateFormRef.current?.reset();
+    mobileCreateFormRef.current?.reset();
+    document.querySelectorAll<HTMLFormElement>(".work-hours-quick-add, .work-hours-mobile-quick-add").forEach((quickAddForm) => quickAddForm.reset());
+    setNewGroupProjectId("");
+    setNewGroupPostId("");
+    setSelectedUserId("");
+    setSelectedExternalPersonId("");
+    setParticipants([]);
+    setCreateErrors({});
     setErrorMessage(null);
+    setShowParticipantEditor(false);
+    setDuplicateCandidates([]);
+    setDuplicateConflictCode("");
+    setPendingExternalPerson(null);
+    setSelectedExternalPersonCandidate(null);
   }
 
   function startEditingPerson(person: WorkHourExternalPerson) {
@@ -557,20 +517,30 @@ export function UrenverantwoordingPage() {
 
   async function onCreateGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const workDate = String(data.get("work_date") ?? formatAmsterdamDateInput());
     const project = newGroupProjectId;
     const post = newGroupPostId;
     const description = String(data.get("description") ?? "");
     const durationHalfHours = Number(data.get("duration_half_hours") ?? 2);
-    if (!project || !post || !newGroupPostOptions.some((item) => item.id === post)) {
+    if (!workDate || workDate > formatAmsterdamDateInput() || !project || !post || !newGroupPostOptions.some((item) => item.id === post) || !Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 48) {
       const errors = {
+        ...(!workDate || workDate > formatAmsterdamDateInput() ? { work_date: "Kies een geldige datum die niet in de toekomst ligt." } : {}),
         ...(!project ? { project_id: "Kies een project." } : {}),
-        ...(!post || !newGroupPostOptions.some((item) => item.id === post) ? { post_id: "Kies een post binnen het geselecteerde project." } : {})
+        ...(!post || !newGroupPostOptions.some((item) => item.id === post) ? { post_id: "Kies een post." } : {}),
+        ...(!Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 48 ? { duration_half_hours: "Kies 0,5 tot en met 24 uur." } : {})
       };
       setCreateErrors(errors);
       setErrorMessage("Controleer de gemarkeerde velden.");
-      requestAnimationFrame(() => document.getElementById(Object.keys(errors)[0] === "project_id" ? "hours-create-project" : "hours-create-post")?.focus());
+      const prefix = form.classList.contains("work-hours-mobile-create") ? "hours-mobile-create" : "hours-create";
+      const fieldIds: Record<string, string> = {
+        work_date: `${prefix}-date`,
+        project_id: `${prefix}-project`,
+        post_id: `${prefix}-post`,
+        duration_half_hours: `${prefix}-duration`,
+      };
+      requestAnimationFrame(() => document.getElementById(fieldIds[Object.keys(errors)[0]])?.focus());
       return;
     }
     setCreateErrors({});
@@ -598,7 +568,7 @@ export function UrenverantwoordingPage() {
               })()
       )
     });
-    event.currentTarget.reset();
+    resetCreate(form);
   }
 
   async function onSaveEditingGroup(event: FormEvent<HTMLFormElement>) {
@@ -631,36 +601,6 @@ export function UrenverantwoordingPage() {
     });
   }
 
-  async function onSaveEditingProject(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingProject) return;
-    const data = new FormData(event.currentTarget);
-    await updateProjectMutation.mutateAsync({
-      projectId: editingProject.id,
-      payload: {
-        name: String(data.get("name") ?? editingProject.name),
-        description: String(data.get("description") ?? editingProject.description),
-        expected_row_version: editingProject.row_version
-      }
-    });
-    setEditingProject(null);
-  }
-
-  async function onSaveEditingPost(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingPost) return;
-    const data = new FormData(event.currentTarget);
-    await updatePostMutation.mutateAsync({
-      postId: editingPost.id,
-      payload: {
-        name: String(data.get("name") ?? editingPost.name),
-        description: String(data.get("description") ?? editingPost.description),
-        expected_row_version: editingPost.row_version
-      }
-    });
-    setEditingPost(null);
-  }
-
   async function onSaveEditingPerson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editingPerson) return;
@@ -679,7 +619,8 @@ export function UrenverantwoordingPage() {
 
   async function onQuickAddExternalPerson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const data = new FormData(form);
     const payload = {
       display_name: String(data.get("display_name") ?? ""),
       email: String(data.get("email") ?? "") || null,
@@ -692,7 +633,7 @@ export function UrenverantwoordingPage() {
       setDuplicateCandidates([]);
       setPendingExternalPerson(null);
       setErrorMessage(null);
-      event.currentTarget.reset();
+      form.reset();
     } catch (error) {
       const parsed = parseApiDetail(error);
       const candidates = parsed?.detail?.candidates ?? [];
@@ -706,40 +647,6 @@ export function UrenverantwoordingPage() {
     }
   }
 
-  async function onPreviewImport() {
-    setErrorMessage(null);
-    try {
-      const parsed = JSON.parse(importJson) as WorkHourImportEnvelope;
-      const response = await previewImportMutation.mutateAsync({ payload: parsed, mode: importMode });
-      setPreviewBatchId(response.batch_id);
-      setPreviewResult(response);
-      setStatusMessage(`Preview gereed: ${response.status}.`);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Import preview mislukt");
-    }
-  }
-
-  async function onCommitImport() {
-    if (!previewBatchId) return;
-    try {
-      const parsed = JSON.parse(importJson) as WorkHourImportEnvelope;
-      const response = await commitImportMutation.mutateAsync({ batchId: previewBatchId, payload: parsed, mode: importMode });
-      setBackupDownloadUrl(response.backup_download_url);
-      setStatusMessage("Import uitgevoerd.");
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-deleted-groups"] });
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Import commit mislukt");
-    }
-  }
-
-  async function onDownloadBackup() {
-    if (!previewBatchId) return;
-    const blob = await downloadWorkHoursBackup(previewBatchId);
-    downloadBlob(blob, `urenverantwoording-backup-${previewBatchId}.json`);
-  }
-
   async function onExportCsv() {
     const blob = await downloadWorkHoursCsv(sharedFilters);
     downloadBlob(blob, "urenverantwoording.csv");
@@ -750,122 +657,49 @@ export function UrenverantwoordingPage() {
       <header className="panel">
         <p className="eyebrow">Urenverantwoording</p>
         <h1>Urenregistratie</h1>
-        <p>Groepsregistraties, masterdata en import/export in één Nederlands scherm.</p>
+        <p>Registreer groepen compact inline; projecten en globale posten beheer je centraal in Admin.</p>
         {statusMessage && <p className="notice success" role="status" aria-live="polite">{statusMessage}</p>}
         {errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}
       </header>
 
       <section className="panel">
-        <h2>Filters</h2>
-        <div className="form-grid">
-           <label><span>Zoekterm</span><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Zoek in beschrijving, project of post" /></label>
-           <label><span>Werkdatum</span><input type="date" value={workDateFilter} onChange={(event) => { setWorkDateFilter(event.target.value); setPage(1); }} /></label>
-           <label><span>Persoonstype</span><select value={participantKind} onChange={(event) => { setParticipantKind(event.target.value as typeof participantKind); setPage(1); }}><option value="">Alles</option><option value="live_user">WindWilly-gebruiker</option><option value="external_person">Extern</option><option value="historical_identity">Historisch</option></select></label>
-           <label><span>Project</span><select value={projectId} onChange={(event) => { setProjectId(event.target.value); setPage(1); }}><option value="">Alles</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-           <label><span>Post</span><select value={postId} onChange={(event) => { setPostId(event.target.value); setPage(1); }}><option value="">Alles</option>{postOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>
-            <label><span>Sorteer op</span><select value={sortKey} onChange={(event) => { setSortKey(event.target.value as WorkHourSortKey); setPage(1); }}><option value="work_date">Datum</option><option value="name_person">Naam persoon</option><option value="type_person">Type persoon</option><option value="project">Project</option><option value="post">Post</option><option value="duration_half_hours">Aantal uren</option><option value="created_at">Aangemaakt op</option><option value="updated_at">Laatst gewijzigd op</option></select></label>
-           <label><span>Volgorde</span><select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as "asc" | "desc"); setPage(1); }}><option value="desc">Aflopend</option><option value="asc">Oplopend</option></select></label>
-           <label><span>Pagina grootte</span><select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
-         </div>
-         <div className="section-actions">
-           <button type="button" onClick={() => setPage(1)}>Ververs</button>
-           <button type="button" onClick={onExportCsv}>CSV export</button>
-         </div>
-      </section>
-
-      <section className="panel">
-        <h2>Registreren</h2>
-        <button type="button" data-hours-focus-fallback onClick={() => setShowCreateModal(true)}>Nieuwe registratie</button>
-      </section>
-      {showCreateModal && <AccessibleModal title="Nieuwe registratie" onClose={() => setShowCreateModal(false)} committing={createGroupMutation.isPending}>
-          {errorMessage && <p className="notice error" role="alert" tabIndex={-1}>{errorMessage}</p>}
-          <form onSubmit={onCreateGroup} className="form-grid">
-            <label><span>Datum</span><input type="date" name="work_date" defaultValue={formatAmsterdamDateInput()} /></label>
-             <div><label><span>Project</span><select id="hours-create-project" value={newGroupProjectId} aria-invalid={Boolean(createErrors.project_id)} aria-describedby={createErrors.project_id ? "hours-create-project-error" : undefined} onChange={(event) => { setNewGroupProjectId(event.target.value); setCreateErrors((current) => ({ ...current, project_id: "", post_id: "" })); setPage(1); }}><option value="">Kies een project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>{createErrors.project_id && <span id="hours-create-project-error" className="field-error">{createErrors.project_id}</span>}</div>
-             <div><label><span>Post</span><select id="hours-create-post" value={newGroupPostId} aria-invalid={Boolean(createErrors.post_id)} aria-describedby={createErrors.post_id ? "hours-create-post-error" : undefined} disabled={!newGroupProjectId || newGroupPostOptions.length === 0} onChange={(event) => { setNewGroupPostId(event.target.value); if (event.target.value) setCreateErrors((current) => ({ ...current, post_id: "" })); setPage(1); }}><option value="">Kies een post</option>{newGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>{createErrors.post_id && <span id="hours-create-post-error" className="field-error">{createErrors.post_id}</span>}</div>
-            <label><span>WindWilly-persoon</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} disabled={!eligibleUsers.length}><option value="">Kies een actieve gebruiker</option>{eligibleUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.username}</option>)}</select></label>
-            <label><span>Externe persoon</span><select value={selectedExternalPersonId} onChange={(event) => setSelectedExternalPersonId(event.target.value)} disabled={!activeExternalPeople.length}><option value="">Kies een externe persoon</option>{activeExternalPeople.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
-            <label><span>Duur (half uur)</span><input type="number" name="duration_half_hours" min={1} defaultValue={2} /></label>
-            <label className="span-2"><span>Beschrijving</span><textarea name="description" rows={3} /></label>
-            <div className="section-actions span-2">
-              <button type="button" onClick={() => addUserParticipant("create")} disabled={!eligibleUsers.length}>Voeg WindWilly-persoon toe</button>
-              <button type="button" onClick={() => addExternalParticipant("create")} disabled={!activeExternalPeople.length}>Voeg externe persoon toe</button>
-            </div>
-          <div className="span-2">
-            <strong>Deelnemers</strong>
-            {participants.length === 0 ? <p className="muted">Er is nog geen deelnemer toegevoegd; standaard wordt de huidige gebruiker gebruikt.</p> : (
-              <ul>
-                {participants.map((participant, index) => <li key={`${participant.kind}-${index}`}>{participant.display_name_snapshot} · {participant.display_type_snapshot}</li>)}
-              </ul>
-            )}
-          </div>
-          <div className="section-actions span-2"><button type="submit" disabled={createGroupMutation.isPending}>Opslaan</button><button type="button" onClick={() => setShowCreateModal(false)}>Annuleren</button></div>
-        </form>
-      </AccessibleModal>}
-
-      <section className="panel">
-        <h2>Externe personen quick-add</h2>
-        <form className="form-grid" onSubmit={onQuickAddExternalPerson}>
-          <label><span>Naam</span><input name="display_name" /></label>
-          <label><span>E-mail</span><input name="email" type="email" /></label>
-          <label><span>Notitie</span><textarea name="note" rows={2} /></label>
-          <div className="section-actions span-2"><button type="submit">Opslaan</button></div>
-        </form>
-        {duplicateCandidates.length > 0 && (
-          <div className="notice warning">
-            <p>Deze persoon lijkt al te bestaan. Kies een bestaande persoon of maak bewust een nieuwe aan.</p>
-            <ul>
-              {duplicateCandidates.map((candidate) => (
-                <li key={candidate.id}>
-                  <strong>{candidate.display_name}</strong>
-                  {candidate.email ? ` · ${candidate.email}` : ""}
-                  {candidate.status_label ? ` · ${candidate.status_label}` : candidate.deleted_at ? " · historisch" : candidate.is_active ? " · beschikbaar" : " · inactief"}
-                  {candidate.guidance ? <span> · {candidate.guidance}</span> : null}
-                  {candidate.selectable === false ? (
-                    <span> · niet selecteerbaar</span>
-                  ) : (
-                    <button type="button" onClick={() => selectExistingCandidate(candidate)}>Kies bestaande</button>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <div className="section-actions">
-              {duplicateConflictCode === "work_hours_external_person_advisory_conflict" && <button type="button" onClick={() => setForceCreateConfirm(true)} disabled={!pendingExternalPerson}>Toch aanmaken</button>}
-            </div>
-          </div>
-        )}
-        {selectedExternalPersonId && (
-          <p className="muted">Geselecteerde bestaande persoon voor nieuwe registratie: {selectedExternalPersonCandidate?.display_name ?? activeExternalPeople.find((person) => person.id === selectedExternalPersonId)?.display_name ?? selectedExternalPersonId}</p>
-        )}
-      </section>
-
-      <section className="panel">
-        <h2>Overzicht</h2>
-        <p className="muted">Totaal: {groupsQuery.data?.totals.total_groups ?? 0} groepen, {groupsQuery.data?.totals.total_person_hours ?? 0} persoon-uren.</p>
-        <section className="work-hours-chart" aria-labelledby="work-hours-chart-title">
-          <h3 id="work-hours-chart-title">Urenoverzicht</h3>
-          <div className="work-hours-chart-bars" aria-hidden="true">
-            <span style={{ width: `${Math.min(100, groupsQuery.data?.totals.total_duration_hours ?? 0)}%` }} />
-            <span style={{ width: `${Math.min(100, groupsQuery.data?.totals.total_person_hours ?? 0)}%` }} />
-          </div>
-          <dl className="work-hours-chart-values">
-            <div><dt>Groepsuren</dt><dd>{groupsQuery.data?.totals.total_duration_hours ?? 0}</dd></div>
-            <div><dt>Persoon-uren</dt><dd>{groupsQuery.data?.totals.total_person_hours ?? 0}</dd></div>
-          </dl>
-        </section>
+        <div className="work-hours-overview-heading"><h2>Overzicht en registreren</h2><button type="button" onClick={() => { setProjectId(""); setPostId(""); setWorkDateFilter(""); setParticipantKind(""); setParticipantQuery(""); setQuery(""); setPage(1); }}>Alle filters wissen</button></div>
+        <dl className="work-hours-totals" aria-label="Totalen over gefilterde registraties">
+          <div><dt>Groepen</dt><dd>{groupsQuery.data?.totals.total_groups ?? 0}</dd></div><div><dt>Personen</dt><dd>{groupsQuery.data?.totals.total_people ?? 0}</dd></div><div><dt>Groepsuren</dt><dd>{groupsQuery.data?.totals.total_duration_hours ?? 0}</dd></div><div><dt>Persoon-uren</dt><dd>{groupsQuery.data?.totals.total_person_hours ?? 0}</dd></div>
+        </dl>
+        <div className="work-hours-toolbar"><label>Sorteer <select value={sortKey} onChange={(event) => { setSortKey(event.target.value as WorkHourSortKey); setPage(1); }}><option value="work_date">Datum</option><option value="name_person">Naam</option><option value="type_person">Type</option><option value="project">Project</option><option value="post">Post</option><option value="duration_half_hours">Uren</option></select></label><label>Volgorde <select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as "asc" | "desc"); setPage(1); }}><option value="desc">Aflopend</option><option value="asc">Oplopend</option></select></label><label>Per pagina <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button type="button" onClick={onExportCsv}>CSV export</button></div>
         <div className="section-actions">
           <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Vorige</button>
           <span>Pagina {groupsQuery.data?.page ?? page} van {totalPages}</span>
           <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Volgende</button>
         </div>
         <div className="table-wrap">
+          <form ref={desktopCreateFormRef} id="work-hours-create-form" onSubmit={onCreateGroup} />
           <table>
             <thead>
-              <tr><th>Datum</th><th>Persoon(s)</th><th>Project</th><th>Post</th><th>Uren</th><th>Beschrijving</th><th>Acties</th></tr>
+              <tr>
+                <th><ColumnFilter label="Datum" active={Boolean(workDateFilter)} search="" setSearch={() => undefined} searchable={false} onReset={() => { setWorkDateFilter(""); setPage(1); }}><input aria-label="Kies filterdatum" type="date" value={workDateFilter} onChange={(event) => { setWorkDateFilter(event.target.value); setPage(1); }} />{(metaQuery.data?.filter_dates ?? []).map((value) => <button type="button" key={value} onClick={() => { setWorkDateFilter(value); setPage(1); }}>{formatAmsterdamDisplayDate(value)}</button>)}</ColumnFilter></th>
+                <th><ColumnFilter label="Persoon" active={Boolean(participantQuery || participantKind)} search={filterSearches.person} setSearch={(value) => setFilterSearches((current) => ({ ...current, person: value }))} onReset={() => { setParticipantQuery(""); setParticipantKind(""); setPage(1); }}>{filterParticipantNames.filter((name) => name.toLowerCase().includes(filterSearches.person.toLowerCase())).map((name) => <button type="button" key={name} aria-pressed={participantQuery === name} onClick={() => { setParticipantQuery(name); setPage(1); }}>{name}</button>)}</ColumnFilter></th>
+                <th><ColumnFilter label="Project" active={Boolean(projectId)} search={filterSearches.project} setSearch={(value) => setFilterSearches((current) => ({ ...current, project: value }))} onReset={() => { setProjectId(""); setPage(1); }}>{filterProjectOptions.filter((item) => item.name.toLowerCase().includes(filterSearches.project.toLowerCase())).map((item) => <button type="button" key={item.id} aria-pressed={projectId === item.id} onClick={() => { setProjectId(item.id); setPage(1); }}>{item.name}{item.selectable === false ? " · historisch" : ""}</button>)}</ColumnFilter></th>
+                <th><ColumnFilter label="Post" active={Boolean(postId)} search={filterSearches.post} setSearch={(value) => setFilterSearches((current) => ({ ...current, post: value }))} onReset={() => { setPostId(""); setPage(1); }}>{filterPostOptions.filter((item) => item.name.toLowerCase().includes(filterSearches.post.toLowerCase())).map((item) => <button type="button" key={item.id} aria-pressed={postId === item.id} onClick={() => { setPostId(item.id); setPage(1); }}>{item.name}{item.selectable === false ? " · historisch" : ""}</button>)}</ColumnFilter></th>
+                <th>Uren</th>
+                <th><ColumnFilter label="Zoeken" active={Boolean(query)} search={query} setSearch={(value) => { setQuery(value); setPage(1); }} onReset={() => { setQuery(""); setPage(1); }}><span className="muted">Zoekt in beschrijving, project en post.</span></ColumnFilter></th>
+                <th><ColumnFilter label="Type" active={Boolean(participantKind)} search={filterSearches.type} setSearch={(value) => setFilterSearches((current) => ({ ...current, type: value }))} onReset={() => { setParticipantKind(""); setPage(1); }}>{[["live_user", "WindWilly-gebruiker"], ["external_person", "Extern"], ["historical_identity", "Historisch"]].filter(([, label]) => label.toLowerCase().includes(filterSearches.type.toLowerCase())).map(([value, label]) => <button type="button" key={value} aria-pressed={participantKind === value} onClick={() => { setParticipantKind(value as typeof participantKind); setPage(1); }}>{label}</button>)}</ColumnFilter></th>
+              </tr>
             </thead>
             <tbody>
+              <tr className="work-hours-create-row">
+                <td><label className="sr-only" htmlFor="hours-create-date">Datum</label><input form="work-hours-create-form" id="hours-create-date" name="work_date" type="date" defaultValue={formatAmsterdamDateInput()} aria-invalid={Boolean(createErrors.work_date)} aria-describedby={createErrors.work_date ? "hours-create-date-error" : undefined} onChange={(event) => { if (event.target.value && event.target.value <= formatAmsterdamDateInput()) clearCreateError("work_date"); }} />{createErrors.work_date && <span id="hours-create-date-error" className="field-error">{createErrors.work_date}</span>}</td>
+                <td><button type="button" aria-expanded={showParticipantEditor} onClick={() => setShowParticipantEditor((current) => !current)}>{participants.length || 1} deelnemer(s)</button></td>
+                <td><select form="work-hours-create-form" id="hours-create-project" aria-label="Project voor nieuwe registratie" value={newGroupProjectId} aria-invalid={Boolean(createErrors.project_id)} aria-describedby={createErrors.project_id ? "hours-create-project-error" : undefined} onChange={(event) => { setNewGroupProjectId(event.target.value); if (event.target.value) clearCreateError("project_id"); }}><option value="">Kies project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>{createErrors.project_id && <span id="hours-create-project-error" className="field-error">{createErrors.project_id}</span>}</td>
+                <td><select form="work-hours-create-form" id="hours-create-post" aria-label="Post voor nieuwe registratie" value={newGroupPostId} aria-invalid={Boolean(createErrors.post_id)} aria-describedby={createErrors.post_id ? "hours-create-post-error" : undefined} onChange={(event) => { setNewGroupPostId(event.target.value); if (event.target.value) clearCreateError("post_id"); }}><option value="">Kies post</option>{newGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select>{createErrors.post_id && <span id="hours-create-post-error" className="field-error">{createErrors.post_id}</span>}</td>
+                <td><input form="work-hours-create-form" id="hours-create-duration" aria-label="Duur in halve uren" name="duration_half_hours" type="number" min={1} max={48} defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-create-duration-error" : undefined} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 48) clearCreateError("duration_half_hours"); }} />{createErrors.duration_half_hours && <span id="hours-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}</td>
+                <td><input form="work-hours-create-form" aria-label="Beschrijving nieuwe registratie" name="description" placeholder="Beschrijving" /></td>
+                <td className="work-hours-row-actions"><button form="work-hours-create-form" type="submit" aria-label="Registratie opslaan" title="Opslaan" disabled={createGroupMutation.isPending}>✓</button><button type="button" aria-label="Nieuwe registratie resetten" title="Reset" onClick={() => resetCreate(desktopCreateFormRef.current)}>↺</button></td>
+              </tr>
+              {showParticipantEditor && <tr className="work-hours-create-expanded"><td colSpan={7}><div className="work-hours-participant-editor"><label>WindWilly-persoon <select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}><option value="">Kies een actieve gebruiker</option>{eligibleUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.username}</option>)}</select></label><button type="button" onClick={() => addUserParticipant("create")}>Deelnemer toevoegen</button><label>Externe persoon <select value={selectedExternalPersonId} onChange={(event) => setSelectedExternalPersonId(event.target.value)}><option value="">Kies een actieve externe persoon</option>{activeExternalPeople.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><button type="button" onClick={() => addExternalParticipant("create")}>Externe toevoegen</button><ul>{participants.map((participant, index) => <li key={`${participant.kind}-${index}`}>{participant.display_name_snapshot}<button type="button" aria-label={`Verwijder ${participant.display_name_snapshot}`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></li>)}</ul><form className="work-hours-quick-add" onSubmit={onQuickAddExternalPerson}><strong>Externe persoon snel toevoegen</strong><input name="display_name" aria-label="Naam externe persoon" placeholder="Naam" required /><input name="email" type="email" aria-label="E-mail externe persoon" placeholder="E-mail (optioneel)" /><input name="note" aria-label="Notitie externe persoon" placeholder="Notitie" /><button type="submit">Aanmaken en toevoegen</button></form>{duplicateCandidates.length > 0 && <div className="notice warning"><p>Mogelijke dubbele persoon.</p>{duplicateCandidates.map((candidate) => <button type="button" key={candidate.id} disabled={candidate.selectable === false} onClick={() => selectExistingCandidate(candidate)}>Kies {candidate.display_name}</button>)}{duplicateConflictCode === "work_hours_external_person_advisory_conflict" && <button type="button" onClick={() => setForceCreateConfirm(true)}>Toch aanmaken</button>}</div>}</div></td></tr>}
               {(groupsQuery.data?.items ?? []).map((group) => (
-                <tr key={group.id}>
+                <tr key={group.id} className="work-hours-data-row">
                   <td>{formatAmsterdamDisplayDate(group.work_date)}</td>
                   <td>
                     <details>
@@ -877,16 +711,43 @@ export function UrenverantwoordingPage() {
                   <td>{group.post_name}</td>
                   <td>{group.duration_hours}</td>
                   <td>{group.description}</td>
-                  <td className="section-actions">
-                    <button type="button" onClick={() => startEditingGroup(group)}>Bewerk</button>
-                    <button type="button" onClick={() => setDeleteGroupTarget(group)}>Verwijder</button>
-                    {isAdmin && group.deleted_at && <button type="button" onClick={() => restoreGroupMutation.mutate(group)}>Herstel</button>}
+                  <td className="work-hours-row-actions">
+                    <button type="button" aria-label={`Bewerk registratie ${group.project_name}`} title="Bewerk" onClick={() => startEditingGroup(group)}>✎</button>
+                    <button type="button" aria-label={`Verwijder registratie ${group.project_name}`} title="Verwijder" onClick={() => setDeleteGroupTarget(group)}>×</button>
+                    {isAdmin && group.deleted_at && <button type="button" aria-label="Herstel registratie" title="Herstel" onClick={() => restoreGroupMutation.mutate(group)}>↺</button>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <section className="work-hours-mobile-create-card" aria-labelledby="hours-mobile-create-title">
+          <h3 id="hours-mobile-create-title">Nieuwe registratie</h3>
+          <form ref={mobileCreateFormRef} className="work-hours-mobile-create" onSubmit={onCreateGroup}>
+            <label>Datum<input id="hours-mobile-create-date" name="work_date" type="date" defaultValue={formatAmsterdamDateInput()} aria-invalid={Boolean(createErrors.work_date)} aria-describedby={createErrors.work_date ? "hours-mobile-create-date-error" : undefined} onChange={(event) => { if (event.target.value && event.target.value <= formatAmsterdamDateInput()) clearCreateError("work_date"); }} /></label>
+            {createErrors.work_date && <span id="hours-mobile-create-date-error" className="field-error">{createErrors.work_date}</span>}
+            <label>Project<select id="hours-mobile-create-project" aria-label="Project voor nieuwe registratie mobiel" value={newGroupProjectId} aria-invalid={Boolean(createErrors.project_id)} aria-describedby={createErrors.project_id ? "hours-mobile-create-project-error" : undefined} onChange={(event) => { setNewGroupProjectId(event.target.value); if (event.target.value) clearCreateError("project_id"); }}><option value="">Kies project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
+            {createErrors.project_id && <span id="hours-mobile-create-project-error" className="field-error">{createErrors.project_id}</span>}
+            <label>Post<select id="hours-mobile-create-post" aria-label="Post voor nieuwe registratie mobiel" value={newGroupPostId} aria-invalid={Boolean(createErrors.post_id)} aria-describedby={createErrors.post_id ? "hours-mobile-create-post-error" : undefined} onChange={(event) => { setNewGroupPostId(event.target.value); if (event.target.value) clearCreateError("post_id"); }}><option value="">Kies post</option>{newGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>
+            {createErrors.post_id && <span id="hours-mobile-create-post-error" className="field-error">{createErrors.post_id}</span>}
+            <label>Duur (halve uren)<input id="hours-mobile-create-duration" name="duration_half_hours" type="number" min={1} max={48} defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-mobile-create-duration-error" : undefined} onChange={(event) => { const value = Number(event.target.value); if (Number.isInteger(value) && value >= 1 && value <= 48) clearCreateError("duration_half_hours"); }} /></label>
+            {createErrors.duration_half_hours && <span id="hours-mobile-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}
+            <label>Beschrijving<input name="description" aria-label="Beschrijving nieuwe registratie mobiel" /></label>
+            <label>WindWilly-persoon<select aria-label="WindWilly-persoon mobiel" value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)}><option value="">Kies een actieve gebruiker</option>{eligibleUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.username}</option>)}</select></label>
+            <button type="button" onClick={() => addUserParticipant("create")}>WindWilly-deelnemer toevoegen</button>
+            <label>Externe persoon<select aria-label="Externe persoon mobiel" value={selectedExternalPersonId} onChange={(event) => setSelectedExternalPersonId(event.target.value)}><option value="">Kies een actieve externe persoon</option>{activeExternalPeople.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
+            <button type="button" onClick={() => addExternalParticipant("create")}>Externe deelnemer toevoegen</button>
+            <ul aria-label="Gekozen deelnemers mobiel">{participants.map((participant, index) => <li key={`${participant.kind}-mobile-${index}`}>{participant.display_name_snapshot}<button type="button" aria-label={`Verwijder ${participant.display_name_snapshot} mobiel`} onClick={() => setParticipants((current) => current.filter((_, itemIndex) => itemIndex !== index))}>×</button></li>)}</ul>
+            <div className="section-actions"><button type="submit" disabled={createGroupMutation.isPending}>Registratie mobiel opslaan</button><button type="button" onClick={() => resetCreate(mobileCreateFormRef.current)}>Mobiele registratie resetten</button></div>
+          </form>
+          <form className="work-hours-mobile-quick-add" onSubmit={onQuickAddExternalPerson}>
+            <strong>Externe persoon snel toevoegen</strong>
+            <label>Naam<input name="display_name" aria-label="Naam externe persoon mobiel" required /></label>
+            <label>E-mail<input name="email" type="email" aria-label="E-mail externe persoon mobiel" /></label>
+            <label>Notitie<input name="note" aria-label="Notitie externe persoon mobiel" /></label>
+            <button type="submit">Externe persoon mobiel aanmaken en toevoegen</button>
+          </form>
+        </section>
         <div className="work-hours-mobile-cards" aria-label="Urenregistraties">
           {(groupsQuery.data?.items ?? []).map((group) => (
             <article className="work-hours-card" key={`card-${group.id}`}>
@@ -981,75 +842,9 @@ export function UrenverantwoordingPage() {
       )}
 
       {currentUser?.is_admin && (
-        <section className="panel">
-          <h2>Beheer</h2>
-          <div className="panel-grid">
-            <form className="panel" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void projectMutation.mutateAsync({ name: String(data.get("name") ?? ""), description: String(data.get("description") ?? "") }); event.currentTarget.reset(); }}>
-              <h3>Project</h3>
-              <label><span>Naam</span><input name="name" /></label>
-              <label><span>Beschrijving</span><textarea name="description" rows={2} /></label>
-              <button type="submit">Project aanmaken</button>
-            </form>
-            <form className="panel" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void postMutation.mutateAsync({ project_id: String(data.get("project_id") ?? ""), name: String(data.get("name") ?? ""), description: String(data.get("description") ?? "") }); event.currentTarget.reset(); }}>
-              <h3>Post</h3>
-              <label><span>Project</span><select name="project_id">{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
-              <label><span>Naam</span><input name="name" /></label>
-              <label><span>Beschrijving</span><textarea name="description" rows={2} /></label>
-              <button type="submit">Post aanmaken</button>
-            </form>
-            <section className="panel">
-              <h3>Import/backup</h3>
-              <p>Controleer een JSON-back-up altijd in preview voordat je deze bevestigt.</p>
-              <button type="button" onClick={() => setShowImportModal(true)}>Open import en backup</button>
-            </section>
-            {showImportModal && <AccessibleModal title="Import en backup" onClose={() => setShowImportModal(false)} committing={previewImportMutation.isPending || commitImportMutation.isPending}>
-              {errorMessage && <p className="notice error" role="alert" tabIndex={-1}>{errorMessage}</p>}
-              <form onSubmit={(event) => { event.preventDefault(); void onPreviewImport(); }}>
-              <label><span>Modus</span><select value={importMode} onChange={(event) => setImportMode(event.target.value as "merge" | "full_restore") }><option value="merge">Merge</option><option value="full_restore">Full restore</option></select></label>
-              <label><span>JSON backup</span><textarea rows={10} value={importJson} onChange={(event) => setImportJson(event.target.value)} /></label>
-               <div className="section-actions"><button type="submit">Preview</button><button type="button" disabled={!previewBatchId || !previewResult?.backup_download_url || previewResult?.status === "conflict" || (previewResult?.errors.length ?? 0) > 0} onClick={() => void onCommitImport()}>Commit</button><button type="button" disabled={!previewResult?.backup_download_url} onClick={() => void onDownloadBackup()}>Download backup</button></div>
-              {previewResult && (
-                <div className="notice">
-                  <p>Preview batch {previewResult.batch_id} — {previewResult.status}</p>
-                  <p>Count: {JSON.stringify(previewResult.counts)}</p>
-                  {previewResult.warnings.length > 0 && <p>Waarschuwingen: {previewResult.warnings.join(" · ")}</p>}
-                  {previewResult.errors.length > 0 && <p>Fouten: {previewResult.errors.join(" · ")}</p>}
-                </div>
-              )}
-               {previewResult?.backup_download_url && <p>Back-up beschikbaar: {previewResult.backup_download_url}</p>}
-               {backupDownloadUrl && <p>Back-up gedownload: {backupDownloadUrl}</p>}
-              <button type="button" onClick={() => setShowImportModal(false)}>Sluiten</button>
-              </form>
-            </AccessibleModal>}
-          </div>
-          <div className="panel-grid">
-            <section className="panel">
-              <h3>Projecten</h3>
-              <label><input type="checkbox" checked={showDeleted} onChange={(event) => setShowDeleted(event.target.checked)} /> Gearchiveerd/verwijderd tonen</label>
-              <ul>
-                {adminProjects.map((project) => (
-                  <li key={project.id}>
-                    {project.name} {project.is_archived ? "· gearchiveerd" : ""}
-                    <button type="button" onClick={() => startEditingProject(project)}>Bewerk</button>
-                     <button type="button" onClick={() => archiveProjectMutation.mutate(project)}>Archiveer</button>
-                     <button type="button" onClick={() => restoreProjectMutation.mutate(project)}>Herstel</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <section className="panel">
-              <h3>Posten</h3>
-              <ul>
-                {adminPosts.map((post) => (
-                  <li key={post.id}>
-                    {post.name} · {(projectOptions.find((project) => project.id === post.project_id)?.name) || post.project_id}
-                    <button type="button" onClick={() => startEditingPost(post)}>Bewerk</button>
-                     <button type="button" onClick={() => archivePostMutation.mutate(post)}>Archiveer</button>
-                     <button type="button" onClick={() => restorePostMutation.mutate(post)}>Herstel</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
+         <section className="panel">
+           <h2>Urenbeheer</h2>
+           <div className="panel-grid">
             <section className="panel">
               <h3>Externe personen</h3>
               <ul>
@@ -1082,7 +877,7 @@ export function UrenverantwoordingPage() {
               <h3>Historie en identiteiten</h3>
               <p className="muted">Alleen beheerders zien verwijderde personen en historische koppelingen.</p>
               <div className="form-grid">
-                <label><span>Type historie</span><select value={historyKind} onChange={(event) => { setHistoryKind(event.target.value as typeof historyKind); setHistoryPage(1); }}><option value="">Alles</option><option value="project">Projecten</option><option value="post">Posten</option><option value="external_person">Externe personen</option><option value="historical_identity">Historische identiteiten</option></select></label>
+                <label><span>Type historie</span><select value={historyKind} onChange={(event) => { setHistoryKind(event.target.value as typeof historyKind); setHistoryPage(1); }}><option value="">Alles</option><option value="post">Posten</option><option value="external_person">Externe personen</option><option value="historical_identity">Historische identiteiten</option></select></label>
                 <label><span>Zoek historie</span><input value={historyQueryText} onChange={(event) => { setHistoryQueryText(event.target.value); setHistoryPage(1); }} /></label>
                 <label><span>Historie per pagina</span><select value={historyPageSize} onChange={(event) => { setHistoryPageSize(Number(event.target.value) as 25 | 50 | 100); setHistoryPage(1); }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label>
               </div>
@@ -1090,8 +885,6 @@ export function UrenverantwoordingPage() {
                 {(historyQuery.data?.items ?? []).map((item) => (
                   <li key={`${item.kind}-${item.id}`}>
                     {item.display_name || item.id} · {item.kind.replace("_", " ")}
-                    {item.kind === "project" && <button type="button" onClick={() => restoreProjectMutation.mutate({ id: item.id, row_version: item.row_version })}>Herstel project</button>}
-                    {item.kind === "post" && <button type="button" onClick={() => restorePostMutation.mutate({ id: item.id, row_version: item.row_version })}>Herstel post</button>}
                     {item.kind === "external_person" && <button type="button" onClick={() => restorePersonMutation.mutate({ id: item.id, display_name: item.display_name, row_version: item.row_version })}>Herstel persoon</button>}
                     {item.kind === "historical_identity" && eligibleUsers[0] && <button type="button" onClick={() => relinkIdentityMutation.mutate({ identityId: item.id, userId: eligibleUsers[0].id, rowVersion: item.row_version })}>Koppel aan {eligibleUsers[0].full_name || eligibleUsers[0].username}</button>}
                   </li>
@@ -1101,26 +894,6 @@ export function UrenverantwoordingPage() {
             </section>
           </div>
         </section>
-      )}
-
-      {editingProject && (
-        <AccessibleModal title="Project bewerken" onClose={() => setEditingProject(null)}>
-          <form onSubmit={onSaveEditingProject} className="form-grid">
-            <label><span>Naam</span><input name="name" defaultValue={editingProject.name} /></label>
-            <label className="span-2"><span>Beschrijving</span><textarea name="description" rows={3} defaultValue={editingProject.description} /></label>
-            <div className="section-actions span-2"><button type="submit">Opslaan</button><button type="button" onClick={() => setEditingProject(null)}>Annuleren</button></div>
-          </form>
-        </AccessibleModal>
-      )}
-
-      {editingPost && (
-        <AccessibleModal title="Post bewerken" onClose={() => setEditingPost(null)}>
-          <form onSubmit={onSaveEditingPost} className="form-grid">
-            <label><span>Naam</span><input name="name" defaultValue={editingPost.name} /></label>
-            <label className="span-2"><span>Beschrijving</span><textarea name="description" rows={3} defaultValue={editingPost.description} /></label>
-            <div className="section-actions span-2"><button type="submit">Opslaan</button><button type="button" onClick={() => setEditingPost(null)}>Annuleren</button></div>
-          </form>
-        </AccessibleModal>
       )}
 
       {editingPerson && (
@@ -1149,7 +922,7 @@ export function UrenverantwoordingPage() {
           </div>
           <ul>
             {auditEvents.map((event) => (
-              <li key={event.id}>{event.actor_display_name} · {formatAmsterdamDateTime(event.created_at)} · {event.action} · {event.request_method} {event.request_path} · {event.result}</li>
+              <li key={event.id}>{event.actor_display_name} · {formatAmsterdamDateTime(event.created_at)} · {event.action}{event.project_name ? ` · ${event.project_name}` : ""}{event.post_name ? ` · ${event.post_name}` : ""} · {event.request_method} {event.request_path} · {event.result}</li>
             ))}
           </ul>
           <div className="section-actions">

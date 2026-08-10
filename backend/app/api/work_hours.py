@@ -3,13 +3,11 @@ from datetime import UTC, date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
-from app.core.settings import get_settings
-from app.models.entities import User
+from app.models.entities import Project, User, WorkPost, WorkPostLegacyAlias, WorkProjectLegacyAlias
 from app.repositories.work_hours_repository import WorkHoursRepository
 from app.schemas.work_hours import (
     WorkAuditEventResponse,
@@ -25,9 +23,6 @@ from app.schemas.work_hours import (
     WorkHourGroupUpdateRequest,
     WorkHourListResponse,
     WorkHourMetaResponse,
-    WorkImportCommitResponse,
-    WorkImportEnvelope,
-    WorkImportPreviewResponse,
     WorkHistoricalIdentityResponse,
     WorkHistoricalIdentityRelinkRequest,
     WorkPostCreateRequest,
@@ -43,7 +38,7 @@ from app.services.work_hours_service import WorkHoursListQuery, WorkHoursService
 router = APIRouter(prefix="/urenverantwoording", tags=["urenverantwoording"])
 
 _FILTER_KEYS = {
-    "work_date", "project_id", "post_id", "participant_kind", "query",
+    "work_date", "project_id", "post_id", "participant_kind", "participant_query", "query",
     "include_deleted", "deleted_only", "sort_key", "sort_direction",
 }
 
@@ -71,6 +66,41 @@ def _service(db: Session, request: Request | None = None) -> WorkHoursService:
     return WorkHoursService(WorkHoursRepository(db), AuditService(db), request=request)
 
 
+def _historical_reference_name(db: Session, details: dict, kind: str) -> str | None:
+    id_key = f"{kind}_id"
+    name_keys = (f"{kind}_name_snapshot", f"{kind}_name")
+    reference_id: str | None = None
+    for state_key in ("after", "before"):
+        state = details.get(state_key)
+        if not isinstance(state, dict):
+            continue
+        for name_key in name_keys:
+            name = state.get(name_key)
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+        if isinstance(state.get(id_key), str):
+            reference_id = state[id_key]
+    if not reference_id:
+        return None
+    if kind == "project":
+        alias = db.get(WorkProjectLegacyAlias, reference_id)
+        row = db.get(Project, alias.project_id if alias else reference_id)
+    else:
+        alias = db.get(WorkPostLegacyAlias, reference_id)
+        row = db.get(WorkPost, alias.post_id if alias else reference_id)
+    if alias is not None:
+        try:
+            snapshot = json.loads(alias.legacy_snapshot_json or "{}")
+        except json.JSONDecodeError:
+            snapshot = {}
+        name = snapshot.get("name")
+        if name:
+            return str(name).strip()
+    if row is not None:
+        return row.name
+    return None
+
+
 @router.get("/meta", response_model=WorkHourMetaResponse)
 def get_meta(request: Request, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> WorkHourMetaResponse:
     return _service(db, request).list_meta(current)
@@ -85,6 +115,7 @@ def list_groups(
     project_id: str | None = None,
     post_id: str | None = None,
     participant_kind: str | None = None,
+    participant_query: str | None = None,
     query: str | None = None,
     include_deleted: bool = False,
     deleted_only: bool = False,
@@ -104,6 +135,7 @@ def list_groups(
             project_id=project_id,
             post_id=post_id,
             participant_kind=participant_kind,
+            participant_query=participant_query,
             query=query,
             include_deleted=include_deleted,
             deleted_only=deleted_only,
@@ -124,6 +156,7 @@ def export_csv(
     project_id: str | None = None,
     post_id: str | None = None,
     participant_kind: str | None = None,
+    participant_query: str | None = None,
     query: str | None = None,
     include_deleted: bool = False,
     deleted_only: bool = False,
@@ -141,6 +174,7 @@ def export_csv(
             project_id=project_id,
             post_id=post_id,
             participant_kind=participant_kind,
+            participant_query=participant_query,
             query=query,
             include_deleted=include_deleted,
             deleted_only=deleted_only,
@@ -265,64 +299,6 @@ def update_post(request: Request, post_id: str, payload: WorkPostUpdateRequest, 
     return _service(db, request).update_post(current, post_id, payload)
 
 
-async def _stream_import_envelope(request: Request) -> WorkImportEnvelope:
-    limit = get_settings().work_hours_import_max_bytes
-    declared = request.headers.get("content-length")
-    if declared:
-        try:
-            if int(declared) > limit:
-                raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Importbestand is te groot")
-        except ValueError:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ongeldige Content-Length") from None
-    body = bytearray()
-    async for chunk in request.stream():
-        if len(body) + len(chunk) > limit:
-            raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="Importbestand is te groot")
-        body.extend(chunk)
-    try:
-        raw = json.loads(body)
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Importbestand bevat geen geldige JSON") from None
-    WorkHoursService.validate_json_resource_limits(raw)
-    try:
-        return WorkImportEnvelope.model_validate(raw)
-    except ValidationError as exc:
-        errors = [{"location": "$." + ".".join(str(item) for item in error["loc"]), "message": error["msg"]} for error in exc.errors()]
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "work_hours_import_validation", "errors": errors}) from None
-
-
-@router.post("/import/preview", response_model=WorkImportPreviewResponse)
-async def preview_import(
-    request: Request,
-    mode: str = Query(default="merge", pattern="^(merge|full_restore)$"),
-    current: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> WorkImportPreviewResponse:
-    _service(db, request)._ensure_admin(current)
-    payload = await _stream_import_envelope(request)
-    return _service(db, request).preview_import(current, payload, mode)
-
-
-@router.post("/import/commit", response_model=WorkImportCommitResponse)
-async def commit_import(
-    request: Request,
-    batch_id: str,
-    mode: str = Query(default="merge", pattern="^(merge|full_restore)$"),
-    current: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-) -> WorkImportCommitResponse:
-    _service(db, request)._ensure_admin(current)
-    payload = await _stream_import_envelope(request)
-    return _service(db, request).commit_import(current, batch_id, payload, mode)
-
-
-@router.get("/import/batches/{batch_id}/backup")
-def download_backup(request: Request, batch_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
-    service = _service(db, request)
-    content, filename = service.download_backup(current, batch_id)
-    return Response(content=content, media_type="application/json", headers={"Content-Disposition": f"attachment; filename={filename}"})
-
-
 @router.post("/historische-identiteiten/{identity_id}/koppelen", response_model=WorkHistoricalIdentityResponse)
 def relink_historical_identity(
     request: Request,
@@ -391,6 +367,8 @@ def list_audit(
                 result=row_result,
                 request_method=row_method,
                 request_path=row_path,
+                project_name=_historical_reference_name(db, details, "project"),
+                post_name=_historical_reference_name(db, details, "post"),
             )
         )
     return WorkAuditListResponse(items=response, total=total, page=page, page_size=page_size)
@@ -401,7 +379,7 @@ def list_admin_history(
     request: Request,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25),
-    kind: str | None = Query(default=None, pattern="^(project|post|external_person|historical_identity)$"),
+    kind: str | None = Query(default=None, pattern="^(post|external_person|historical_identity)$"),
     query: str | None = None,
     sort_key: str = Query(default="display_name", pattern="^(display_name|id)$"),
     sort_direction: str = Query(default="asc", pattern="^(asc|desc)$"),

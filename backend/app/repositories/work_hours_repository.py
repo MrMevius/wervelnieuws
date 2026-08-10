@@ -8,14 +8,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.models.entities import (
     AuditEvent,
+    Project,
     User,
     WorkExternalPerson,
     WorkHistoricalUserIdentity,
     WorkHourGroup,
     WorkHourGroupParticipant,
-    WorkImportBatch,
     WorkPost,
-    WorkProject,
 )
 
 
@@ -42,17 +41,22 @@ class WorkHoursRepository:
             conditions.append(
                 or_(
                     WorkHourGroup.description.ilike(like),
-                    WorkProject.name.ilike(like),
+                    Project.name.ilike(like),
                     WorkPost.name.ilike(like),
                 )
             )
-            stmt = stmt.join(WorkProject, WorkProject.id == WorkHourGroup.project_id).join(
+            stmt = stmt.join(Project, Project.id == WorkHourGroup.project_id).join(
                 WorkPost, WorkPost.id == WorkHourGroup.post_id
             )
         if participant_kind := filters.get("participant_kind"):
             stmt = stmt.join(WorkHourGroupParticipant, WorkHourGroupParticipant.group_id == WorkHourGroup.id)
             conditions.append(WorkHourGroupParticipant.deleted_at.is_(None))
             conditions.append(WorkHourGroupParticipant.participant_kind == participant_kind)
+        if participant_query := str(filters.get("participant_query") or "").strip():
+            if not filters.get("participant_kind"):
+                stmt = stmt.join(WorkHourGroupParticipant, WorkHourGroupParticipant.group_id == WorkHourGroup.id)
+                conditions.append(WorkHourGroupParticipant.deleted_at.is_(None))
+            conditions.append(WorkHourGroupParticipant.display_name_snapshot.ilike(f"%{participant_query}%"))
         if not conditions:
             return stmt
         return stmt.where(and_(*conditions))
@@ -63,42 +67,59 @@ class WorkHoursRepository:
     def list_active_users(self) -> list[User]:
         return list(self.db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.full_name.asc(), User.username.asc())).all())
 
-    def list_projects(self, include_deleted: bool = False) -> list[WorkProject]:
-        stmt = select(WorkProject).order_by(WorkProject.name.asc())
-        if not include_deleted:
-            stmt = stmt.where(WorkProject.deleted_at.is_(None))
+    def list_projects(self, include_deleted: bool = False) -> list[Project]:
+        del include_deleted
+        stmt = select(Project).order_by(Project.name.asc())
         return list(self.db.scalars(stmt).all())
 
-    def list_selectable_projects(self) -> list[WorkProject]:
-        return list(self.db.scalars(select(WorkProject).where(
-            WorkProject.deleted_at.is_(None),
-            WorkProject.is_active.is_(True),
-            WorkProject.is_archived.is_(False),
-        ).order_by(WorkProject.name.asc())).all())
+    def list_selectable_projects(self) -> list[Project]:
+        return list(self.db.scalars(select(Project).where(
+            Project.is_active.is_(True),
+            Project.is_archived.is_(False),
+        ).order_by(Project.name.asc())).all())
 
-    def get_project(self, project_id: str) -> WorkProject | None:
-        return self.db.get(WorkProject, project_id)
+    def get_project(self, project_id: str) -> Project | None:
+        return self.db.get(Project, project_id)
 
     def list_posts(self, include_deleted: bool = False, project_id: str | None = None) -> list[WorkPost]:
         stmt = select(WorkPost).order_by(WorkPost.name.asc())
         if not include_deleted:
             stmt = stmt.where(WorkPost.deleted_at.is_(None))
-        if project_id:
-            stmt = stmt.where(WorkPost.project_id == project_id)
+        del project_id
         return list(self.db.scalars(stmt).all())
 
     def list_selectable_posts(self) -> list[WorkPost]:
-        return list(self.db.scalars(select(WorkPost).join(WorkProject).where(
+        return list(self.db.scalars(select(WorkPost).where(
             WorkPost.deleted_at.is_(None),
             WorkPost.is_active.is_(True),
             WorkPost.is_archived.is_(False),
-            WorkProject.deleted_at.is_(None),
-            WorkProject.is_active.is_(True),
-            WorkProject.is_archived.is_(False),
         ).order_by(WorkPost.name.asc())).all())
 
     def get_post(self, post_id: str) -> WorkPost | None:
         return self.db.get(WorkPost, post_id)
+
+    def list_filter_projects(self) -> list[Project]:
+        return list(self.db.scalars(
+            select(Project).join(WorkHourGroup, WorkHourGroup.project_id == Project.id)
+            .distinct().order_by(Project.name.asc())
+        ).all())
+
+    def list_filter_posts(self) -> list[WorkPost]:
+        return list(self.db.scalars(
+            select(WorkPost).join(WorkHourGroup, WorkHourGroup.post_id == WorkPost.id)
+            .distinct().order_by(WorkPost.name.asc())
+        ).all())
+
+    def list_filter_participants(self) -> list[str]:
+        return list(self.db.scalars(
+            select(WorkHourGroupParticipant.display_name_snapshot)
+            .distinct().order_by(WorkHourGroupParticipant.display_name_snapshot.asc())
+        ).all())
+
+    def list_filter_dates(self) -> list[date]:
+        return list(self.db.scalars(
+            select(WorkHourGroup.work_date).distinct().order_by(WorkHourGroup.work_date.desc())
+        ).all())
 
     def list_external_people(self, include_deleted: bool = False) -> list[WorkExternalPerson]:
         stmt = select(WorkExternalPerson).order_by(WorkExternalPerson.display_name.asc())
@@ -118,27 +139,15 @@ class WorkHoursRepository:
     def get_historical_identity(self, identity_id: str) -> WorkHistoricalUserIdentity | None:
         return self.db.get(WorkHistoricalUserIdentity, identity_id)
 
-    def list_import_batches_by_ids(self, batch_ids: set[str]) -> list[WorkImportBatch]:
-        if not batch_ids:
-            return []
-        return list(self.db.scalars(select(WorkImportBatch).where(WorkImportBatch.id.in_(batch_ids))).all())
-
     def query_admin_history(
         self, *, kind: str | None, query: str | None, page: int, page_size: int, sort_key: str, sort_direction: str
     ) -> tuple[list[dict[str, object]], int]:
         """Return the archive/history surface using one SQL count/page query."""
-        project_rows = select(
-            literal("project").label("kind"), WorkProject.id.label("id"),
-            WorkProject.name.label("display_name"), WorkProject.row_version.label("row_version"),
-            WorkProject.is_active.label("is_active"), WorkProject.is_archived.label("is_archived"),
-            WorkProject.deleted_at.label("deleted_at"), literal(None).label("project_id"),
-            literal(None).label("linked_user_id"),
-        ).where(or_(WorkProject.is_archived.is_(True), WorkProject.deleted_at.is_not(None)))
         post_rows = select(
             literal("post").label("kind"), WorkPost.id.label("id"),
             WorkPost.name.label("display_name"), WorkPost.row_version.label("row_version"),
             WorkPost.is_active.label("is_active"), WorkPost.is_archived.label("is_archived"),
-            WorkPost.deleted_at.label("deleted_at"), WorkPost.project_id.label("project_id"),
+            WorkPost.deleted_at.label("deleted_at"), literal(None).label("project_id"),
             literal(None).label("linked_user_id"),
         ).where(or_(WorkPost.is_archived.is_(True), WorkPost.deleted_at.is_not(None)))
         people_rows = select(
@@ -157,7 +166,7 @@ class WorkHoursRepository:
             WorkHistoricalUserIdentity.linked_user_id.label("linked_user_id"),
         )
         by_kind = {
-            "project": project_rows, "post": post_rows,
+            "post": post_rows,
             "external_person": people_rows, "historical_identity": identity_rows,
         }
         history = (by_kind[kind] if kind else union_all(*by_kind.values())).subquery()
@@ -175,7 +184,7 @@ class WorkHoursRepository:
         )
         return [dict(row) for row in self.db.execute(statement).mappings().all()], total
 
-    def create_project(self, project: WorkProject) -> WorkProject:
+    def create_project(self, project: Project) -> Project:
         self.db.add(project)
         self.db.commit()
         self.db.refresh(project)
@@ -243,7 +252,7 @@ class WorkHoursRepository:
         )
         sort_map = {
             "work_date": WorkHourGroup.work_date,
-            "project": WorkProject.name,
+            "project": Project.name,
             "post": WorkPost.name,
             "name_person": primary_participant_name,
             "type_person": primary_participant_type,
@@ -256,7 +265,7 @@ class WorkHoursRepository:
         ids_stmt = select(WorkHourGroup.id)
         ids_stmt = self._apply_group_filters(ids_stmt, filters)
         if sort_key in {"project", "post"} and not query_text:
-            ids_stmt = ids_stmt.join(WorkProject, WorkProject.id == WorkHourGroup.project_id).join(
+            ids_stmt = ids_stmt.join(Project, Project.id == WorkHourGroup.project_id).join(
                 WorkPost, WorkPost.id == WorkHourGroup.post_id
             )
         ids_stmt = ids_stmt.distinct()
@@ -382,18 +391,6 @@ class WorkHoursRepository:
             .limit(page_size)
         ).all())
         return rows, total
-
-    def create_import_batch(self, batch: WorkImportBatch) -> WorkImportBatch:
-        self.db.add(batch)
-        self.db.commit()
-        self.db.refresh(batch)
-        return batch
-
-    def update_import_batch(self, batch: WorkImportBatch) -> WorkImportBatch:
-        self.db.add(batch)
-        self.db.commit()
-        self.db.refresh(batch)
-        return batch
 
     def replace_group_participants(self, group: WorkHourGroup, participants: Iterable[WorkHourGroupParticipant]) -> None:
         self.db.query(WorkHourGroupParticipant).filter(WorkHourGroupParticipant.group_id == group.id).delete()

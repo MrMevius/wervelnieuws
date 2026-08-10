@@ -29,11 +29,28 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "97",
+                "date": "2026-08-10",
+                "title": "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups",
+                "highlights": [
+                    "De aparte JSON-import en -back-up voor uren is verwijderd; CSV-export en het afzonderlijk herstellen van verwijderde registraties en externe personen blijven beschikbaar.",
+                    "Beheerders beveiligen de volledige installatie voortaan met de normale database- en storageback-up.",
+                ],
+            },
+            {
+                "iteration": "96",
+                "date": "2026-08-09",
+                "title": "Uren sneller registreren met centraal project- en postenbeheer",
+                "highlights": [
+                    "Registreer uren direct in de compacte bovenste tabelrij, filter vanuit de kolomkoppen en beheer projecten en globale posten voortaan centraal in Admin.",
+                ],
+            },
+            {
                 "iteration": "95",
                 "date": "2026-08-04",
-                "title": "Urenregistratie sluit import, audit en historie veiliger af",
+                "title": "Urenregistratie maakt audit en historie beter inzichtelijk",
                 "highlights": [
-                    "Imports worden vóór verwerking volledig gecontroleerd, audits zijn beter doorzoekbaar en gepagineerd, en urenoverzichten tonen datums consequent in Nederlandse notatie.",
+                    "Audits zijn beter doorzoekbaar en gepagineerd, en urenoverzichten tonen datums consequent in Nederlandse notatie.",
                 ],
             },
             {
@@ -41,7 +58,7 @@ def _default_about() -> AboutResponse:
                 "date": "2026-08-04",
                 "title": "Urenregistratie beschermt historie en persoonsgegevens beter",
                 "highlights": [
-                    "Exports, imports, herstel en samenvoegen volgen nu dezelfde strikte controles, terwijl historische namen intact blijven en modals beter met toetsenbord en schermlezer werken.",
+                    "CSV-export, individueel herstel en samenvoegen volgen strikte controles, terwijl historische namen intact blijven en modals beter met toetsenbord en schermlezer werken.",
                 ],
             },
             {
@@ -49,10 +66,10 @@ def _default_about() -> AboutResponse:
                 "date": "2026-08-04",
                 "title": "Urenregistratie is veiliger en beter controleerbaar",
                 "highlights": [
-                    "Deelnemers worden bij aanmaken, bewerken en importeren volledig gecontroleerd voordat gegevens worden opgeslagen.",
+                    "Deelnemers worden bij aanmaken en bewerken volledig gecontroleerd voordat gegevens worden opgeslagen.",
                     "De personenkeuze bevat alle actieve WindWilly-gebruikers en externe personen, met historische deelnemers alleen-lezen.",
-                    "Beheerders kunnen het uren-auditlog gerichter filteren en importconflicten worden duidelijk en zonder gedeeltelijke opslag afgehandeld.",
-                    "Back-ups, herstel, gelijktijdig bewerken en totalen zijn extra beveiligd, terwijl mobiel gebruik en toetsenbordbediening toegankelijker zijn.",
+                    "Beheerders kunnen het uren-auditlog gerichter filteren.",
+                    "Individueel herstel, gelijktijdig bewerken en totalen zijn extra beveiligd, terwijl mobiel gebruik en toetsenbordbediening toegankelijker zijn.",
                 ],
             },
             {

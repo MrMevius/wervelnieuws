@@ -11,7 +11,7 @@ PAGE_SIZES = [25, 50, 100]
 class WorkProjectResponse(BaseModel):
     id: str
     name: str
-    description: str
+    description: str = ""
     is_active: bool
     is_archived: bool
     archived_at: datetime | None = None
@@ -29,7 +29,7 @@ class WorkProjectResponse(BaseModel):
 
 class WorkPostResponse(BaseModel):
     id: str
-    project_id: str
+    project_id: str | None = None
     name: str
     description: str
     is_active: bool
@@ -275,7 +275,6 @@ class WorkHourGroupResponse(BaseModel):
 
 
 class WorkHourAdminGroupResponse(WorkHourGroupResponse):
-    source_import_batch_id: str | None = None
     created_by_user_id: str | None = None
     updated_by_user_id: str | None = None
     deleted_at: datetime | None = None
@@ -311,6 +310,10 @@ class WorkHourMetaResponse(BaseModel):
     external_people: list["WorkExternalPersonOptionResponse"]
     historical_identities: list["WorkHistoricalDisplayResponse"]
     eligible_users: list[WorkEligibleUserResponse]
+    filter_projects: list["WorkProjectOptionResponse"] = Field(default_factory=list)
+    filter_posts: list["WorkPostOptionResponse"] = Field(default_factory=list)
+    filter_participants: list[str] = Field(default_factory=list)
+    filter_dates: list[date] = Field(default_factory=list)
     is_admin: bool
 
 
@@ -330,7 +333,6 @@ class WorkProjectOptionResponse(BaseModel):
 
 class WorkPostOptionResponse(BaseModel):
     id: str
-    project_selection_key: str
     display_name: str
     display_type: Literal["post"] = "post"
     selectable: bool = True
@@ -364,7 +366,7 @@ class WorkProjectUpdateRequest(BaseModel):
 
 
 class WorkPostCreateRequest(BaseModel):
-    project_id: str
+    project_id: str | None = None
     name: str = Field(min_length=2, max_length=120)
     description: str = ""
     model_config = ConfigDict(extra="forbid")
@@ -409,84 +411,8 @@ class WorkExternalPersonCreateRequest(BaseModel):
         return normalized or None
 
 
-class WorkImportParticipantSnapshot(BaseModel):
-    id: str | None = None
-    participant_kind: str
-    user_id: str | None = None
-    external_person_id: str | None = None
-    historical_identity_id: str | None = None
-    display_name_snapshot: str
-    display_email_snapshot: str | None = None
-    display_type_snapshot: str
-    sort_order: int = 0
-    created_at: datetime | None = None
-    created_by_user_id: str | None = None
-    updated_at: datetime | None = None
-    updated_by_user_id: str | None = None
-    deleted_at: datetime | None = None
-    deleted_by_user_id: str | None = None
-    row_version: int = Field(default=1, ge=1)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class WorkImportGroupSnapshot(BaseModel):
-    id: str
-    work_date: date
-    project_id: str
-    post_id: str
-    description: str
-    duration_half_hours: int
-    participants: list[WorkImportParticipantSnapshot] = Field(default_factory=list)
-    source_import_batch_id: str | None = None
-    created_at: datetime | None = None
-    created_by_user_id: str | None = None
-    updated_at: datetime | None = None
-    updated_by_user_id: str | None = None
-    deleted_at: datetime | None = None
-    deleted_by_user_id: str | None = None
-    row_version: int = Field(default=1, ge=1)
-    # Known presentation fields emitted by older API clients are accepted but
-    # never treated as domain records or references.
-    project_name: str | None = None
-    post_name: str | None = None
-    duration_hours: float | None = None
-    person_count: int | None = None
-    person_hours: float | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class WorkImportEnvelope(BaseModel):
-    format_version: str = "1.0"
-    backup_version: str = "2"
-    projects: list[WorkProjectResponse] = Field(default_factory=list)
-    posts: list[WorkPostResponse] = Field(default_factory=list)
-    external_people: list[WorkExternalPersonResponse] = Field(default_factory=list)
-    historical_identities: list[WorkHistoricalIdentityResponse] = Field(default_factory=list)
-    source_batches: list["WorkImportSourceBatchSnapshot"] = Field(default_factory=list)
-    groups: list[WorkImportGroupSnapshot] = Field(default_factory=list)
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class WorkImportSourceBatchSnapshot(BaseModel):
-    id: str
-    requested_by_user_id: str | None = None
-    format_version: str
-    backup_version: str
-    mode: Literal["merge", "full_restore"]
-    source_hash: str
-    status: str
-    counts: dict[str, int] = Field(default_factory=dict)
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = ConfigDict(extra="forbid")
-
-
 class WorkAdminHistoryItemResponse(BaseModel):
-    kind: Literal["project", "post", "external_person", "historical_identity"]
+    kind: Literal["post", "external_person", "historical_identity"]
     id: str
     display_name: str
     row_version: int
@@ -510,21 +436,6 @@ class WorkAdminMasterdataResponse(BaseModel):
     external_people: list[WorkExternalPersonResponse]
 
 
-class WorkImportPreviewResponse(BaseModel):
-    batch_id: str
-    status: str
-    counts: dict[str, int]
-    warnings: list[str]
-    errors: list[str]
-    backup_download_url: str | None = None
-
-
-class WorkImportCommitResponse(BaseModel):
-    batch_id: str
-    status: str
-    backup_download_url: str | None = None
-
-
 class WorkAuditEventResponse(BaseModel):
     id: str
     event_type: str
@@ -536,6 +447,8 @@ class WorkAuditEventResponse(BaseModel):
     result: str
     request_method: str
     request_path: str
+    project_name: str | None = None
+    post_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

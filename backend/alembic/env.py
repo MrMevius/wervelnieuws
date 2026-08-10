@@ -37,10 +37,21 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        sqlite = connection.dialect.name == "sqlite"
+        if sqlite:
+            # SQLite cannot rebuild tables that are referenced by another FK.
+            # Alembic batch migrations therefore run with enforcement paused;
+            # every migration finishes with a complete FK integrity check.
+            connection.connection.driver_connection.execute("PRAGMA foreign_keys=OFF")
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():
             context.run_migrations()
+        if sqlite:
+            violations = list(connection.connection.driver_connection.execute("PRAGMA foreign_key_check"))
+            if violations:
+                raise RuntimeError(f"Foreign-keyfout na migratie: {violations}")
+            connection.connection.driver_connection.execute("PRAGMA foreign_keys=ON")
 
 
 if context.is_offline_mode():

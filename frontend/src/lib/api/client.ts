@@ -1027,6 +1027,7 @@ export type WorkHourProject = {
   is_active?: boolean;
   is_archived?: boolean;
   archived_at?: string | null;
+  deleted_at?: string | null;
   row_version?: number;
 };
 
@@ -1041,6 +1042,7 @@ export type WorkHourPost = {
   is_active?: boolean;
   is_archived?: boolean;
   archived_at?: string | null;
+  deleted_at?: string | null;
   row_version?: number;
 };
 
@@ -1133,6 +1135,7 @@ export type WorkHourQueryParams = {
   project_id?: string;
   post_id?: string;
   participant_kind?: string;
+  participant_query?: string;
   query?: string;
   include_deleted?: boolean;
   deleted_only?: boolean;
@@ -1157,40 +1160,11 @@ export type WorkHourMeta = {
   external_people: WorkHourExternalPerson[];
   historical_identities: WorkHourHistoricalIdentity[];
   eligible_users: WorkHourEligibleUser[];
+  filter_projects?: WorkHourProject[];
+  filter_posts?: WorkHourPost[];
+  filter_participants?: string[];
+  filter_dates?: string[];
   is_admin: boolean;
-};
-
-export type WorkHourImportEnvelope = {
-  format_version: string;
-  backup_version: string;
-  projects: WorkHourProject[];
-  posts: WorkHourPost[];
-  external_people: WorkHourExternalPerson[];
-  historical_identities: WorkHourHistoricalIdentity[];
-  groups: Array<{
-    id: string;
-    work_date: string;
-    project_id: string;
-    post_id: string;
-    description: string;
-    duration_half_hours: number;
-    participants: WorkHourParticipant[];
-  }>;
-};
-
-export type WorkHourPreview = {
-  batch_id: string;
-  status: string;
-  counts: Record<string, number>;
-  warnings: string[];
-  errors: string[];
-  backup_download_url: string | null;
-};
-
-export type WorkHourCommit = {
-  batch_id: string;
-  status: string;
-  backup_download_url: string | null;
 };
 
 export function listWorkHoursMeta() {
@@ -1321,7 +1295,7 @@ export function deleteWorkProject(projectId: string, expectedRowVersion: number)
   return request<{ status: string }>(`/urenverantwoording/projecten/${projectId}?expected_row_version=${expectedRowVersion}`, { method: "DELETE" });
 }
 
-export function createWorkPost(payload: { project_id: string; name: string; description: string }) {
+export function createWorkPost(payload: { name: string; description: string; project_id?: string }) {
   return request<WorkHourPost>("/urenverantwoording/posten", {
     method: "POST",
     body: JSON.stringify(payload)
@@ -1353,24 +1327,6 @@ export function downloadWorkHoursCsv(params: WorkHourQueryParams) {
   return requestBlob(`/urenverantwoording/export.csv${suffix}`);
 }
 
-export function previewWorkHoursImport(payload: WorkHourImportEnvelope, mode: "merge" | "full_restore") {
-  return request<WorkHourPreview>(`/urenverantwoording/import/preview?mode=${mode}`, {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-}
-
-export function commitWorkHoursImport(batchId: string, payload: WorkHourImportEnvelope, mode: "merge" | "full_restore") {
-  return request<WorkHourCommit>(`/urenverantwoording/import/commit?batch_id=${encodeURIComponent(batchId)}&mode=${mode}`, {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-}
-
-export function downloadWorkHoursBackup(batchId: string) {
-  return requestBlob(`/urenverantwoording/import/batches/${encodeURIComponent(batchId)}/backup`);
-}
-
 export type WorkHoursAuditFilters = {
   actor?: string;
   action?: string;
@@ -1389,12 +1345,12 @@ export function listWorkHoursAudit(filters: WorkHoursAuditFilters = {}) {
     if (value) search.set(key, String(value));
   });
   const suffix = search.toString() ? `?${search.toString()}` : "";
-  return request<{ items: Array<{ id: string; event_type: string; actor_user_id: string | null; actor_display_name: string; action: string; result: string; request_method: string; request_path: string; details_json: string; created_at: string }>; total: number; page: number; page_size: number }>(`/urenverantwoording/audit${suffix}`);
+  return request<{ items: Array<{ id: string; event_type: string; actor_user_id: string | null; actor_display_name: string; action: string; result: string; request_method: string; request_path: string; details_json: string; created_at: string; project_name?: string | null; post_name?: string | null }>; total: number; page: number; page_size: number }>(`/urenverantwoording/audit${suffix}`);
 }
 
-export function listWorkHoursAdminHistory(params: { page?: number; page_size?: 25 | 50 | 100; kind?: "project" | "post" | "external_person" | "historical_identity"; query?: string; sort_key?: "display_name" | "id"; sort_direction?: "asc" | "desc" } = {}) {
+export function listWorkHoursAdminHistory(params: { page?: number; page_size?: 25 | 50 | 100; kind?: "post" | "external_person" | "historical_identity"; query?: string; sort_key?: "display_name" | "id"; sort_direction?: "asc" | "desc" } = {}) {
   const search = buildWorkHourQueryParams(params as WorkHourQueryParams);
-  return request<{ items: Array<{ kind: "project" | "post" | "external_person" | "historical_identity"; id: string; display_name: string; row_version: number; linked_user_id?: string | null; deleted_at?: string | null }>; total: number; page: number; page_size: number }>(`/urenverantwoording/admin/history?${search.toString()}`);
+  return request<{ items: Array<{ kind: "post" | "external_person" | "historical_identity"; id: string; display_name: string; row_version: number; linked_user_id?: string | null; deleted_at?: string | null }>; total: number; page: number; page_size: number }>(`/urenverantwoording/admin/history?${search.toString()}`);
 }
 
 export function listWorkHoursAdminMasterdata() {

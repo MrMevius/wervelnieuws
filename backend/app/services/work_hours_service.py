@@ -1,29 +1,28 @@
 from __future__ import annotations
 
 import csv
-import hashlib
 import json
+import unicodedata
 from dataclasses import dataclass
 from datetime import UTC, datetime, date
 from io import StringIO
-from pathlib import Path
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
 
-from app.core.settings import get_settings
 from app.models.entities import (
     AuditEvent,
+    Project,
     User,
     WorkExternalPerson,
     WorkHistoricalUserIdentity,
     WorkHourGroup,
     WorkHourGroupParticipant,
-    WorkImportBatch,
     WorkPost,
-    WorkProject,
+    WorkPostLegacyAlias,
+    WorkProjectLegacyAlias,
 )
 from app.repositories.work_hours_repository import WorkHoursRepository
 from app.schemas.work_hours import (
@@ -43,11 +42,6 @@ from app.schemas.work_hours import (
     WorkHourAdminListResponse,
     WorkHourParticipantUpdateRequest,
     WorkHourTotalsResponse,
-    WorkImportCommitResponse,
-    WorkImportEnvelope,
-    WorkImportPreviewResponse,
-    WorkImportGroupSnapshot,
-    WorkImportParticipantSnapshot,
     WorkPostCreateRequest,
     WorkPostResponse,
     WorkPostUpdateRequest,
@@ -61,7 +55,6 @@ from app.schemas.work_hours import (
     WorkHistoricalDisplayResponse,
     WorkProjectOptionResponse,
     WorkPostOptionResponse,
-    WorkImportSourceBatchSnapshot,
     WorkAdminHistoryItemResponse,
     WorkAdminHistoryListResponse,
     WorkAdminMasterdataResponse,
@@ -84,7 +77,7 @@ def _display_name_for_user(user: User | None) -> str:
 
 
 def _normalize(value: str | None) -> str:
-    return " ".join((value or "").strip().split()).casefold()
+    return " ".join(unicodedata.normalize("NFKC", value or "").strip().split()).casefold()
 
 
 def _work_date(value: date | datetime) -> date:
@@ -97,6 +90,7 @@ class WorkHoursListQuery:
     project_id: str | None = None
     post_id: str | None = None
     participant_kind: str | None = None
+    participant_query: str | None = None
     query: str | None = None
     include_deleted: bool = False
     deleted_only: bool = False
@@ -117,7 +111,7 @@ class WorkHoursService:
             self._log(event_type="work_hours.authorization.denied", actor=current, target_type="work_hours", target_id="admin-only", outcome="denied")
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Beheerderstoegang vereist")
 
-    def _project_to_response(self, project: WorkProject) -> WorkProjectResponse:
+    def _project_to_response(self, project: Project) -> WorkProjectResponse:
         return WorkProjectResponse.model_validate(project)
 
     def _post_to_response(self, post: WorkPost) -> WorkPostResponse:
@@ -136,46 +130,6 @@ class WorkHoursService:
             ),
             None,
         )
-
-    def _materialize_historical_identity(
-        self,
-        current: User,
-        *,
-        source_key: str,
-        snapshot_name: str,
-        snapshot_email: str | None,
-        snapshot_display_label: str,
-    ) -> WorkHistoricalUserIdentity:
-        if not snapshot_name.strip() or (not source_key.strip() and not _normalize(snapshot_email)):
-            raise HTTPException(status_code=422, detail="Ontbrekende gebruiker heeft onvoldoende snapshotmetadata")
-        identities = self.repo.list_historical_identities(include_deleted=True)
-        identity = next((item for item in identities if item.source_key == source_key), None)
-        normalized_email = _normalize(snapshot_email)
-        if identity is None and normalized_email:
-            email_matches = [item for item in identities if _normalize(item.snapshot_email) == normalized_email]
-            if len(email_matches) > 1:
-                raise HTTPException(status_code=422, detail="Ontbrekende gebruiker heeft ambigue snapshotmetadata")
-            identity = email_matches[0] if email_matches else None
-        if identity:
-            if (
-                _normalize(identity.snapshot_name) != _normalize(snapshot_name)
-                or (_normalize(identity.snapshot_email) and _normalize(identity.snapshot_email) != normalized_email)
-            ):
-                raise HTTPException(status_code=422, detail="Ontbrekende gebruiker heeft conflicterende snapshotmetadata")
-            return identity
-
-        identity = WorkHistoricalUserIdentity(
-            source_key=source_key,
-            snapshot_name=snapshot_name,
-            snapshot_email=snapshot_email,
-            snapshot_display_label=snapshot_display_label,
-            is_active=True,
-            created_by_user_id=current.id,
-            updated_by_user_id=current.id,
-        )
-        self.repo.db.add(identity)
-        self.repo.db.flush()
-        return identity
 
     def _person_to_response(self, person: WorkExternalPerson) -> WorkExternalPersonResponse:
         return WorkExternalPersonResponse.model_validate(person)
@@ -241,7 +195,6 @@ class WorkHoursService:
         visible_ids = {participant.id for participant in public.participants}
         return WorkHourAdminGroupResponse(
             **public.model_dump(exclude={"participants"}),
-            source_import_batch_id=group.source_import_batch_id,
             created_by_user_id=group.created_by_user_id,
             updated_by_user_id=group.updated_by_user_id,
             deleted_at=group.deleted_at,
@@ -287,26 +240,27 @@ class WorkHoursService:
             **self._row_state(group),
             "work_date": _work_date(group.work_date),
             "project_id": group.project_id,
+            "project_name_snapshot": group.project.name if group.project else "",
             "post_id": group.post_id,
+            "post_name_snapshot": group.post.name if group.post else "",
             "description": group.description,
             "duration_half_hours": group.duration_half_hours,
-            "source_import_batch_id": group.source_import_batch_id,
             "participants": [
                 self._full_participant_snapshot(participant)
                 for participant in sorted(group.participants, key=lambda item: (item.sort_order, item.id))
             ],
         }
 
-    def _validate_project_post(self, project_id: str, post_id: str, *, allow_unchanged: tuple[str, str] | None = None) -> tuple[WorkProject, WorkPost]:
+    def _validate_project_post(self, project_id: str, post_id: str, *, allow_unchanged: tuple[str, str] | None = None) -> tuple[Project, WorkPost]:
         project = self.repo.get_project(project_id)
         if not project:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project niet gevonden")
         post = self.repo.get_post(post_id)
-        if not post or post.project_id != project.id:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Post hoort niet bij dit project")
+        if not post:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Post niet gevonden")
         historical_unchanged = allow_unchanged == (project_id, post_id)
         if not historical_unchanged and (
-            project.deleted_at is not None or not project.is_active or project.is_archived
+            not project.is_active or project.is_archived
             or post.deleted_at is not None or not post.is_active or post.is_archived
         ):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project of post is niet actief/selecteerbaar")
@@ -355,16 +309,16 @@ class WorkHoursService:
             for project in self.repo.list_projects(include_deleted=True)
         )
 
-    def _post_name_conflicts(self, project_id: str, name: str, *, exclude_post_id: str | None = None) -> bool:
+    def _post_name_conflicts(self, name: str, *, exclude_post_id: str | None = None) -> bool:
         normalized_name = _normalize(name)
         return any(
-            post.id != exclude_post_id and post.project_id == project_id and _normalize(post.name) == normalized_name
-            for post in self.repo.list_posts(include_deleted=True, project_id=project_id)
+            post.id != exclude_post_id and _normalize(post.name) == normalized_name
+            for post in self.repo.list_posts(include_deleted=True)
         )
 
     def _participant_entity(
         self,
-        payload: WorkHourParticipantCreateRequest | WorkImportParticipantSnapshot,
+        payload: WorkHourParticipantCreateRequest,
         current: User,
         *,
         allow_inactive_external_person: bool = False,
@@ -423,11 +377,11 @@ class WorkHoursService:
         )
 
     @staticmethod
-    def _participant_reference_count(payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest | WorkImportParticipantSnapshot) -> int:
+    def _participant_reference_count(payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest) -> int:
         return sum(1 for value in (payload.user_id, payload.external_person_id, payload.historical_identity_id) if value)
 
     @staticmethod
-    def _participant_expected_kind(payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest | WorkImportParticipantSnapshot) -> str | None:
+    def _participant_expected_kind(payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest) -> str | None:
         if payload.user_id:
             return "live_user"
         if payload.external_person_id:
@@ -436,7 +390,7 @@ class WorkHoursService:
             return "historical_identity"
         return None
 
-    def _validate_participant_identity(self, payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest | WorkImportParticipantSnapshot, *, context: str) -> None:
+    def _validate_participant_identity(self, payload: WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest, *, context: str) -> None:
         if self._participant_reference_count(payload) != 1:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: elke deelnemer heeft precies één identity-reference nodig")
         expected_kind = self._participant_expected_kind(payload)
@@ -450,7 +404,7 @@ class WorkHoursService:
         if not user or not user.is_active:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: Onbekende of inactieve gebruiker")
 
-    def _validate_participants(self, participants: list[WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest | WorkImportParticipantSnapshot] | None, *, context: str) -> None:
+    def _validate_participants(self, participants: list[WorkHourParticipantCreateRequest | WorkHourParticipantUpdateRequest] | None, *, context: str) -> None:
         if not participants:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: voeg minimaal één deelnemer toe")
         for participant in participants:
@@ -458,29 +412,6 @@ class WorkHoursService:
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: Gebruiker ontbreekt")
             self._validate_participant_identity(participant, context=context)
         self._validate_unique_participants(participants, context=f"{context}.participants")
-
-    def _validate_import_participants(
-        self,
-        participants: list[WorkImportParticipantSnapshot] | None,
-        *,
-        context: str,
-        external_person_ids: set[str],
-        historical_identity_ids: set[str],
-    ) -> None:
-        if not participants:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: voeg minimaal één deelnemer toe")
-        for participant in participants:
-            if participant.participant_kind == "live_user" and self._participant_reference_count(participant) == 0:
-                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"{context}: Gebruiker ontbreekt")
-            self._validate_participant_identity(participant, context=context)
-            if participant.participant_kind == "live_user":
-                self._validate_live_user_reference(participant.user_id, context=context, missing_detail="Gebruiker ontbreekt")
-            elif participant.participant_kind == "external_person":
-                if participant.external_person_id not in external_person_ids:
-                    raise HTTPException(status_code=422, detail=f"{context}: onbekende externe persoon")
-            elif participant.participant_kind == "historical_identity":
-                if participant.historical_identity_id not in historical_identity_ids:
-                    raise HTTPException(status_code=422, detail=f"{context}: onbekende historische identiteit")
 
     def _bump_version(self, row) -> None:
         row.row_version = int(getattr(row, "row_version", 0) or 0) + 1
@@ -497,6 +428,7 @@ class WorkHoursService:
             "project_id": query.project_id,
             "post_id": query.post_id,
             "participant_kind": query.participant_kind,
+            "participant_query": query.participant_query,
             "query": query.query,
             "include_deleted": query.include_deleted,
             "deleted_only": query.deleted_only,
@@ -505,654 +437,8 @@ class WorkHoursService:
         }
 
     @staticmethod
-    def _import_payload_hash(payload: WorkImportEnvelope) -> str:
-        return hashlib.sha256(json.dumps(payload.model_dump(mode="json"), sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
-
-    def _ensure_pre_import_backup(self, batch: WorkImportBatch, current: User, *, create: bool) -> Path:
-        if batch.pre_import_backup_path:
-            path = Path(batch.pre_import_backup_path)
-            if path.exists():
-                return path
-            if not create:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pre-importbackup ontbreekt")
-        if not create:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Pre-importbackup ontbreekt")
-        backup_path = self._backup_path(batch.id)
-        temporary_path = backup_path.with_suffix(".tmp")
-        backup_json = self._serialize_backup()
-        temporary_path.write_text(backup_json, encoding="utf-8")
-        try:
-            batch.pre_import_backup_path = str(backup_path)
-            self.repo.db.add(batch)
-            self._log(
-                event_type="work_hours.backup.created", actor=current,
-                target_type="backup_artifact", target_id=batch.id,
-                after={"status": "available", "counts": json.loads(batch.counts_json or "{}")},
-                commit=False,
-            )
-            self.repo.db.flush()
-            temporary_path.replace(backup_path)
-            self.repo.db.commit()
-        except Exception:
-            self.repo.db.rollback()
-            temporary_path.unlink(missing_ok=True)
-            backup_path.unlink(missing_ok=True)
-            raise
-        return backup_path
-
-    @staticmethod
-    def _group_snapshot_conflicts(existing: WorkHourGroup, snapshot: WorkImportGroupSnapshot) -> list[str]:
-        conflicts: list[str] = []
-        if _work_date(existing.work_date) != snapshot.work_date:
-            conflicts.append(f"groep {existing.id}: work_date")
-        if existing.project_id != snapshot.project_id:
-            conflicts.append(f"groep {existing.id}: project_id")
-        if existing.post_id != snapshot.post_id:
-            conflicts.append(f"groep {existing.id}: post_id")
-        if (existing.description or "").strip() != snapshot.description.strip():
-            conflicts.append(f"groep {existing.id}: description")
-        if existing.duration_half_hours != snapshot.duration_half_hours:
-            conflicts.append(f"groep {existing.id}: duration_half_hours")
-        existing_participants = sorted(existing.participants, key=lambda item: (item.sort_order, item.id))
-        snapshot_participants = sorted(snapshot.participants, key=lambda item: (item.sort_order, item.id or ""))
-        if len(existing_participants) != len(snapshot_participants):
-            conflicts.append(f"groep {existing.id}: participants")
-            return conflicts
-        for existing_participant, snapshot_participant in zip(existing_participants, snapshot_participants, strict=False):
-            if snapshot_participant.id and existing_participant.id != snapshot_participant.id:
-                conflicts.append(f"groep {existing.id}: participant_id")
-                break
-            if existing_participant.participant_kind != snapshot_participant.participant_kind:
-                conflicts.append(f"groep {existing.id}: participant_kind")
-                break
-            if existing_participant.user_id != snapshot_participant.user_id:
-                conflicts.append(f"groep {existing.id}: user_id")
-                break
-            if existing_participant.external_person_id != snapshot_participant.external_person_id:
-                conflicts.append(f"groep {existing.id}: external_person_id")
-                break
-            if existing_participant.historical_identity_id != snapshot_participant.historical_identity_id:
-                conflicts.append(f"groep {existing.id}: historical_identity_id")
-                break
-            if existing_participant.display_name_snapshot != snapshot_participant.display_name_snapshot:
-                conflicts.append(f"groep {existing.id}: display_name_snapshot")
-                break
-            if existing_participant.display_email_snapshot != snapshot_participant.display_email_snapshot:
-                conflicts.append(f"groep {existing.id}: display_email_snapshot")
-                break
-            if existing_participant.display_type_snapshot != snapshot_participant.display_type_snapshot:
-                conflicts.append(f"groep {existing.id}: display_type_snapshot")
-                break
-            if existing_participant.deleted_at != snapshot_participant.deleted_at or existing_participant.deleted_by_user_id != snapshot_participant.deleted_by_user_id:
-                conflicts.append(f"groep {existing.id}: participant_deleted_state")
-                break
-        return conflicts
-
-    def _import_conflicts(self, envelope: WorkImportEnvelope, mode: str) -> list[str]:
-        if mode != "merge":
-            return []
-        current = self.build_backup_envelope()
-        conflicts: list[str] = []
-        for collection in ("projects", "posts", "external_people", "historical_identities", "source_batches", "groups"):
-            target_by_id = {item.id: item for item in getattr(current, collection)}
-            for incoming in getattr(envelope, collection):
-                target = target_by_id.get(incoming.id)
-                if not target:
-                    continue
-                incoming_fields = incoming.model_dump(mode="python")
-                target_fields = target.model_dump(mode="python")
-                if collection == "groups":
-                    for presentation_field in ("project_name", "post_name", "duration_hours", "person_count", "person_hours"):
-                        incoming_fields.pop(presentation_field, None)
-                        target_fields.pop(presentation_field, None)
-                for field in sorted(set(incoming_fields) | set(target_fields)):
-                    if self._equivalence_value(incoming_fields.get(field)) != self._equivalence_value(target_fields.get(field)):
-                        conflicts.append(f"{collection}:{incoming.id}:{field}")
-        # Keep conflict locations stable and caller-safe; values are never exposed.
-        return conflicts
-
-    @classmethod
-    def _equivalence_value(cls, value):
-        if isinstance(value, datetime):
-            aware = value if value.tzinfo else value.replace(tzinfo=UTC)
-            return aware.astimezone(UTC).isoformat(timespec="microseconds")
-        if isinstance(value, date):
-            return value.isoformat()
-        if isinstance(value, dict):
-            return {key: cls._equivalence_value(child) for key, child in sorted(value.items())}
-        if isinstance(value, list):
-            return [cls._equivalence_value(child) for child in value]
-        return value
-
-    @staticmethod
-    def _normalize_email(value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        return normalized or None
-
-    def _serialize_backup(self) -> str:
-        return json.dumps(self.build_backup_envelope().model_dump(mode="json"), ensure_ascii=False, indent=2)
-
-    @staticmethod
-    def _envelope_metrics(payload: object) -> tuple[int, int]:
-        max_depth = 0
-        nodes = 0
-        stack: list[tuple[object, int]] = [(payload, 0)]
-        while stack:
-            value, depth = stack.pop()
-            nodes += 1
-            max_depth = max(max_depth, depth)
-            if isinstance(value, dict):
-                stack.extend((child, depth + 1) for child in value.values())
-            elif isinstance(value, list):
-                stack.extend((child, depth + 1) for child in value)
-        return max_depth, nodes
-
-    @classmethod
-    def validate_json_resource_limits(cls, payload: object) -> None:
-        settings = get_settings()
-        metrics_depth, metrics_nodes = cls._envelope_metrics(payload)
-        errors = []
-        if metrics_depth > settings.work_hours_import_max_depth:
-            errors.append({"location": "$", "message": "maximale JSON-diepte overschreden"})
-        if metrics_nodes > settings.work_hours_import_max_nodes:
-            errors.append({"location": "$", "message": "maximaal aantal JSON-nodes overschreden"})
-        if errors:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "work_hours_import_resource_limit", "errors": errors})
-
-    def _validate_import_payload(self, envelope: WorkImportEnvelope, mode: str) -> None:
-        self.validate_json_resource_limits(envelope.model_dump(mode="json"))
-        self._validate_import_envelope(envelope, mode)
-
-    def _find_project_by_name(self, name: str) -> WorkProject | None:
-        normalized = _normalize(name)
-        return next((project for project in self.repo.list_projects(include_deleted=True) if _normalize(project.name) == normalized), None)
-
-    def _find_post_by_name(self, project_id: str, name: str) -> WorkPost | None:
-        normalized = _normalize(name)
-        return next((post for post in self.repo.list_posts(include_deleted=True, project_id=project_id) if _normalize(post.name) == normalized), None)
-
-    def _find_external_person(self, display_name: str, email: str | None) -> WorkExternalPerson | None:
-        normalized_name = _normalize(display_name)
-        normalized_email = _normalize(email)
-        for person in self.repo.list_external_people(include_deleted=True):
-            if person.normalized_name == normalized_name and (not normalized_email or person.normalized_email == normalized_email):
-                return person
-        return None
-
-    @staticmethod
-    def _project_semantic_key(name: str) -> str:
-        return _normalize(name)
-
-    @staticmethod
-    def _post_semantic_key(project_name: str, name: str) -> tuple[str, str]:
-        return (_normalize(project_name), _normalize(name))
-
-    @staticmethod
-    def _person_semantic_key(display_name: str, email: str | None) -> tuple[str, str | None]:
-        normalized_email = _normalize(email)
-        return (_normalize(display_name), normalized_email or None)
-
-    def _import_semantic_conflicts(self, envelope: WorkImportEnvelope, mode: str) -> list[dict[str, object]]:
-        conflicts: list[dict[str, object]] = []
-        existing_projects = self.repo.list_projects(include_deleted=True) if mode == "merge" else []
-        existing_posts = self.repo.list_posts(include_deleted=True) if mode == "merge" else []
-        existing_people = self.repo.list_external_people(include_deleted=True) if mode == "merge" else []
-
-        project_name_by_id = {project.id: self._project_semantic_key(project.name) for project in existing_projects}
-        project_name_by_id.update({project.id: self._project_semantic_key(project.name) for project in envelope.projects})
-
-        existing_project_keys = {self._project_semantic_key(project.name): project.id for project in existing_projects}
-        seen_project_keys: dict[str, str] = {}
-        for project in envelope.projects:
-            project_key = self._project_semantic_key(project.name)
-            if project_key in seen_project_keys:
-                conflicts.append({"entity_type": "project", "incoming_id": project.id, "existing_id": seen_project_keys[project_key], "conflict_fields": ["name"]})
-            elif mode == "merge" and project_key in existing_project_keys and existing_project_keys[project_key] != project.id:
-                conflicts.append({"entity_type": "project", "incoming_id": project.id, "existing_id": existing_project_keys[project_key], "conflict_fields": ["name"]})
-            seen_project_keys[project_key] = project.id
-
-        existing_post_keys = {
-            self._post_semantic_key(project_name_by_id.get(post.project_id, ""), post.name): post.id
-            for post in existing_posts
-            if project_name_by_id.get(post.project_id)
-        }
-        seen_post_keys: dict[tuple[str, str], str] = {}
-        for post in envelope.posts:
-            project_name = project_name_by_id.get(post.project_id)
-            if project_name is None:
-                continue
-            post_key = self._post_semantic_key(project_name, post.name)
-            if post_key in seen_post_keys:
-                conflicts.append({"entity_type": "post", "incoming_id": post.id, "existing_id": seen_post_keys[post_key], "conflict_fields": ["project_id", "name"]})
-            elif mode == "merge" and post_key in existing_post_keys and existing_post_keys[post_key] != post.id:
-                conflicts.append({"entity_type": "post", "incoming_id": post.id, "existing_id": existing_post_keys[post_key], "conflict_fields": ["project_id", "name"]})
-            seen_post_keys[post_key] = post.id
-
-        existing_names = {_normalize(person.display_name): person.id for person in existing_people}
-        existing_emails = {_normalize(person.email): person.id for person in existing_people if _normalize(person.email)}
-        seen_names: dict[str, str] = {}
-        seen_emails: dict[str, str] = {}
-        for person in envelope.external_people:
-            name_key = _normalize(person.display_name)
-            email_key = _normalize(person.email)
-            matches: dict[str, list[str]] = {}
-            name_match = seen_names.get(name_key) or (existing_names.get(name_key) if mode == "merge" else None)
-            email_match = seen_emails.get(email_key) or (existing_emails.get(email_key) if mode == "merge" and email_key else None)
-            if name_match and name_match != person.id:
-                matches.setdefault(name_match, []).append("normalized_name")
-            if email_match and email_match != person.id:
-                matches.setdefault(email_match, []).append("normalized_email")
-            for existing_id, fields in matches.items():
-                conflicts.append({"entity_type": "external_person", "incoming_id": person.id, "existing_id": existing_id, "conflict_fields": fields})
-            seen_names[name_key] = person.id
-            if email_key:
-                seen_emails[email_key] = person.id
-
-        return conflicts
-
-    @staticmethod
-    def _semantic_conflict_detail(candidates: list[dict[str, object]]) -> dict[str, object]:
-        counts = {
-            "total": len(candidates),
-            "projects": sum(item["entity_type"] == "project" for item in candidates),
-            "posts": sum(item["entity_type"] == "post" for item in candidates),
-            "external_people": sum(item["entity_type"] == "external_person" for item in candidates),
-        }
-        return {
-            "code": "work_hours_import_semantic_conflict",
-            "message": "De import bevat gegevens die al onder een andere identificatie bestaan.",
-            "counts": counts,
-            "candidates": candidates,
-        }
-
-    def _raise_semantic_conflict(self, candidates: list[dict[str, object]]) -> None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=self._semantic_conflict_detail(candidates))
-
-    def _validate_import_envelope(self, envelope: WorkImportEnvelope, mode: str) -> None:
-        errors: list[dict[str, str]] = []
-        project_by_id = {} if mode == "full_restore" else {project.id: project for project in self.repo.list_projects(include_deleted=True)}
-        project_by_id.update({project.id: project for project in envelope.projects})
-        post_by_id = {} if mode == "full_restore" else {post.id: post for post in self.repo.list_posts(include_deleted=True)}
-        post_by_id.update({post.id: post for post in envelope.posts})
-        external_person_ids = (set() if mode == "full_restore" else {person.id for person in self.repo.list_external_people(include_deleted=True)}) | {person.id for person in envelope.external_people}
-        historical_identity_ids = (set() if mode == "full_restore" else {identity.id for identity in self.repo.list_historical_identities(include_deleted=True)}) | {identity.id for identity in envelope.historical_identities}
-        source_batch_ids = {batch.id for batch in envelope.source_batches}
-        source_batch_ids.update(batch.id for batch in self.repo.list_import_batches_by_ids({group.source_import_batch_id for group in envelope.groups if group.source_import_batch_id}))
-        actor_ids = {user.id for user in self.repo.list_active_users()}
-        actor_ids.update(user.id for user in self.repo.db.query(User).all())
-
-        def add(location: str, message: str) -> None:
-            errors.append({"location": location, "message": message})
-
-        def validate_event_coherence(record, location: str, *, archive: bool = False, link: bool = False) -> None:
-            if int(getattr(record, "row_version", 0) or 0) < 1:
-                add(f"{location}.row_version", "versie moet positief zijn")
-            created_at = getattr(record, "created_at", None)
-            updated_at = getattr(record, "updated_at", None)
-            created_by = getattr(record, "created_by_user_id", None)
-            updated_by = getattr(record, "updated_by_user_id", None)
-            if bool(created_at) != bool(created_by):
-                add(location, "create-actor en timestamp moeten samen aanwezig zijn")
-            if bool(updated_at) != bool(updated_by):
-                add(location, "update-actor en timestamp moeten samen aanwezig zijn")
-            if created_at and updated_at and updated_at < created_at:
-                add(f"{location}.updated_at", "update mag niet vóór create liggen")
-            event_names = (["archived"] if archive else []) + ["deleted"] + (["linked"] if link else [])
-            for name in event_names:
-                timestamp = getattr(record, f"{name}_at", None)
-                actor = getattr(record, f"{name}_by_user_id", None)
-                if bool(timestamp) != bool(actor):
-                    add(location, f"{name}-actor en timestamp moeten samen aanwezig zijn")
-                if created_at and timestamp and timestamp < created_at:
-                    add(f"{location}.{name}_at", f"{name} mag niet vóór create liggen")
-                if updated_at and timestamp and timestamp < updated_at:
-                    add(f"{location}.{name}_at", f"{name} mag niet vóór update liggen")
-            for field in ("created_by_user_id", "updated_by_user_id", "archived_by_user_id", "deleted_by_user_id", "linked_by_user_id"):
-                actor_id = getattr(record, field, None)
-                if actor_id and actor_id not in actor_ids:
-                    add(f"{location}.{field}", "onbekende actor")
-
-        if envelope.format_version != "1.0":
-            add("$.format_version", "onbekende formatversie")
-        if envelope.backup_version not in {"1", "2"}:
-            add("$.backup_version", "onbekende backupversie")
-
-        def validate_uuid(location: str, value: str | None) -> None:
-            if envelope.backup_version != "2" or value is None:
-                return
-            try:
-                UUID(value)
-            except (ValueError, AttributeError):
-                add(location, "ongeldig UUID-formaat")
-
-        for collection_name, records in (
-            ("projects", envelope.projects),
-            ("posts", envelope.posts),
-            ("external_people", envelope.external_people),
-            ("historical_identities", envelope.historical_identities),
-            ("source_batches", envelope.source_batches),
-            ("groups", envelope.groups),
-        ):
-            seen: set[str] = set()
-            for index, record in enumerate(records):
-                validate_uuid(f"$.{collection_name}[{index}].id", record.id)
-                if record.id in seen:
-                    add(f"$.{collection_name}[{index}].id", "dubbele ID")
-                seen.add(record.id)
-
-        for index, post in enumerate(envelope.posts):
-            validate_uuid(f"$.posts[{index}].project_id", post.project_id)
-            if post.project_id not in project_by_id:
-                add(f"$.posts[{index}].project_id", "onbekend project")
-            project = project_by_id.get(post.project_id)
-            self._collect_masterdata_state_errors(post, f"$.posts[{index}]", add)
-            validate_event_coherence(post, f"$.posts[{index}]", archive=True)
-            if post.is_active and project and not self._is_selectable_masterdata(project):
-                add(f"$.posts[{index}].is_active", "actieve post vereist een actief/selecteerbaar project")
-        for index, project in enumerate(envelope.projects):
-            self._collect_masterdata_state_errors(project, f"$.projects[{index}]", add)
-            validate_event_coherence(project, f"$.projects[{index}]", archive=True)
-        for index, person in enumerate(envelope.external_people):
-            validate_event_coherence(person, f"$.external_people[{index}]")
-            if bool(person.deleted_at) != bool(person.deleted_by_user_id):
-                add(f"$.external_people[{index}]", "verwijderstatus is niet coherent")
-            if person.is_active and person.deleted_at is not None:
-                add(f"$.external_people[{index}].is_active", "actief kan niet samen met deleted")
-        for index, batch in enumerate(envelope.source_batches):
-            if batch.requested_by_user_id and batch.requested_by_user_id not in actor_ids:
-                add(f"$.source_batches[{index}].requested_by_user_id", "onbekende actor")
-        for index, identity in enumerate(envelope.historical_identities):
-            validate_event_coherence(identity, f"$.historical_identities[{index}]", link=True)
-            if identity.linked_user_id and identity.linked_user_id not in actor_ids:
-                add(f"$.historical_identities[{index}].linked_user_id", "onbekende gebruiker")
-            if identity.source_user_id and identity.source_user_id not in actor_ids:
-                if str(identity.source_user_id) not in identity.source_key:
-                    add(f"$.historical_identities[{index}].source_user_id", "ontbrekende brongebruiker is niet duurzaam in source_key vastgelegd")
-            if identity.linked_by_user_id and identity.linked_by_user_id not in actor_ids:
-                add(f"$.historical_identities[{index}].linked_by_user_id", "onbekende actor")
-            linked_values = (identity.linked_user_id, identity.linked_at, identity.linked_by_user_id)
-            if any(value is not None for value in linked_values) and not all(value is not None for value in linked_values):
-                add(f"$.historical_identities[{index}]", "relinkvelden moeten volledig gevuld of volledig leeg zijn")
-            if bool(identity.deleted_at) != bool(identity.deleted_by_user_id):
-                add(f"$.historical_identities[{index}]", "verwijderstatus is niet coherent")
-            if identity.is_active and identity.deleted_at is not None:
-                add(f"$.historical_identities[{index}].is_active", "actief kan niet samen met deleted")
-
-        all_participant_ids: set[str] = set()
-        for group_index, group in enumerate(envelope.groups):
-            location = f"$.groups[{group_index}]"
-            validate_event_coherence(group, location)
-            validate_uuid(f"{location}.project_id", group.project_id)
-            validate_uuid(f"{location}.post_id", group.post_id)
-            project = project_by_id.get(group.project_id)
-            post = post_by_id.get(group.post_id)
-            if not project:
-                add(f"{location}.project_id", "onbekend project")
-            if not post:
-                add(f"{location}.post_id", "onbekende post")
-            elif post.project_id != group.project_id:
-                add(f"{location}.post_id", "post hoort niet bij project")
-            if group.deleted_at is None and project and post and (
-                not self._is_selectable_masterdata(project) or not self._is_selectable_masterdata(post)
-            ):
-                add(location, "actieve registratie vereist selecteerbare project- en postmasterdata")
-            if group.source_import_batch_id and group.source_import_batch_id not in source_batch_ids:
-                add(f"{location}.source_import_batch_id", "onbekende source batch")
-            if group.duration_half_hours < 1 or group.duration_half_hours > 48:
-                add(f"{location}.duration_half_hours", "duur moet 0,5 tot en met 24 uur zijn")
-            if group.work_date > datetime.now(AMSTERDAM_TZ).date():
-                add(f"{location}.work_date", "datum mag niet in de toekomst liggen")
-            for field in ("created_by_user_id", "updated_by_user_id", "deleted_by_user_id"):
-                actor_id = getattr(group, field)
-                if actor_id and actor_id not in actor_ids:
-                    add(f"{location}.{field}", "onbekende actor")
-            if bool(group.deleted_at) != bool(group.deleted_by_user_id):
-                add(f"{location}.deleted_at", "verwijderstatus en verwijderactor zijn niet coherent")
-            if not group.participants:
-                add(f"{location}.participants", "voeg minimaal één deelnemer toe")
-            active_keys: set[str] = set()
-            participant_ids: set[str] = set()
-            for participant_index, participant in enumerate(group.participants):
-                participant_location = f"{location}.participants[{participant_index}]"
-                validate_event_coherence(participant, participant_location)
-                validate_uuid(f"{participant_location}.id", participant.id)
-                validate_uuid(f"{participant_location}.user_id", participant.user_id)
-                validate_uuid(f"{participant_location}.external_person_id", participant.external_person_id)
-                validate_uuid(f"{participant_location}.historical_identity_id", participant.historical_identity_id)
-                if participant.id and participant.id in participant_ids:
-                    add(f"{participant_location}.id", "dubbele participant-ID")
-                if participant.id:
-                    participant_ids.add(participant.id)
-                    if participant.id in all_participant_ids:
-                        add(f"{participant_location}.id", "participant-ID komt in meerdere groepen voor")
-                    all_participant_ids.add(participant.id)
-                refs = self._participant_reference_count(participant)
-                missing_live_user = participant.participant_kind == "live_user" and refs == 0 and self._missing_user_metadata_is_sufficient(participant)
-                if not missing_live_user and (refs != 1 or self._participant_expected_kind(participant) != participant.participant_kind):
-                    add(participant_location, "precies één passende identity-reference vereist")
-                    continue
-                key = (
-                    f"missing-user:{_normalize(participant.display_email_snapshot)}"
-                    if missing_live_user
-                    else self._identity_key(participant.participant_kind, participant.user_id, participant.external_person_id, participant.historical_identity_id)
-                )
-                if participant.deleted_at is None and key in active_keys:
-                    add(participant_location, "dubbele actieve deelnemer")
-                if participant.deleted_at is None:
-                    active_keys.add(key)
-                if bool(participant.deleted_at) != bool(participant.deleted_by_user_id):
-                    add(f"{participant_location}.deleted_at", "verwijderstatus en verwijderactor zijn niet coherent")
-                if group.deleted_at is not None and participant.deleted_at is None:
-                    add(participant_location, "actieve deelnemer kan geen verwijderde registratie als parent hebben")
-                for field in ("created_by_user_id", "updated_by_user_id", "deleted_by_user_id"):
-                    actor_id = getattr(participant, field)
-                    if actor_id and actor_id not in actor_ids:
-                        add(f"{participant_location}.{field}", "onbekende actor")
-                if participant.participant_kind == "external_person" and participant.external_person_id not in external_person_ids:
-                    add(f"{participant_location}.external_person_id", "onbekende externe persoon")
-                elif participant.participant_kind == "historical_identity" and participant.historical_identity_id not in historical_identity_ids:
-                    add(f"{participant_location}.historical_identity_id", "onbekende historische identiteit")
-                elif participant.participant_kind == "live_user":
-                    user = self.repo.get_user(participant.user_id) if participant.user_id else None
-                    if not user and not self._missing_user_metadata_is_sufficient(participant):
-                        add(participant_location, "ontbrekende gebruiker heeft onvoldoende of inconsistente snapshotmetadata")
-            if group.deleted_at is None and not active_keys:
-                add(f"{location}.participants", "actieve registratie vereist minimaal één actieve deelnemer")
-        if errors:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail={"code": "work_hours_import_validation", "errors": errors})
-
-    @staticmethod
-    def _is_selectable_masterdata(row: WorkProjectResponse | WorkPostResponse | WorkProject | WorkPost) -> bool:
-        return bool(row.is_active and not row.is_archived and row.deleted_at is None)
-
-    @staticmethod
-    def _collect_masterdata_state_errors(row, location: str, add) -> None:
-        archived_complete = bool(row.is_archived and not row.is_active and row.archived_at and row.archived_by_user_id)
-        archived_empty = bool(not row.is_archived and row.archived_at is None and row.archived_by_user_id is None)
-        deleted_complete = bool(row.deleted_at and row.deleted_by_user_id)
-        deleted_empty = bool(row.deleted_at is None and row.deleted_by_user_id is None)
-        if not (archived_complete or archived_empty):
-            add(location, "archive-status is niet coherent")
-        if not (deleted_complete or deleted_empty):
-            add(location, "delete-status is niet coherent")
-        if row.is_active and (row.is_archived or row.deleted_at is not None):
-            add(location, "actief kan niet samen met archived/deleted")
-        if row.deleted_at is None and not row.is_archived and not row.is_active:
-            add(location, "inactieve masterdata moet archived of deleted zijn")
-
-    def _missing_user_metadata_is_sufficient(self, participant: WorkImportParticipantSnapshot) -> bool:
-        source_key = (participant.user_id or "").strip()
-        name = (participant.display_name_snapshot or "").strip()
-        email = _normalize(participant.display_email_snapshot)
-        if not name or (not source_key and not email):
-            return False
-        existing_source = next((item for item in self.repo.list_historical_identities(include_deleted=True) if item.source_key == f"missing-user:{source_key}"), None) if source_key else None
-        if existing_source and (
-            _normalize(existing_source.snapshot_name) != _normalize(name)
-            or (_normalize(existing_source.snapshot_email) and email and _normalize(existing_source.snapshot_email) != email)
-        ):
-            return False
-        matching = [identity for identity in self.repo.list_historical_identities(include_deleted=True) if email and _normalize(identity.snapshot_email) == email]
-        live_matches = [user for user in self.repo.db.query(User).all() if email and _normalize(user.email) == email]
-        return bool(source_key or email) and len(matching) + len(live_matches) <= 1
-
-    def _upsert_project(self, current: User, payload: WorkProjectResponse) -> WorkProject:
-        existing = self.repo.get_project(payload.id)
-        if existing:
-            existing.name = payload.name
-            existing.description = payload.description
-            existing.is_active = payload.is_active
-            existing.is_archived = payload.is_archived
-            existing.archived_at = payload.archived_at
-            existing.archived_by_user_id = payload.archived_by_user_id
-            existing.created_at = payload.created_at or existing.created_at
-            existing.created_by_user_id = payload.created_by_user_id
-            existing.updated_at = payload.updated_at or existing.updated_at
-            existing.updated_by_user_id = payload.updated_by_user_id
-            existing.deleted_at = payload.deleted_at
-            existing.deleted_by_user_id = payload.deleted_by_user_id
-            existing.row_version = payload.row_version
-            return existing
-        project = WorkProject(
-            id=payload.id,
-            name=payload.name,
-            description=payload.description,
-            is_active=payload.is_active,
-            is_archived=payload.is_archived,
-            archived_at=payload.archived_at,
-            archived_by_user_id=payload.archived_by_user_id,
-            created_at=payload.created_at or _now(),
-            created_by_user_id=payload.created_by_user_id,
-            updated_at=payload.updated_at or payload.created_at or _now(),
-            updated_by_user_id=payload.updated_by_user_id,
-            deleted_at=payload.deleted_at,
-            deleted_by_user_id=payload.deleted_by_user_id,
-            row_version=payload.row_version,
-        )
-        return project
-
-    def _upsert_post(self, current: User, payload: WorkPostResponse) -> WorkPost:
-        existing = self.repo.get_post(payload.id)
-        if existing:
-            existing.project_id = payload.project_id
-            existing.name = payload.name
-            existing.description = payload.description
-            existing.is_active = payload.is_active
-            existing.is_archived = payload.is_archived
-            existing.archived_at = payload.archived_at
-            existing.archived_by_user_id = payload.archived_by_user_id
-            existing.created_at = payload.created_at or existing.created_at
-            existing.created_by_user_id = payload.created_by_user_id
-            existing.updated_at = payload.updated_at or existing.updated_at
-            existing.updated_by_user_id = payload.updated_by_user_id
-            existing.deleted_at = payload.deleted_at
-            existing.deleted_by_user_id = payload.deleted_by_user_id
-            existing.row_version = payload.row_version
-            return existing
-        post = WorkPost(
-            id=payload.id,
-            project_id=payload.project_id,
-            name=payload.name,
-            description=payload.description,
-            is_active=payload.is_active,
-            is_archived=payload.is_archived,
-            archived_at=payload.archived_at,
-            archived_by_user_id=payload.archived_by_user_id,
-            created_at=payload.created_at or _now(),
-            created_by_user_id=payload.created_by_user_id,
-            updated_at=payload.updated_at or payload.created_at or _now(),
-            updated_by_user_id=payload.updated_by_user_id,
-            deleted_at=payload.deleted_at,
-            deleted_by_user_id=payload.deleted_by_user_id,
-            row_version=payload.row_version,
-        )
-        return post
-
-    def _upsert_external_person(self, current: User, payload: WorkExternalPersonResponse) -> WorkExternalPerson:
-        existing = self.repo.get_external_person(payload.id)
-        normalized_name = _normalize(payload.display_name)
-        normalized_email = _normalize(payload.email)
-        if existing:
-            existing.display_name = payload.display_name
-            existing.normalized_name = normalized_name
-            existing.email = payload.email
-            existing.normalized_email = normalized_email
-            existing.note = payload.note
-            existing.is_active = payload.is_active
-            existing.deleted_at = payload.deleted_at
-            existing.created_at = payload.created_at or existing.created_at
-            existing.created_by_user_id = payload.created_by_user_id
-            existing.updated_at = payload.updated_at or existing.updated_at
-            existing.updated_by_user_id = payload.updated_by_user_id
-            existing.deleted_by_user_id = payload.deleted_by_user_id
-            existing.row_version = payload.row_version
-            return existing
-        person = WorkExternalPerson(
-            id=payload.id,
-            display_name=payload.display_name,
-            normalized_name=normalized_name,
-            email=payload.email,
-            normalized_email=normalized_email,
-            note=payload.note,
-            is_active=payload.is_active,
-            deleted_at=payload.deleted_at,
-            created_at=payload.created_at or _now(),
-            created_by_user_id=payload.created_by_user_id,
-            updated_at=payload.updated_at or payload.created_at or _now(),
-            updated_by_user_id=payload.updated_by_user_id,
-            deleted_by_user_id=payload.deleted_by_user_id,
-            row_version=payload.row_version,
-        )
-        return person
-
-    def _upsert_historical_identity(self, current: User, payload: WorkHistoricalIdentityResponse) -> WorkHistoricalUserIdentity:
-        source_user_exists = bool(payload.source_user_id and self.repo.get_user(payload.source_user_id))
-        source_key = payload.source_key
-        if payload.source_user_id and not source_user_exists and str(payload.source_user_id) not in source_key:
-            source_key = f"{source_key}|missing-user:{payload.source_user_id}"
-        existing = self.repo.get_historical_identity(payload.id)
-        if not existing:
-            existing = self._find_historical_identity_by_source_key(payload.source_key)
-        if existing:
-            existing.source_key = source_key
-            existing.snapshot_name = payload.snapshot_name
-            existing.snapshot_email = payload.snapshot_email
-            existing.snapshot_display_label = payload.snapshot_display_label
-            existing.source_user_id = payload.source_user_id if source_user_exists else None
-            existing.linked_user_id = payload.linked_user_id
-            existing.linked_at = payload.linked_at
-            existing.linked_by_user_id = payload.linked_by_user_id
-            existing.is_active = payload.is_active
-            existing.created_at = payload.created_at or existing.created_at
-            existing.created_by_user_id = payload.created_by_user_id
-            existing.updated_at = payload.updated_at or existing.updated_at
-            existing.updated_by_user_id = payload.updated_by_user_id
-            existing.deleted_at = payload.deleted_at
-            existing.deleted_by_user_id = payload.deleted_by_user_id
-            existing.row_version = payload.row_version
-            return existing
-        identity = WorkHistoricalUserIdentity(
-            id=payload.id,
-            source_key=source_key,
-            snapshot_name=payload.snapshot_name,
-            snapshot_email=payload.snapshot_email,
-            snapshot_display_label=payload.snapshot_display_label,
-            source_user_id=payload.source_user_id if source_user_exists else None,
-            linked_user_id=payload.linked_user_id,
-            linked_at=payload.linked_at,
-            linked_by_user_id=payload.linked_by_user_id,
-            is_active=payload.is_active,
-            created_at=payload.created_at or _now(),
-            created_by_user_id=payload.created_by_user_id,
-            updated_at=payload.updated_at or payload.created_at or _now(),
-            updated_by_user_id=payload.updated_by_user_id,
-            deleted_at=payload.deleted_at,
-            deleted_by_user_id=payload.deleted_by_user_id,
-            row_version=payload.row_version,
-        )
-        return identity
+    def _is_selectable_masterdata(row: WorkProjectResponse | WorkPostResponse | Project | WorkPost) -> bool:
+        return bool(row.is_active and not row.is_archived and getattr(row, "deleted_at", None) is None)
 
     def relink_historical_identity(self, current: User, identity_id: str, payload: WorkHistoricalIdentityRelinkRequest) -> WorkHistoricalIdentityResponse:
         self._ensure_admin(current)
@@ -1201,73 +487,18 @@ class WorkHoursService:
         else:
             self.repo.db.add(AuditEvent(event_type=event_type, actor_user_id=actor.id if actor else None, details_json=details_json))
 
-    def _mark_import_batch_failed(self, batch: WorkImportBatch, current: User, *, error_type: str, error_message: str, extra: dict | None = None) -> None:
-        # This is deliberately called only after rollback. Persist the failed
-        # operational record and exactly one sanitized audit in one fresh txn.
-        persisted = self.repo.db.get(WorkImportBatch, batch.id)
-        if not persisted:
-            persisted = batch
-            self.repo.db.add(persisted)
-        persisted.status = "failed"
-        safe_code = error_type[:120]
-        persisted.errors_json = json.dumps([{"code": safe_code}], ensure_ascii=False)
-        self._log(
-            event_type="work_hours.import.failed",
-            actor=current,
-            target_type="import_batch",
-            target_id=persisted.id,
-            after={"status": "failed", "error_code": safe_code, "counts": json.loads(persisted.counts_json or "{}"), **(extra or {})},
-            outcome="failed",
-            commit=False,
-        )
-        self.repo.db.commit()
-
-    @staticmethod
-    def _map_integrity_error(exc: IntegrityError) -> tuple[int, dict[str, object]] | None:
-        text = str(getattr(exc, "orig", exc)).casefold()
-        unique_constraints = {
-            "uq_work_projects_name",
-            "uq_work_posts_project_name",
-            "uq_work_external_people_name_email",
-            "uq_work_external_people_normalized_email",
-            "ix_work_historical_user_identities_source_key",
-            "uq_work_hour_group_participants_active_identity",
-        }
-        shape_constraints = {
-            "ck_work_hour_groups_duration_half_hours",
-            "ck_work_hour_group_participants_exactly_one_identity",
-            "ck_work_projects_deleted_tuple", "ck_work_projects_archived_tuple", "ck_work_projects_active_state",
-            "ck_work_posts_deleted_tuple", "ck_work_posts_archived_tuple", "ck_work_posts_active_state",
-        }
-        for name in unique_constraints:
-            if name in text:
-                return 409, {"code": "work_hours_import_unique_conflict", "message": "De import botst met bestaande unieke gegevens.", "constraint": name}
-        for name in shape_constraints:
-            if name in text:
-                return 422, {"code": "work_hours_import_invalid_state", "message": "De import bevat een ongeldige status of vorm.", "constraint": name}
-        # SQLite reports columns rather than a named unique constraint.
-        sqlite_unique_columns = {
-            "work_projects.name": "uq_work_projects_name",
-            "work_posts.project_id, work_posts.name": "uq_work_posts_project_name",
-            "work_external_people.normalized_email": "uq_work_external_people_normalized_email",
-            "work_hour_group_participants.group_id, work_hour_group_participants.active_identity_key": "uq_work_hour_group_participants_active_identity",
-        }
-        for columns, name in sqlite_unique_columns.items():
-            if columns in text:
-                return 409, {"code": "work_hours_import_unique_conflict", "message": "De import botst met bestaande unieke gegevens.", "constraint": name}
-        if "foreign key constraint" in text:
-            return 422, {"code": "work_hours_import_invalid_reference", "message": "De import bevat een ongeldige verwijzing.", "constraint": "foreign_key"}
-        if "check constraint" in text:
-            return 422, {"code": "work_hours_import_invalid_state", "message": "De import bevat een ongeldige status of vorm.", "constraint": "check"}
-        return None
 
     def list_meta(self, current: User) -> WorkHourMetaResponse:
         return WorkHourMetaResponse(
             projects=[WorkProjectOptionResponse(id=project.id, display_name=project.name) for project in self.repo.list_selectable_projects()],
-            posts=[WorkPostOptionResponse(id=post.id, project_selection_key=post.project_id, display_name=post.name) for post in self.repo.list_selectable_posts()],
+            posts=[WorkPostOptionResponse(id=post.id, display_name=post.name) for post in self.repo.list_selectable_posts()],
             external_people=[WorkExternalPersonOptionResponse(id=person.id, display_name=person.display_name) for person in self.repo.list_external_people() if person.is_active],
             historical_identities=[],
             eligible_users=[WorkEligibleUserResponse(id=user.id, display_name=_display_name_for_user(user)) for user in self.repo.list_active_users()],
+            filter_projects=[WorkProjectOptionResponse(id=project.id, display_name=project.name, selectable=self._is_selectable_masterdata(project)) for project in self.repo.list_filter_projects()],
+            filter_posts=[WorkPostOptionResponse(id=post.id, display_name=post.name, selectable=self._is_selectable_masterdata(post)) for post in self.repo.list_filter_posts()],
+            filter_participants=self.repo.list_filter_participants(),
+            filter_dates=self.repo.list_filter_dates(),
             is_admin=current.is_admin,
         )
 
@@ -1468,8 +699,7 @@ class WorkHoursService:
         before = self._full_group_snapshot(group)
         project_id = payload.project_id or group.project_id
         post_id = payload.post_id or group.post_id
-        if payload.project_id or payload.post_id:
-            self._validate_project_post(project_id, post_id, allow_unchanged=(group.project_id, group.post_id))
+        self._validate_project_post(project_id, post_id)
         existing = {participant.id: participant for participant in group.participants if participant.deleted_at is None}
         validated_participants = self._validate_patch_participants(payload.participants, existing, current) if payload.participants is not None else None
 
@@ -1835,7 +1065,7 @@ class WorkHoursService:
         self._ensure_admin(current)
         if self._project_name_conflicts(payload.name):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Projectnaam bestaat al"})
-        project = WorkProject(name=payload.name, description=payload.description, created_by_user_id=current.id, updated_by_user_id=current.id)
+        project = Project(name=payload.name, description=payload.description)
         try:
             self.repo.db.add(project)
             self.repo.db.flush()
@@ -1854,12 +1084,10 @@ class WorkHoursService:
         if payload.name is not None and self._project_name_conflicts(payload.name, exclude_project_id=project.id):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Projectnaam bestaat al"})
         before = self._project_to_response(project).model_dump()
-        project.row_version = self._require_expected_version(WorkProject, project.id, payload.expected_row_version)
         if payload.name is not None:
             project.name = payload.name.strip()
         if payload.description is not None:
             project.description = payload.description.strip()
-        project.updated_by_user_id = current.id
         self.repo.db.add(project)
         try:
             self._log(event_type="work_hours.project.updated", actor=current, target_type="project", target_id=project.id, before=before, after=self._project_to_response(project).model_dump(), commit=False)
@@ -1874,16 +1102,10 @@ class WorkHoursService:
         project = self.repo.get_project(project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project niet gevonden")
-        if project.deleted_at is not None:
-            raise HTTPException(status_code=422, detail="Een verwijderd project kan niet worden gearchiveerd")
         before = self._project_to_response(project).model_dump()
-        project.row_version = self._require_expected_version(WorkProject, project.id, expected_row_version)
+        del expected_row_version
         project.is_active = False
         project.is_archived = True
-        project.archived_at = _now()
-        project.updated_at = project.archived_at
-        project.archived_by_user_id = current.id
-        project.updated_by_user_id = current.id
         self.repo.db.add(project)
         self._log(event_type="work_hours.project.archived", actor=current, target_type="project", target_id=project.id, before=before, after=self._project_to_response(project).model_dump(), commit=False)
         self.repo.db.commit()
@@ -1897,18 +1119,9 @@ class WorkHoursService:
         if self._project_name_conflicts(project.name, exclude_project_id=project.id):
             raise HTTPException(status_code=409, detail={"message": "Projectnaam bestaat al"})
         before = self._project_to_response(project).model_dump()
-        project.row_version = self._require_expected_version(WorkProject, project.id, expected_row_version)
-        if project.deleted_at is not None:
-            was_archived = project.is_archived
-            project.deleted_at = None
-            project.deleted_by_user_id = None
-            project.is_active = not was_archived
-        else:
-            project.is_active = True
-            project.is_archived = False
-            project.archived_at = None
-            project.archived_by_user_id = None
-        project.updated_by_user_id = current.id
+        del expected_row_version
+        project.is_active = True
+        project.is_archived = False
         self.repo.db.add(project)
         self._log(event_type="work_hours.project.restored", actor=current, target_type="project", target_id=project.id, before=before, after=self._project_to_response(project).model_dump(), commit=False)
         self.repo.db.commit()
@@ -1919,15 +1132,10 @@ class WorkHoursService:
         project = self.repo.get_project(project_id)
         if not project:
             raise HTTPException(status_code=404, detail="Project niet gevonden")
-        if project.deleted_at is not None:
-            raise HTTPException(status_code=409, detail="Project is al verwijderd")
         before = self._project_to_response(project).model_dump()
-        project.row_version = self._require_expected_version(WorkProject, project.id, expected_row_version)
+        del expected_row_version
         project.is_active = False
-        project.deleted_at = _now()
-        project.updated_at = project.deleted_at
-        project.deleted_by_user_id = current.id
-        project.updated_by_user_id = current.id
+        project.is_archived = True
         try:
             self.repo.db.add(project)
             self._log(event_type="work_hours.project.deleted", actor=current, target_type="project", target_id=project.id, before=before, after=self._project_to_response(project).model_dump(), commit=False)
@@ -1939,12 +1147,9 @@ class WorkHoursService:
 
     def create_post(self, current: User, payload: WorkPostCreateRequest) -> WorkPostResponse:
         self._ensure_admin(current)
-        project = self.repo.get_project(payload.project_id)
-        if not project or project.deleted_at is not None or not project.is_active or project.is_archived:
-            raise HTTPException(status_code=422, detail="Project is niet actief/selecteerbaar")
-        if self._post_name_conflicts(payload.project_id, payload.name):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al binnen dit project"})
-        post = WorkPost(project_id=payload.project_id, name=payload.name, description=payload.description, created_by_user_id=current.id, updated_by_user_id=current.id)
+        if self._post_name_conflicts(payload.name):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al"})
+        post = WorkPost(name=payload.name, normalized_name=_normalize(payload.name), description=payload.description, created_by_user_id=current.id, updated_by_user_id=current.id)
         try:
             self.repo.db.add(post)
             self.repo.db.flush()
@@ -1952,7 +1157,7 @@ class WorkHoursService:
             self.repo.db.commit()
         except IntegrityError as exc:
             self.repo.db.rollback()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al binnen dit project"}) from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al"}) from exc
         return self._post_to_response(post)
 
     def update_post(self, current: User, post_id: str, payload: WorkPostUpdateRequest) -> WorkPostResponse:
@@ -1960,12 +1165,13 @@ class WorkHoursService:
         post = self.repo.get_post(post_id)
         if not post:
             raise HTTPException(status_code=404, detail="Post niet gevonden")
-        if payload.name is not None and self._post_name_conflicts(post.project_id, payload.name, exclude_post_id=post.id):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al binnen dit project"})
+        if payload.name is not None and self._post_name_conflicts(payload.name, exclude_post_id=post.id):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al"})
         before = self._post_to_response(post).model_dump()
         post.row_version = self._require_expected_version(WorkPost, post.id, payload.expected_row_version)
         if payload.name is not None:
             post.name = payload.name.strip()
+            post.normalized_name = _normalize(payload.name)
         if payload.description is not None:
             post.description = payload.description.strip()
         post.updated_by_user_id = current.id
@@ -1975,7 +1181,7 @@ class WorkHoursService:
             self.repo.db.commit()
         except IntegrityError as exc:
             self.repo.db.rollback()
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al binnen dit project"}) from exc
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Postnaam bestaat al"}) from exc
         return self._post_to_response(post)
 
     def archive_post(self, current: User, post_id: str, expected_row_version: int | None) -> WorkPostResponse:
@@ -2003,11 +1209,8 @@ class WorkHoursService:
         post = self.repo.get_post(post_id)
         if not post:
             raise HTTPException(status_code=404, detail="Post niet gevonden")
-        project = self.repo.get_project(post.project_id)
-        if not project or not self._is_selectable_masterdata(project):
-            raise HTTPException(status_code=422, detail="Herstel eerst het actieve bovenliggende project")
-        if self._post_name_conflicts(post.project_id, post.name, exclude_post_id=post.id):
-            raise HTTPException(status_code=409, detail={"message": "Postnaam bestaat al binnen dit project"})
+        if self._post_name_conflicts(post.name, exclude_post_id=post.id):
+            raise HTTPException(status_code=409, detail={"message": "Postnaam bestaat al"})
         before = self._post_to_response(post).model_dump()
         post.row_version = self._require_expected_version(WorkPost, post.id, expected_row_version)
         if post.deleted_at is not None:
@@ -2061,6 +1264,7 @@ class WorkHoursService:
         buffer = StringIO()
         writer = csv.writer(buffer, delimiter=";", lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
         writer.writerow([
+            "registratie-id",
             "datum",
             "naam persoon",
             "type persoon (WindWilly-gebruiker/extern)",
@@ -2087,6 +1291,7 @@ class WorkHoursService:
                 if participant.deleted_at is not None and not include_group_deleted_child:
                     continue
                 writer.writerow([
+                    group.id,
                     _work_date(group.work_date).strftime("%d-%m-%Y"),
                     self._safe_csv(participant.display_name_snapshot),
                     self._safe_csv(participant.display_type_snapshot),
@@ -2112,389 +1317,3 @@ class WorkHoursService:
         if text[:1] in {"=", "+", "-", "@"}:
             return f"'{text}"
         return text
-
-    def build_backup_envelope(self) -> WorkImportEnvelope:
-        groups = self.repo.list_groups({"include_deleted": True})
-        source_batch_ids = {group.source_import_batch_id for group in groups if group.source_import_batch_id}
-        return WorkImportEnvelope(
-            projects=[self._project_to_response(project) for project in self.repo.list_projects(include_deleted=True)],
-            posts=[self._post_to_response(post) for post in self.repo.list_posts(include_deleted=True)],
-            external_people=[self._person_to_response(person) for person in self.repo.list_external_people(include_deleted=True)],
-            historical_identities=[self._historical_to_response(identity) for identity in self.repo.list_historical_identities(include_deleted=True)],
-            source_batches=[
-                WorkImportSourceBatchSnapshot(
-                    id=batch.id,
-                    requested_by_user_id=batch.requested_by_user_id,
-                    format_version=batch.format_version,
-                    backup_version=batch.backup_version,
-                    mode=batch.mode,
-                    source_hash=batch.source_hash,
-                    status=batch.status,
-                    counts={str(key): int(value) for key, value in json.loads(batch.counts_json or "{}").items()},
-                    created_at=batch.created_at,
-                    updated_at=batch.updated_at,
-                )
-                for batch in self.repo.list_import_batches_by_ids(source_batch_ids)
-            ],
-            groups=[
-                WorkImportGroupSnapshot(
-                    id=group.id,
-                    work_date=_work_date(group.work_date),
-                    project_id=group.project_id,
-                    post_id=group.post_id,
-                    description=group.description,
-                    duration_half_hours=group.duration_half_hours,
-                    source_import_batch_id=group.source_import_batch_id,
-                    created_at=group.created_at,
-                    created_by_user_id=group.created_by_user_id,
-                    updated_at=group.updated_at,
-                    updated_by_user_id=group.updated_by_user_id,
-                    deleted_at=group.deleted_at,
-                    deleted_by_user_id=group.deleted_by_user_id,
-                    row_version=group.row_version,
-                    participants=[
-                        WorkImportParticipantSnapshot(
-                            id=participant.id,
-                            participant_kind=participant.participant_kind,
-                            user_id=participant.user_id,
-                            external_person_id=participant.external_person_id,
-                            historical_identity_id=participant.historical_identity_id,
-                            display_name_snapshot=participant.display_name_snapshot,
-                            display_email_snapshot=participant.display_email_snapshot,
-                            display_type_snapshot=participant.display_type_snapshot,
-                            sort_order=participant.sort_order,
-                            created_at=participant.created_at,
-                            created_by_user_id=participant.created_by_user_id,
-                            updated_at=participant.updated_at,
-                            updated_by_user_id=participant.updated_by_user_id,
-                            deleted_at=participant.deleted_at,
-                            deleted_by_user_id=participant.deleted_by_user_id,
-                            row_version=participant.row_version,
-                        )
-                        for participant in sorted(group.participants, key=lambda item: item.sort_order)
-                    ],
-                )
-                for group in groups
-            ],
-        )
-
-    def _upsert_source_batch(self, payload: WorkImportSourceBatchSnapshot) -> WorkImportBatch:
-        existing = self.repo.db.get(WorkImportBatch, payload.id)
-        if existing:
-            existing.requested_by_user_id = payload.requested_by_user_id
-            existing.format_version = payload.format_version
-            existing.backup_version = payload.backup_version
-            existing.mode = payload.mode
-            existing.source_hash = payload.source_hash
-            existing.status = payload.status
-            existing.counts_json = json.dumps(payload.counts, sort_keys=True)
-            existing.created_at = payload.created_at
-            existing.updated_at = payload.updated_at
-            return existing
-        return WorkImportBatch(
-            id=payload.id,
-            requested_by_user_id=payload.requested_by_user_id,
-            format_version=payload.format_version,
-            backup_version=payload.backup_version,
-            mode=payload.mode,
-            source_filename="herstelde-provenance.json",
-            source_hash=payload.source_hash,
-            status=payload.status,
-            counts_json=json.dumps(payload.counts, sort_keys=True),
-            warnings_json="[]",
-            errors_json="[]",
-            created_at=payload.created_at,
-            updated_at=payload.updated_at,
-        )
-
-    def _backup_path(self, batch_id: str) -> Path:
-        settings = get_settings()
-        root = settings.storage_root / settings.exports_dir / "urenverantwoording"
-        root.mkdir(parents=True, exist_ok=True)
-        return root / f"{batch_id}.json"
-
-    def _resolve_import_participant_snapshot(
-        self,
-        current: User,
-        participant_snapshot: WorkImportParticipantSnapshot,
-        historical_identity_ids: dict[str, str],
-    ) -> WorkImportParticipantSnapshot:
-        resolved_snapshot = participant_snapshot
-        if resolved_snapshot.historical_identity_id and resolved_snapshot.historical_identity_id in historical_identity_ids:
-            resolved_snapshot = resolved_snapshot.model_copy(update={"historical_identity_id": historical_identity_ids[resolved_snapshot.historical_identity_id]})
-        if resolved_snapshot.participant_kind == "live_user":
-            user = self.repo.get_user(resolved_snapshot.user_id) if resolved_snapshot.user_id else None
-            if not user or not user.is_active:
-                if not self._missing_user_metadata_is_sufficient(resolved_snapshot):
-                    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Ontbrekende gebruiker heeft onvoldoende of inconsistente snapshotmetadata")
-                source_key = f"missing-user:{resolved_snapshot.user_id or _normalize(resolved_snapshot.display_email_snapshot)}"
-                identity = self._materialize_historical_identity(
-                    current,
-                    source_key=source_key,
-                    snapshot_name=resolved_snapshot.display_name_snapshot,
-                    snapshot_email=resolved_snapshot.display_email_snapshot,
-                    snapshot_display_label=resolved_snapshot.display_type_snapshot or resolved_snapshot.display_name_snapshot,
-                )
-                resolved_snapshot = resolved_snapshot.model_copy(update={
-                    "participant_kind": "historical_identity",
-                    "user_id": None,
-                    "historical_identity_id": identity.id,
-                })
-        return resolved_snapshot
-
-    def _participant_from_import_snapshot(
-        self,
-        current: User,
-        snapshot: WorkImportParticipantSnapshot,
-        historical_identity_ids: dict[str, str],
-    ) -> WorkHourGroupParticipant:
-        resolved = self._resolve_import_participant_snapshot(current, snapshot, historical_identity_ids)
-        participant = self._participant_entity(
-            resolved,
-            current,
-            allow_inactive_external_person=True,
-            allow_historical_identity=True,
-        )
-        if snapshot.id:
-            participant.id = snapshot.id
-        participant.created_at = snapshot.created_at or _now()
-        participant.created_by_user_id = snapshot.created_by_user_id
-        participant.updated_at = snapshot.updated_at or snapshot.created_at or _now()
-        participant.updated_by_user_id = snapshot.updated_by_user_id
-        participant.deleted_at = snapshot.deleted_at
-        participant.deleted_by_user_id = snapshot.deleted_by_user_id
-        participant.row_version = snapshot.row_version
-        self._set_active_identity_key(participant)
-        return participant
-
-    def preview_import(self, current: User, envelope: WorkImportEnvelope, mode: str) -> WorkImportPreviewResponse:
-        self._ensure_admin(current)
-        preview_id = str(uuid4())
-        try:
-            self._validate_import_payload(envelope, mode)
-            semantic_conflicts = self._import_semantic_conflicts(envelope, mode)
-            if semantic_conflicts:
-                self._raise_semantic_conflict(semantic_conflicts)
-        except HTTPException as exc:
-            self._log(
-                event_type="work_hours.import.preview", actor=current,
-                target_type="import_preview", target_id=preview_id,
-                outcome="failed", extra={"status_code": exc.status_code, "counts": {}},
-            )
-            raise
-        source_hash = self._import_payload_hash(envelope)
-        batch = WorkImportBatch(
-            requested_by_user_id=current.id,
-            format_version=envelope.format_version,
-            backup_version=envelope.backup_version,
-            mode=mode,
-            source_filename="backup.json",
-            source_hash=source_hash,
-            status="preview",
-            counts_json=json.dumps({
-                "projects": len(envelope.projects),
-                "posts": len(envelope.posts),
-                "external_people": len(envelope.external_people),
-                "historical_identities": len(envelope.historical_identities),
-                "groups": len(envelope.groups),
-            }),
-            warnings_json=json.dumps([], ensure_ascii=False),
-            errors_json=json.dumps([], ensure_ascii=False),
-        )
-        self.repo.create_import_batch(batch)
-        warnings: list[str] = []
-        errors: list[str] = []
-        if envelope.format_version != "1.0":
-            warnings.append("Andere formatversie gedetecteerd")
-        if mode not in {"merge", "full_restore"}:
-            errors.append("Ongeldige importmodus")
-        conflicts = self._import_conflicts(envelope, mode)
-        if conflicts:
-            errors.extend([f"Conflict: {conflict}" for conflict in conflicts])
-        if mode == "full_restore" and not envelope.groups:
-            warnings.append("Full restore zonder urenregistraties")
-        self._ensure_pre_import_backup(batch, current, create=True)
-        batch.status = "conflict" if errors else "previewed"
-        batch.warnings_json = json.dumps(warnings, ensure_ascii=False)
-        batch.errors_json = json.dumps(errors, ensure_ascii=False)
-        self.repo.db.add(batch)
-        self._log(
-            event_type="work_hours.import.preview", actor=current,
-            target_type="import_batch", target_id=batch.id,
-            after={"status": batch.status, "counts": json.loads(batch.counts_json)},
-            commit=False,
-        )
-        self.repo.db.commit()
-        return WorkImportPreviewResponse(
-            batch_id=batch.id,
-            status=batch.status,
-            counts=json.loads(batch.counts_json),
-            warnings=warnings,
-            errors=errors,
-            backup_download_url=f"/api/urenverantwoording/import/batches/{batch.id}/backup",
-        )
-
-    def commit_import(self, current: User, batch_id: str, envelope: WorkImportEnvelope, mode: str) -> WorkImportCommitResponse:
-        self._ensure_admin(current)
-        batch = self.repo.db.get(WorkImportBatch, batch_id)
-        if not batch:
-            raise HTTPException(status_code=404, detail="Importbatch niet gevonden")
-        if batch.status not in {"preview", "previewed"}:
-            raise HTTPException(status_code=409, detail="Importbatch is al verwerkt")
-        if mode not in {"merge", "full_restore"}:
-            raise HTTPException(status_code=422, detail="Ongeldige importmodus")
-        if batch.mode != mode:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Importbatch komt niet overeen met deze bevestiging"})
-        if batch.source_hash != self._import_payload_hash(envelope):
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Importbatch komt niet overeen met de preview"})
-        batch.status = "committing"
-        try:
-            domain_before = self.build_backup_envelope().model_dump(mode="json")
-            self._validate_import_payload(envelope, mode)
-            semantic_conflicts = self._import_semantic_conflicts(envelope, mode)
-            if semantic_conflicts:
-                self._raise_semantic_conflict(semantic_conflicts)
-            conflicts = self._import_conflicts(envelope, mode)
-            if conflicts:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"message": "Importconflict", "conflicts": conflicts})
-            backup_path = self._ensure_pre_import_backup(batch, current, create=False)
-            backup_json = backup_path.read_text(encoding="utf-8")
-            historical_identity_ids: dict[str, str] = {}
-            if mode == "full_restore":
-                self.repo.db.query(WorkHourGroupParticipant).delete()
-                self.repo.db.query(WorkHourGroup).delete()
-                self.repo.db.query(WorkPost).delete()
-                self.repo.db.query(WorkProject).delete()
-                self.repo.db.query(WorkExternalPerson).delete()
-                self.repo.db.query(WorkHistoricalUserIdentity).delete()
-                self.repo.db.flush()
-            for source_batch in envelope.source_batches:
-                self.repo.db.add(self._upsert_source_batch(source_batch))
-            self.repo.db.flush()
-            for project in envelope.projects:
-                self.repo.db.add(self._upsert_project(current, project))
-            self.repo.db.flush()
-            for post in envelope.posts:
-                self.repo.db.add(self._upsert_post(current, post))
-            self.repo.db.flush()
-            for person in envelope.external_people:
-                self.repo.db.add(self._upsert_external_person(current, person))
-            self.repo.db.flush()
-            for identity in envelope.historical_identities:
-                persisted_identity = self._upsert_historical_identity(current, identity)
-                historical_identity_ids[identity.id] = persisted_identity.id
-                self.repo.db.add(persisted_identity)
-            self.repo.db.flush()
-
-            existing_groups = {group.id: group for group in self.repo.list_groups({"include_deleted": True})}
-            for group_snapshot in envelope.groups:
-                project = self.repo.get_project(group_snapshot.project_id)
-                post = self.repo.get_post(group_snapshot.post_id)
-                if not project or not post:
-                    raise HTTPException(status_code=422, detail="Import bevat een onopgeloste project/post-reference")
-                existing_group = existing_groups.get(group_snapshot.id)
-                if existing_group:
-                    existing_group.work_date = group_snapshot.work_date
-                    existing_group.project_id = group_snapshot.project_id
-                    existing_group.post_id = group_snapshot.post_id
-                    existing_group.description = group_snapshot.description
-                    existing_group.duration_half_hours = group_snapshot.duration_half_hours
-                    existing_group.source_import_batch_id = group_snapshot.source_import_batch_id
-                    existing_group.created_at = group_snapshot.created_at or existing_group.created_at
-                    existing_group.created_by_user_id = group_snapshot.created_by_user_id
-                    existing_group.updated_at = group_snapshot.updated_at or existing_group.updated_at
-                    existing_group.updated_by_user_id = group_snapshot.updated_by_user_id
-                    existing_group.deleted_at = group_snapshot.deleted_at
-                    existing_group.deleted_by_user_id = group_snapshot.deleted_by_user_id
-                    existing_group.row_version = group_snapshot.row_version
-                    incoming_ids = {item.id for item in group_snapshot.participants if item.id}
-                    for current_participant in list(existing_group.participants):
-                        if current_participant.id not in incoming_ids:
-                            self.repo.db.delete(current_participant)
-                    by_id = {item.id: item for item in existing_group.participants}
-                    for participant_snapshot in group_snapshot.participants:
-                        restored = self._participant_from_import_snapshot(current, participant_snapshot, historical_identity_ids)
-                        current_participant = by_id.get(participant_snapshot.id) if participant_snapshot.id else None
-                        if current_participant:
-                            for field in (
-                                "participant_kind", "user_id", "external_person_id", "historical_identity_id",
-                                "display_name_snapshot", "display_email_snapshot", "display_type_snapshot", "sort_order",
-                                "created_at", "created_by_user_id", "updated_at", "updated_by_user_id",
-                                "deleted_at", "deleted_by_user_id", "row_version", "active_identity_key",
-                            ):
-                                setattr(current_participant, field, getattr(restored, field))
-                        else:
-                            existing_group.participants.append(restored)
-                    self.repo.db.add(existing_group)
-                    continue
-                group = WorkHourGroup(
-                    id=group_snapshot.id,
-                    work_date=group_snapshot.work_date,
-                    project_id=group_snapshot.project_id,
-                    post_id=group_snapshot.post_id,
-                    description=group_snapshot.description,
-                    duration_half_hours=group_snapshot.duration_half_hours,
-                    source_import_batch_id=group_snapshot.source_import_batch_id,
-                    created_at=group_snapshot.created_at or _now(),
-                    created_by_user_id=group_snapshot.created_by_user_id,
-                    updated_at=group_snapshot.updated_at or group_snapshot.created_at or _now(),
-                    updated_by_user_id=group_snapshot.updated_by_user_id,
-                    deleted_at=group_snapshot.deleted_at,
-                    deleted_by_user_id=group_snapshot.deleted_by_user_id,
-                    row_version=group_snapshot.row_version,
-                )
-                self.repo.db.add(group)
-                self.repo.db.flush()
-                for index, participant_snapshot in enumerate(group_snapshot.participants):
-                    participant = self._participant_from_import_snapshot(current, participant_snapshot, historical_identity_ids)
-                    participant.group_id = group.id
-                    participant.sort_order = participant_snapshot.sort_order if participant_snapshot.sort_order is not None else index
-                    self.repo.db.add(participant)
-            batch.status = "completed"
-            self.repo.db.flush()
-            domain_after = self.build_backup_envelope().model_dump(mode="json")
-            self._log(event_type="work_hours.import.committed", actor=current, target_type="import_batch", target_id=batch.id, before=domain_before, after=domain_after, extra={"mode": mode, "backup_bytes": len(backup_json)}, commit=False)
-            self.repo.db.flush()
-            self.repo.db.commit()
-        except IntegrityError as exc:
-            self.repo.db.rollback()
-            mapped = self._map_integrity_error(exc)
-            if mapped is None:
-                self._mark_import_batch_failed(batch, current, error_type="database_error", error_message="Databasefout", extra={"mode": mode})
-                raise HTTPException(status_code=500, detail={"code": "work_hours_import_database_error", "message": "Import mislukt door een databasefout."}) from exc
-            status_code, detail = mapped
-            if status_code == 409:
-                semantic_candidates = self._import_semantic_conflicts(envelope, mode)
-                if semantic_candidates:
-                    detail = self._semantic_conflict_detail(semantic_candidates)
-            self._mark_import_batch_failed(batch, current, error_type=str(detail["code"]), error_message="Importconflict", extra={"mode": mode})
-            raise HTTPException(status_code=status_code, detail=detail) from exc
-        except HTTPException as exc:
-            self.repo.db.rollback()
-            self._mark_import_batch_failed(batch, current, error_type=f"http_{exc.status_code}", error_message="Import geweigerd", extra={"mode": mode})
-            raise
-        except Exception as exc:
-            self.repo.db.rollback()
-            self._mark_import_batch_failed(batch, current, error_type=exc.__class__.__name__, error_message=str(exc) or exc.__class__.__name__, extra={"mode": mode})
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail={"message": "Import mislukt"}) from exc
-        return WorkImportCommitResponse(batch_id=batch.id, status=batch.status, backup_download_url=f"/api/urenverantwoording/import/batches/{batch.id}/backup")
-
-    def download_backup(self, current: User, batch_id: str) -> tuple[bytes, str]:
-        if not current.is_admin:
-            self._log(event_type="work_hours.backup.download", actor=current, target_type="backup_artifact", target_id=batch_id, outcome="denied", extra={"counts": {}})
-            raise HTTPException(status_code=403, detail="Beheerderstoegang vereist")
-        batch = self.repo.db.get(WorkImportBatch, batch_id)
-        if not batch or not batch.pre_import_backup_path:
-            self._log(event_type="work_hours.backup.download", actor=current, target_type="backup_artifact", target_id=batch_id, outcome="not_found", extra={"counts": {}})
-            raise HTTPException(status_code=404, detail="Backup niet gevonden")
-        path = Path(batch.pre_import_backup_path)
-        if not path.exists():
-            self._log(event_type="work_hours.backup.download", actor=current, target_type="backup_artifact", target_id=batch_id, outcome="not_found", extra={"counts": {}})
-            raise HTTPException(status_code=404, detail="Backup niet gevonden")
-        try:
-            content = path.read_bytes()
-        except OSError as exc:
-            self._log(event_type="work_hours.backup.download", actor=current, target_type="backup_artifact", target_id=batch_id, outcome="failed", extra={"counts": {}})
-            raise HTTPException(status_code=500, detail={"code": "work_hours_backup_download_failed", "message": "Backup kon niet worden gelezen."}) from exc
-        self._log(event_type="work_hours.backup.download", actor=current, target_type="backup_artifact", target_id=batch_id, extra={"counts": json.loads(batch.counts_json or "{}")})
-        return content, path.name

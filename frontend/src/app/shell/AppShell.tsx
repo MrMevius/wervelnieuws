@@ -17,6 +17,7 @@ import {
   NotificationFeedItem,
   UiSettings,
   Project,
+  WorkHourPost,
   SourceTraceHit,
   SchedulerOverview,
   Topic,
@@ -25,6 +26,7 @@ import {
   createAdminUser,
   createAdminTheme,
   createAdminProject,
+  createWorkPost,
   archiveBoardProject,
   bulkCopyDatabaseDocuments,
   bulkDeleteDatabaseDocuments,
@@ -51,6 +53,7 @@ import {
   listBoardRights,
   listCurrentVariants,
   listAdminProjects,
+  listWorkHoursAdminMasterdata,
   listDatabaseDocuments,
   listDatabaseProjects,
   listTopicScheduleTemplates,
@@ -69,6 +72,9 @@ import {
   updateAdminGenAIConfig,
   updateAdminUiSettings,
   updateAdminProject,
+  updateWorkPost,
+  archiveWorkPost,
+  restoreWorkPost,
   updateAdminTheme,
   updateAdminUser,
   updateAdminUserProfile,
@@ -4135,6 +4141,10 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
+  const [newWorkPostName, setNewWorkPostName] = useState("");
+  const [newWorkPostDescription, setNewWorkPostDescription] = useState("");
+  const [workPostSearch, setWorkPostSearch] = useState("");
+  const [workPostDrafts, setWorkPostDrafts] = useState<Record<string, { name: string; description: string }>>({});
   const [newThemeName, setNewThemeName] = useState("");
   const [genAIApiKey, setGenAIApiKey] = useState("");
   const [genAIForm, setGenAIForm] = useState<{
@@ -4162,6 +4172,11 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const projectsQuery = useQuery({
     queryKey: ["admin-projects"],
     queryFn: listAdminProjects,
+    enabled: currentUser?.is_admin === true
+  });
+  const workPostsQuery = useQuery({
+    queryKey: ["work-hours-admin-masterdata"],
+    queryFn: listWorkHoursAdminMasterdata,
     enabled: currentUser?.is_admin === true
   });
 
@@ -4371,6 +4386,29 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       }
       setFeedback("Project bijwerken is mislukt.");
     }
+  });
+
+  const refreshWorkPosts = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-masterdata"] });
+    await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
+  };
+  const createWorkPostMutation = useMutation({
+    mutationFn: () => createWorkPost({ name: newWorkPostName.trim(), description: newWorkPostDescription.trim() }),
+    onSuccess: async () => { setNewWorkPostName(""); setNewWorkPostDescription(""); setFeedback("Globale post toegevoegd."); await refreshWorkPosts(); },
+    onError: () => setFeedback("Globale post toevoegen is mislukt.")
+  });
+  const updateWorkPostMutation = useMutation({
+    mutationFn: ({ post, draft }: { post: WorkHourPost; draft: { name: string; description: string } }) => updateWorkPost(post.id, { ...draft, expected_row_version: post.row_version }),
+    onSuccess: async () => { setFeedback("Globale post bijgewerkt."); await refreshWorkPosts(); },
+    onError: () => setFeedback("Globale post bijwerken is mislukt.")
+  });
+  const archiveWorkPostMutation = useMutation({
+    mutationFn: (post: WorkHourPost) => archiveWorkPost(post.id, post.row_version ?? 1),
+    onSuccess: async () => { setFeedback("Globale post gearchiveerd."); await refreshWorkPosts(); }
+  });
+  const restoreWorkPostMutation = useMutation({
+    mutationFn: (post: WorkHourPost) => restoreWorkPost(post.id, post.row_version ?? 1),
+    onSuccess: async () => { setFeedback("Globale post hersteld."); await refreshWorkPosts(); }
   });
 
   const createThemeMutation = useMutation({
@@ -5189,6 +5227,22 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </tbody>
         </table>
       </div>
+      <section className="admin-work-posts" aria-labelledby="admin-work-posts-title">
+        <h2 id="admin-work-posts-title">Globale urenposten / categorieën</h2>
+        <p className="muted">Deze posten zijn bij ieder actief project beschikbaar. Beheer ze uitsluitend hier in Admin.</p>
+        <form className="admin-create-user" onSubmit={(event) => { event.preventDefault(); setFeedback(null); createWorkPostMutation.mutate(); }}>
+          <input aria-label="Nieuwe globale post" placeholder="Naam post" value={newWorkPostName} onChange={(event) => setNewWorkPostName(event.target.value)} minLength={2} maxLength={120} required />
+          <input aria-label="Beschrijving nieuwe globale post" placeholder="Beschrijving" value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
+          <button type="submit" disabled={createWorkPostMutation.isPending || newWorkPostName.trim().length < 2}>Post toevoegen</button>
+        </form>
+        <label className="admin-field"><span>Posten zoeken</span><input value={workPostSearch} onChange={(event) => setWorkPostSearch(event.target.value)} /></label>
+        <div className="table-wrap"><table><thead><tr><th>Post</th><th>Beschrijving</th><th>Status</th><th>Acties</th></tr></thead><tbody>
+          {(workPostsQuery.data?.posts ?? []).filter((post) => `${post.name} ${post.description ?? ""}`.toLowerCase().includes(workPostSearch.toLowerCase())).map((post) => {
+            const draft = workPostDrafts[post.id] ?? { name: post.name, description: post.description ?? "" };
+            return <tr key={post.id}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><input aria-label={`Beschrijving post ${post.name}`} value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td>{post.deleted_at ? "verwijderd" : post.is_archived ? "gearchiveerd" : post.is_active ? "actief" : "inactief"}</td><td><div className="admin-account-actions"><button type="button" onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{post.is_archived || post.deleted_at ? <button type="button" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></tr>;
+          })}
+        </tbody></table></div>
+      </section>
       </div>
 
       <div hidden={activeAdminTab !== "themes"}>

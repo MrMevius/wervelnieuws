@@ -1,3 +1,4 @@
+from pathlib import Path
 import re
 import time
 from io import BytesIO
@@ -374,7 +375,30 @@ def test_about_returns_read_only_payload(client):
     assert payload["description"]
     assert payload["disclaimer"]
     assert len(payload["changelog"]) >= 1
-    assert payload["changelog"][0]["title"] == "Urenregistratie sluit import, audit en historie veiliger af"
+    newest = payload["changelog"][0]
+    assert newest["iteration"] == "97"
+    assert newest["title"] == "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups"
+    combined = " ".join(newest["highlights"])
+    assert "CSV-export" in combined
+    assert "database- en storageback-up" in combined
+    assert "JSON-import en -back-up voor uren is verwijderd" in combined
+    assert "full restore" not in combined.casefold()
+    assert "preview" not in combined.casefold()
+
+
+def test_current_hours_docs_remove_json_restore_claims_but_keep_operational_backup_guidance():
+    repository_root = Path(__file__).parents[2]
+    hours_docs = (repository_root / "docs/urenregistratie.md").read_text(encoding="utf-8")
+    readme = (repository_root / "README.md").read_text(encoding="utf-8")
+    normalized_docs = hours_docs.casefold()
+
+    assert "de urenpagina heeft geen eigen json-backup of import" in normalized_docs
+    assert "full restore" not in normalized_docs
+    assert "import preview" not in normalized_docs
+    assert "database- én storagebackup" in hours_docs
+    assert "herstel database en storage samen" in normalized_docs
+    assert "alembic-downgrade reconstrueert die data en bestanden niet" in normalized_docs
+    assert "operational database/storage rollback" in readme
 
 
 def test_meta_ui_settings_returns_global_wind_theme_state(client):

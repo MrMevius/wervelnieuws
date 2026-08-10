@@ -349,9 +349,6 @@ const mockApi = vi.hoisted(() => ({
   archiveWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
   restoreWorkPost: vi.fn().mockResolvedValue({ id: "whpost2" }),
   downloadWorkHoursCsv: vi.fn().mockResolvedValue(new Blob(["csv"], { type: "text/csv" })),
-  downloadWorkHoursBackup: vi.fn().mockResolvedValue(new Blob(["backup"], { type: "application/json" })),
-  previewWorkHoursImport: vi.fn().mockResolvedValue({ batch_id: "batch-1", status: "previewed", counts: {}, warnings: [], errors: [] }),
-  commitWorkHoursImport: vi.fn().mockResolvedValue({ batch_id: "batch-1", status: "completed", backup_download_url: null }),
   listTopicDocuments: vi.fn().mockResolvedValue([
     {
       id: "audio-1",
@@ -2940,6 +2937,11 @@ describe("App", () => {
   });
 
   it("allows admin to manage projects", async () => {
+    mockApi.listWorkHoursAdminMasterdata.mockResolvedValueOnce({
+      projects: [],
+      posts: [{ id: "whpost1", name: "Communicatie", description: "Globaal", is_active: true, is_archived: false, deleted_at: null, row_version: 1 }],
+      external_people: []
+    });
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -2967,6 +2969,8 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("Windpark de Boldijk")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Globale urenposten / categorieën" })).toBeInTheDocument();
+      expect(screen.getByDisplayValue("Communicatie")).toBeInTheDocument();
     });
 
     fireEvent.change(screen.getByLabelText("Nieuw project"), {
@@ -2977,6 +2981,12 @@ describe("App", () => {
     await waitFor(() => {
       expect(mockApi.createAdminProject).toHaveBeenCalledWith("Project Noord");
       expect(screen.getByText("Project toegevoegd.")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText("Nieuwe globale post"), { target: { value: "Techniek" } });
+    fireEvent.click(screen.getByRole("button", { name: "Post toevoegen" }));
+    await waitFor(() => {
+      expect(mockApi.createWorkPost).toHaveBeenCalledWith({ name: "Techniek", description: "" });
     });
   });
 

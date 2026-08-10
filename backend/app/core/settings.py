@@ -62,9 +62,6 @@ class Settings(BaseSettings):
     max_retry_attempts: int = 5
     upload_max_bytes: int = MIN_DATABASE_UPLOAD_BYTES
     avatar_max_bytes: int = 5 * 1024 * 1024
-    work_hours_import_max_bytes: int = 2 * 1024 * 1024
-    work_hours_import_max_depth: int = 20
-    work_hours_import_max_nodes: int = 5000
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 120
 
