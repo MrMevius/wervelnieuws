@@ -8,6 +8,8 @@ class GenAIConfig(BaseModel):
     newsletter_prompt: str = Field(min_length=5)
     text_model: str = Field(min_length=2, max_length=120)
     image_model: str = Field(min_length=2, max_length=120)
+    whisper_model: str = Field(min_length=2, max_length=120)
+    whisper_language: str = Field(min_length=2, max_length=20)
     websearch_enabled: bool = False
     websearch_max_results: int = Field(default=3, ge=1, le=10)
     openai_api_key: str = ""
@@ -19,6 +21,8 @@ class GenAIConfig(BaseModel):
         "newsletter_prompt",
         "text_model",
         "image_model",
+        "whisper_model",
+        "whisper_language",
         mode="before",
     )
     @classmethod
@@ -33,6 +37,8 @@ class GenAIConfigResponse(BaseModel):
     newsletter_prompt: str
     text_model: str
     image_model: str
+    whisper_model: str
+    whisper_language: str
     websearch_enabled: bool
     websearch_max_results: int
     has_api_key: bool
@@ -50,6 +56,8 @@ class UpdateGenAIConfigRequest(BaseModel):
     newsletter_prompt: str | None = Field(default=None, min_length=5)
     text_model: str | None = Field(default=None, min_length=2, max_length=120)
     image_model: str | None = Field(default=None, min_length=2, max_length=120)
+    whisper_model: str | None = Field(default=None, min_length=2, max_length=120)
+    whisper_language: str | None = Field(default=None, min_length=2, max_length=20)
     websearch_enabled: bool | None = None
     websearch_max_results: int | None = Field(default=None, ge=1, le=10)
     openai_api_key: str | None = Field(default=None, max_length=512)
@@ -61,6 +69,8 @@ class UpdateGenAIConfigRequest(BaseModel):
         "newsletter_prompt",
         "text_model",
         "image_model",
+        "whisper_model",
+        "whisper_language",
         "openai_api_key",
         mode="before",
     )

@@ -124,6 +124,12 @@ npm test
 8. n8n receives success/error notifications and can forward to Telegram.
 9. Publication records, per-channel state, retries, and audit trail are persisted.
 
+## Topic audio runtime
+
+Topic audio is limited server-side to exactly `250000000` bytes and 180 minutes. The backend runtime image includes `ffprobe` and runs as the non-root `app` user (default UID/GID `1000`). Its default `TOPIC_AUDIO_TMP_ROOT` is owned by that user with mode `0700` and must remain outside `STORAGE_ROOT`.
+
+For bind-mounted storage, build with `APP_UID`/`APP_GID` matching the host-directory owner (the Compose deployment currently uses UID/GID `1000`) and keep the directories owned by that identity instead of making them world-writable. If `TOPIC_AUDIO_TMP_ROOT` is overridden with a mounted path, pre-create it with the same ownership and mode `0700`. Before deployment run: `docker compose run --rm --no-deps backend sh -lc 'test "$(id -u)" -ne 0 && ffprobe -version >/dev/null && test -w /data && test -w "${TOPIC_AUDIO_TMP_ROOT:-/tmp/wervelnieuws-topic-audio}"'`.
+
 ## Environment variables
 
 See `.env.example` for all required values (deploy path: `/mnt/wervelwind/database/config/.env`):

@@ -91,8 +91,19 @@ class AuditEventResponse(BaseModel):
 class DocumentResponse(BaseModel):
     id: str
     filename: str
+    parent_source_document_id: str | None = None
     doc_type: str
     status: DocumentStatus
+    duration_seconds: int | None = None
+    transcription_status: str
+    transcription_attempts: int
     extraction_error: str
+    transcription_error: str
+    transcription_text: str
+    transcription_model: str
+    transcription_language: str
+    speaker_labels_json: str
+    transcript_document_id: str | None = None
+    created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

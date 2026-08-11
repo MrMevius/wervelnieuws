@@ -375,15 +375,20 @@ def test_about_returns_read_only_payload(client):
     assert payload["description"]
     assert payload["disclaimer"]
     assert len(payload["changelog"]) >= 1
-    newest = payload["changelog"][0]
-    assert newest["iteration"] == "97"
-    assert newest["title"] == "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups"
-    combined = " ".join(newest["highlights"])
-    assert "CSV-export" in combined
-    assert "database- en storageback-up" in combined
-    assert "JSON-import en -back-up voor uren is verwijderd" in combined
-    assert "full restore" not in combined.casefold()
-    assert "preview" not in combined.casefold()
+    audio_entries = [
+        entry for entry in payload["changelog"] if entry["iteration"] == "100"
+    ]
+    assert audio_entries == [
+        {
+            "iteration": "100",
+            "date": "2026-08-11",
+            "title": "Topicbronnen ondersteunen nu veilige audio-transcriptie",
+            "highlights": [
+                "Je kunt een geldige WebM-audio-opname als topicbron toevoegen; de opname wordt daarna veilig verwerkt tot een doorzoekbare tekstbron.",
+                "Bestanden die niet aan de audiocontroles voldoen, worden direct afgewezen zodat alleen bruikbare opnames verdergaan.",
+            ],
+        }
+    ]
 
 
 def test_current_hours_docs_remove_json_restore_claims_but_keep_operational_backup_guidance():

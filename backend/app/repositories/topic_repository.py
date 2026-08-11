@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, joinedload
 
@@ -42,20 +44,30 @@ class TopicRepository:
         self.db.refresh(model)
         return model
 
-    def add_document(
-        self, topic_id: str, filename: str, file_path: str, content_type: str, doc_type
-    ) -> TopicSourceDocument:
-        model = TopicSourceDocument(
-            topic_id=topic_id,
-            filename=filename,
-            file_path=file_path,
-            content_type=content_type,
-            doc_type=doc_type,
-        )
+    def add_document(self, **kwargs) -> TopicSourceDocument:
+        model = TopicSourceDocument(**kwargs)
         self.db.add(model)
         self.db.commit()
         self.db.refresh(model)
         return model
+
+    def get_document(self, document_id: str) -> TopicSourceDocument | None:
+        return self.db.get(TopicSourceDocument, document_id)
+
+    def list_documents(self, topic_id: str) -> list[TopicSourceDocument]:
+        return list(
+            self.db.scalars(
+                select(TopicSourceDocument)
+                .where(TopicSourceDocument.topic_id == topic_id)
+                .order_by(desc(TopicSourceDocument.created_at))
+            ).all()
+        )
+
+    def save_document(self, document: TopicSourceDocument) -> TopicSourceDocument:
+        self.db.add(document)
+        self.db.commit()
+        self.db.refresh(document)
+        return document
 
 
 class ContentVersionRepository:

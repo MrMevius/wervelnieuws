@@ -42,6 +42,10 @@ class IngestionService:
         try:
             text_data = self._extract_text(document.file_path, document.doc_type)
             chunks = self._chunk_text(text_data)
+            self.db.execute(
+                text("DELETE FROM document_chunks_fts WHERE chunk_id IN (SELECT id FROM document_chunks WHERE document_id = :d)"),
+                {"d": document.id},
+            )
             self.db.query(DocumentChunk).filter(
                 DocumentChunk.document_id == document.id
             ).delete()
@@ -80,6 +84,12 @@ class IngestionService:
         try:
             text_data = self._extract_text(document.file_path, document.doc_type)
             chunks = self._chunk_text(text_data)
+            self.db.execute(
+                text(
+                    "DELETE FROM knowledge_chunks_fts WHERE chunk_id IN (SELECT id FROM knowledge_chunks WHERE knowledge_document_id = :d)"
+                ),
+                {"d": document.id},
+            )
             self.db.query(KnowledgeChunk).filter(
                 KnowledgeChunk.knowledge_document_id == document.id
             ).delete()

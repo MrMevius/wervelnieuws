@@ -667,6 +667,15 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "100",
+        date: "2026-08-11",
+        title: "Topicbronnen ondersteunen nu veilige audio-transcriptie",
+        highlights: [
+          "Je kunt een geldige WebM-audio-opname als topicbron toevoegen; de opname wordt daarna veilig verwerkt tot een doorzoekbare tekstbron.",
+          "Bestanden die niet aan de audiocontroles voldoen, worden direct afgewezen zodat alleen bruikbare opnames verdergaan."
+        ]
+      },
+      {
         iteration: "92",
         date: "2026-07-29",
         title: "Vergaderborden verfijnen tabs, tooltips en archief",
@@ -1188,6 +1197,7 @@ describe("App", () => {
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
     expect(headings).toEqual([
+      "Iteratie 100 - Topicbronnen ondersteunen nu veilige audio-transcriptie",
       "Iteratie 92 - Vergaderborden verfijnen tabs, tooltips en archief",
       "Iteratie 91 - Lichtmodusknoppen en invoervelden zijn duidelijker",
       "Iteratie 89 - Vergaderborden krijgen een duidelijke paarse stijl",
@@ -2608,6 +2618,10 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Bronbestanden" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Bronbestand uploaden")).toHaveAttribute(
+        "accept",
+        ".pdf,.docx,.xlsx,.txt,.md,.markdown,audio/webm,.webm"
+      );
       expect(screen.getByText("Audio-opname · 2 min")).toBeInTheDocument();
       expect(screen.getByText("Transcriptie mislukt")).toBeInTheDocument();
       expect(screen.getByText("Transcriptie uit audio (read-only)")).toBeInTheDocument();

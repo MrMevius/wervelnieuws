@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 from app.integrations.openai_client import OpenAIClient
 
 
@@ -41,3 +43,17 @@ def test_generate_text_falls_back_to_chat_when_responses_api_missing():
     assert fake_chat_completions.calls[0]["model"] == "gpt-4o-mini"
     assert web_hits
     assert web_hits[0]["title"] == "Websearch niet beschikbaar"
+
+
+def test_transcribe_audio_fails_clearly_when_api_key_missing(tmp_path):
+    audio_path = tmp_path / "opname.webm"
+    audio_path.write_bytes(b"fake-audio")
+
+    client = OpenAIClient(
+        api_key="",
+        text_model="gpt-4o-mini",
+        image_model="gpt-image-1",
+    )
+
+    with pytest.raises(RuntimeError, match="OPENAI_API_KEY is missing"):
+        client.transcribe_audio(str(audio_path), model="whisper-1", language="nl")

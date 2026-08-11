@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "100",
+                "date": "2026-08-11",
+                "title": "Topicbronnen ondersteunen nu veilige audio-transcriptie",
+                "highlights": [
+                    "Je kunt een geldige WebM-audio-opname als topicbron toevoegen; de opname wordt daarna veilig verwerkt tot een doorzoekbare tekstbron.",
+                    "Bestanden die niet aan de audiocontroles voldoen, worden direct afgewezen zodat alleen bruikbare opnames verdergaan.",
+                ],
+            },
+            {
                 "iteration": "97",
                 "date": "2026-08-10",
                 "title": "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups",

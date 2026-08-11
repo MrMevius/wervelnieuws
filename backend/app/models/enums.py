@@ -43,6 +43,15 @@ class DocumentType(str, Enum):
     xlsx = "xlsx"
     txt = "txt"
     markdown = "markdown"
+    audio = "audio"
+
+
+class AudioTranscriptionStatus(str, Enum):
+    not_applicable = "not_applicable"
+    queued = "queued"
+    transcribing = "transcribing"
+    completed = "completed"
+    failed = "failed"
 
 
 class DocumentStatus(str, Enum):

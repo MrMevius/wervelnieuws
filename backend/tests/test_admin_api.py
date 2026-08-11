@@ -572,6 +572,24 @@ def test_admin_can_get_genai_model_options(client):
     assert "gpt-image-1" in payload["image_models"]
 
 
+def test_admin_can_update_whisper_settings(client):
+    admin_headers = _login_as(client, "admin", "admin12345")
+
+    initial = client.get("/api/admin/genai-config", headers=admin_headers)
+    assert initial.status_code == 200
+    assert initial.json()["whisper_language"] == "nl"
+    assert initial.json()["whisper_model"] == "whisper-1"
+
+    updated = client.patch(
+        "/api/admin/genai-config",
+        headers=admin_headers,
+        json={"whisper_language": "nl", "whisper_model": "gpt-4o-mini-transcribe"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["whisper_language"] == "nl"
+    assert updated.json()["whisper_model"] == "gpt-4o-mini-transcribe"
+
+
 def test_genai_model_options_endpoint_requires_admin_role(client):
     editor_headers = _login_as(client, "editor", "editor12345")
 

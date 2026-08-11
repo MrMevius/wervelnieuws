@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     generated_dir: str = "generated"
     exports_dir: str = "exports"
     recordings_dir: str = "recordings"
+    topic_audio_tmp_root: Path = Path("/tmp/wervelnieuws-topic-audio")
+    ffprobe_bin: str = "ffprobe"
+    ffprobe_timeout_seconds: float = 30.0
 
     openai_api_key: str = ""
     openai_model_text: str = "gpt-4.1-mini"

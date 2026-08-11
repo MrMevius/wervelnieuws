@@ -18,6 +18,7 @@ import {
   UiSettings,
   Project,
   WorkHourPost,
+  SourceDocument,
   SourceTraceHit,
   SchedulerOverview,
   Topic,
@@ -58,6 +59,7 @@ import {
   listDatabaseProjects,
   listTopicScheduleTemplates,
   listTopicThemes,
+  listTopicDocuments,
   listVersions,
   login,
   logout as logoutRequest,
@@ -79,8 +81,10 @@ import {
   updateAdminUser,
   updateAdminUserProfile,
   updateBoardRights,
+  retryTopicDocumentTranscription,
   uploadAdminUserAvatar,
   uploadDatabaseDocumentWithProgress,
+  uploadTopicDocument,
   uploadCurrentUserAvatar,
   updateCurrentUser
 } from "../../lib/api/client";
@@ -117,6 +121,69 @@ function validateAdminAvatarFile(file: File | null): string | null {
     return "Avatarbestand is te groot. Gebruik een bestand van maximaal 5 MB.";
   }
   return null;
+}
+
+function isAudioSourceFile(file: File) {
+  const contentType = file.type.toLowerCase();
+  return /\.webm$/i.test(file.name) && (contentType === "audio/webm" || contentType === "audio/webm;codecs=opus");
+}
+
+function readAudioDuration(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const audio = document.createElement("audio");
+    const objectUrl = URL.createObjectURL(file);
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => {
+      URL.revokeObjectURL(objectUrl);
+      if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+        reject(new Error("Kon de opnameduur niet bepalen."));
+        return;
+      }
+      resolve(Math.round(audio.duration));
+    };
+    audio.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Kon de opnameduur niet bepalen."));
+    };
+    audio.src = objectUrl;
+  });
+}
+
+function sourceDocumentStatusLabel(document: SourceDocument): string {
+  if (document.doc_type === "audio") {
+    if (document.transcription_status === "queued") {
+      return "Transcriptie in wachtrij";
+    }
+    if (document.transcription_status === "transcribing") {
+      return "Transcriptie bezig";
+    }
+    if (document.transcription_status === "completed") {
+      return "Transcriptie klaar";
+    }
+    if (document.transcription_status === "failed") {
+      return "Transcriptie mislukt";
+    }
+    return "Audio";
+  }
+  if (document.status === "indexed") {
+    return "Geïndexeerd";
+  }
+  if (document.status === "failed") {
+    return "Mislukt";
+  }
+  return "Bron";
+}
+
+function formatDurationLabel(seconds: number | null): string {
+  if (seconds === null || seconds <= 0) {
+    return "onbekend";
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  if (minutes === 0) {
+    return `${seconds} sec`;
+  }
+  return remainder === 0 ? `${minutes} min` : `${minutes} min ${remainder} sec`;
 }
 
 type ThemePreference = "light" | "dark" | "system";
@@ -1556,10 +1623,18 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
   const [publicationAtDraft, setPublicationAtDraft] = useState("");
   const [variantDrafts, setVariantDrafts] = useState<Record<string, VariantDraft>>({});
   const [activeChannel, setActiveChannel] = useState<ContentChannelVariant["channel"] | null>(null);
+  const [sourceFeedback, setSourceFeedback] = useState<string | null>(null);
+  const [sourceUploadInProgress, setSourceUploadInProgress] = useState(false);
 
   const versionsQuery = useQuery({
     queryKey: ["topic-versions", topicId],
     queryFn: () => listVersions(topicId),
+    enabled: Boolean(topicId)
+  });
+
+  const documentsQuery = useQuery({
+    queryKey: ["topic-documents", topicId],
+    queryFn: () => listTopicDocuments(topicId),
     enabled: Boolean(topicId)
   });
 
@@ -1724,6 +1799,48 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
     }
   });
 
+  const uploadSourceMutation = useMutation({
+    mutationFn: async ({ file, durationSeconds }: { file: File; durationSeconds?: number }) =>
+      uploadTopicDocument(topicId, file, durationSeconds),
+    onSuccess: (document) => {
+      setSourceUploadInProgress(false);
+      setSourceFeedback(
+        document.doc_type === "audio"
+          ? "Audio-opname geüpload. Transcriptie start automatisch op de achtergrond."
+          : "Bronbestand geüpload en geïndexeerd."
+      );
+      queryClient.invalidateQueries({ queryKey: ["topic-documents", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-versions", topicId] });
+      queryClient.invalidateQueries({ queryKey: ["topic-variants", topicId] });
+    },
+    onError: (error) => {
+      setSourceUploadInProgress(false);
+      const message = extractApiErrorMessage(error);
+      if (message.includes("180 minutes")) {
+        setSourceFeedback("De opname is te lang. Gebruik maximaal 180 minuten.");
+        return;
+      }
+      if (message.includes("250 MB")) {
+        setSourceFeedback("De opname is te groot. Gebruik maximaal 250 MB.");
+        return;
+      }
+      if (message.includes("duration")) {
+        setSourceFeedback("De opnameduur kon niet worden bepaald. Probeer opnieuw.");
+        return;
+      }
+      setSourceFeedback(message || "Uploaden van de bron is mislukt.");
+    }
+  });
+
+  const retrySourceMutation = useMutation({
+    mutationFn: (documentId: string) => retryTopicDocumentTranscription(topicId, documentId),
+    onSuccess: () => {
+      setSourceFeedback("Transcriptie opnieuw ingepland.");
+      queryClient.invalidateQueries({ queryKey: ["topic-documents", topicId] });
+    },
+    onError: () => setSourceFeedback("Opnieuw proberen van transcriptie is mislukt.")
+  });
+
   const selectedVersion =
     (versionsQuery.data ?? []).find((version) => version.is_current) ??
     (versionsQuery.data ?? [])[0] ??
@@ -1781,6 +1898,29 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
       return firstChannel;
     });
   }, [topic?.id, topic?.target_channels]);
+
+  const allSourceDocuments = documentsQuery.data ?? [];
+  const rootSourceDocuments = allSourceDocuments.filter((document) => !document.parent_source_document_id);
+  const transcriptByParentId = new Map(
+    allSourceDocuments
+      .filter((document) => Boolean(document.parent_source_document_id))
+      .map((document) => [document.parent_source_document_id as string, document])
+  );
+
+  async function handleSourceUpload(file: File | null) {
+    if (!file) {
+      return;
+    }
+    setSourceFeedback(null);
+    setSourceUploadInProgress(true);
+    try {
+      const durationSeconds = isAudioSourceFile(file) ? await readAudioDuration(file) : undefined;
+      uploadSourceMutation.mutate({ file, durationSeconds });
+    } catch (error) {
+      setSourceUploadInProgress(false);
+      setSourceFeedback(error instanceof Error ? error.message : "Kon de bron niet uploaden.");
+    }
+  }
 
   const sourceTrace = extractSourceTrace(selectedVersion);
   const sourceTraceDisplay = useMemo(() => rankSourceTraceByScore(sourceTrace), [sourceTrace]);
@@ -2174,6 +2314,88 @@ function PlanningRuleDetailPage({ topics }: { topics: Topic[] }) {
           {feedback}
         </p>
       )}
+
+      <section className="review-panel" aria-label="Bronbestanden">
+        <h2>Bronbestanden</h2>
+        <p className="muted">
+          Upload tekstbronnen of een audio-opname. Audio wordt automatisch op de achtergrond getranscribeerd.
+        </p>
+        <label className="source-upload-field">
+          <input
+            type="file"
+            aria-label="Bronbestand uploaden"
+            accept=".pdf,.docx,.xlsx,.txt,.md,.markdown,audio/webm,.webm"
+            onChange={(event) => void handleSourceUpload(event.target.files?.[0] ?? null)}
+            disabled={sourceUploadInProgress || uploadSourceMutation.isPending}
+          />
+          <span>Ondersteund: documenten en WebM/Opus-audio.</span>
+        </label>
+        {sourceFeedback && (
+          <p
+            role="status"
+            className={
+              sourceFeedback.toLowerCase().includes("mislukt") ||
+              sourceFeedback.toLowerCase().includes("te groot") ||
+              sourceFeedback.toLowerCase().includes("te lang") ||
+              sourceFeedback.toLowerCase().includes("kon")
+                ? "error"
+                : "success"
+            }
+          >
+            {sourceFeedback}
+          </p>
+        )}
+        {documentsQuery.isLoading && <p>Bronbestanden worden geladen...</p>}
+        {documentsQuery.isError && <p className="error">Bronbestanden konden niet worden geladen.</p>}
+        {!documentsQuery.isLoading && !documentsQuery.isError && rootSourceDocuments.length === 0 && (
+          <p>Nog geen bronbestanden gekoppeld.</p>
+        )}
+        {!documentsQuery.isLoading && !documentsQuery.isError && rootSourceDocuments.length > 0 && (
+          <div className="source-document-list" role="list" aria-label="Bronbestanden overzicht">
+            {rootSourceDocuments.map((document) => {
+              const transcript = transcriptByParentId.get(document.id) ?? null;
+              const isAudio = document.doc_type === "audio";
+              const documentStatus = isAudio ? document.transcription_status : document.status;
+              return (
+                <article className="source-document-card" key={document.id} role="listitem">
+                  <div className="source-document-header">
+                    <div>
+                      <strong>{document.filename}</strong>
+                      <p className="muted source-document-meta">
+                        {isAudio ? `Audio-opname · ${formatDurationLabel(document.duration_seconds)}` : document.doc_type}
+                      </p>
+                    </div>
+                    <span className={`status-pill status-${documentStatus}`}>{sourceDocumentStatusLabel(document)}</span>
+                  </div>
+                  {isAudio && document.transcription_status === "failed" && (
+                    <p className="error">
+                      {document.transcription_error || "Transcriptie mislukt. Je kunt het opnieuw proberen."}
+                    </p>
+                  )}
+                  {transcript && (
+                    <details className="source-transcript-card" open>
+                      <summary>Transcriptie uit audio (read-only)</summary>
+                      <p className="muted">Deze tekstbron wordt automatisch gebruikt in zoekresultaten en generatie.</p>
+                      <p className="source-transcript-text">{transcript.transcription_text || "Geen transcripttekst beschikbaar."}</p>
+                    </details>
+                  )}
+                  {isAudio && document.transcription_status === "failed" && (
+                    <div className="detail-actions section-actions">
+                      <button
+                        type="button"
+                        onClick={() => retrySourceMutation.mutate(document.id)}
+                        disabled={retrySourceMutation.isPending}
+                      >
+                        Transcriptie opnieuw proberen
+                      </button>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <section className="review-panel" aria-label="Bronreview detail">
         <h2>Bronpassages</h2>

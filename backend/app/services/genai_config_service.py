@@ -31,6 +31,8 @@ def default_genai_config() -> GenAIConfig:
         newsletter_prompt="Schrijf informatief en overzichtelijk in nieuwsbriefstijl.",
         text_model=settings.openai_model_text,
         image_model=settings.openai_model_image,
+        whisper_model="whisper-1",
+        whisper_language="nl",
         websearch_enabled=False,
         websearch_max_results=3,
         openai_api_key=settings.openai_api_key,

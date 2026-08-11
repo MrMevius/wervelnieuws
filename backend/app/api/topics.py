@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -37,7 +37,7 @@ from app.schemas.topic import (
     TopicUpdate,
 )
 from app.services.audit_service import AuditService
-from app.services.ingestion_service import IngestionService, detect_doc_type
+from app.services.topic_source_service import TopicSourceService
 
 router = APIRouter(prefix="/topics", tags=["topics"])
 
@@ -432,46 +432,11 @@ def create_note(
 async def upload_document(
     topic_id: str,
     file: UploadFile = File(...),
+    duration_seconds: int | None = Form(default=None),
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> DocumentResponse:
-    topic = TopicRepository(db).get(topic_id)
-    if not topic:
-        raise HTTPException(status_code=404, detail="Topic not found")
-
-    settings = get_settings()
-    doc_type = detect_doc_type(file.filename)
-    content = await file.read(settings.upload_max_bytes + 1)
-    if len(content) > settings.upload_max_bytes:
-        raise HTTPException(status_code=400, detail="File too large")
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail="Empty upload is not allowed")
-
-    allowed_prefixes = {
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "text/plain",
-        "text/markdown",
-    }
-    if file.content_type and file.content_type not in allowed_prefixes:
-        raise HTTPException(status_code=400, detail="Unsupported content type")
-    storage_dir = settings.storage_root / settings.uploads_dir / topic_id
-    storage_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_name = Path(file.filename).name
-    path = storage_dir / safe_name
-    path.write_bytes(content)
-
-    repo = TopicRepository(db)
-    document = repo.add_document(
-        topic_id=topic_id,
-        filename=safe_name,
-        file_path=str(path),
-        content_type=file.content_type or "application/octet-stream",
-        doc_type=doc_type,
-    )
-    IngestionService(db).ingest_document(document)
+    document = await TopicSourceService(db).upload_source(topic_id, file, duration_seconds)
     AuditService(db).log(
         "topic.document.uploaded", topic_id=topic_id, actor_user_id=current.id
     )
@@ -485,10 +450,23 @@ def list_documents(
     db: Session = Depends(get_db),
 ) -> list[TopicSourceDocument]:
     del current
-    topic = TopicRepository(db).get(topic_id)
-    if not topic:
-        raise HTTPException(status_code=404, detail="Topic not found")
-    return topic.source_documents
+    return TopicSourceService(db).list_sources(topic_id)
+
+
+@router.post("/{topic_id}/documents/{document_id}/retry-transcription", response_model=DocumentResponse)
+def retry_document_transcription(
+    topic_id: str,
+    document_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TopicSourceDocument:
+    document = TopicSourceService(db).retry_audio_transcription(topic_id, document_id)
+    AuditService(db).log(
+        "topic.document.transcription.retry",
+        topic_id=topic_id,
+        actor_user_id=current.id,
+    )
+    return document
 
 
 @router.get("/{topic_id}/notes", response_model=list[NoteResponse])

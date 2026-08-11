@@ -92,6 +92,38 @@ class OpenAIClient:
 
         return base64.b64decode(b64)
 
+    def transcribe_audio(
+        self,
+        file_path: str,
+        *,
+        model: str,
+        language: str | None = None,
+    ) -> dict:
+        if not self.client:
+            raise RuntimeError(
+                "OpenAI audio transcription is not configured: OPENAI_API_KEY is missing."
+            )
+
+        with open(file_path, "rb") as audio_file:
+            request_payload = {
+                "model": model,
+                "file": audio_file,
+                "response_format": "verbose_json",
+            }
+            if language:
+                request_payload["language"] = language
+            response = self.client.audio.transcriptions.create(**request_payload)
+
+        model_dump = getattr(response, "model_dump", None)
+        if callable(model_dump):
+            payload = model_dump()
+            if isinstance(payload, dict):
+                return payload
+
+        text = getattr(response, "text", "")
+        segments = getattr(response, "segments", [])
+        return {"text": text, "segments": segments}
+
     def _extract_web_hits(self, response: object) -> list[dict[str, str]]:
         model_dump = getattr(response, "model_dump", None)
         if not callable(model_dump):
