@@ -1,13 +1,15 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS runtime
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
 
 COPY backend /app/backend
 COPY worker /app/worker
 
-RUN pip install --no-cache-dir -e /app/backend
+RUN pip install --no-cache-dir --no-compile /app/backend \
+    && rm -rf /app/backend/*.egg-info
 
 WORKDIR /app/backend
 CMD ["python", "/app/worker/app/runner.py"]

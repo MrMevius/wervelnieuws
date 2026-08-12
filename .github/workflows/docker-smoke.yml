@@ -11,8 +11,5 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare environment file
-        run: cp .env.example .env
-
       - name: Build Docker services
         run: docker compose build backend frontend worker
