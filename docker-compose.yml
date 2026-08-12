@@ -11,9 +11,6 @@ services:
     volumes:
       - ${WERVEL_STORAGE_DIR:-/mnt/wervelwind/database}:/data
       - ${WERVEL_CONFIG_DIR:-/mnt/wervelwind/database/config}:/config
-    depends_on:
-      - migrate
-
   worker:
     build:
       context: .

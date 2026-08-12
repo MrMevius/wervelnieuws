@@ -48,10 +48,12 @@ sudo mkdir -p /mnt/wervelwind/database/config
 cp .env.example /mnt/wervelwind/database/config/.env
 ```
 
-3. Build and run:
+3. Build the runtime images, run the schema migration as an explicit release step, then start only the runtime services (after making the backup and stopping writers described in [Docker Compose operations](docs/docker-compose-operations.md)):
 
 ```bash
-docker compose up --build
+docker compose build backend frontend worker
+docker compose run --rm --no-deps migrate
+docker compose up -d --no-deps backend frontend worker
 ```
 
 4. Seed admin user:
@@ -145,6 +147,12 @@ See `.env.example` for all required values (deploy path: `/mnt/wervelwind/databa
 - Basic per-route in-memory rate limiting is enabled for login and document upload endpoints.
 - Uploads are validated for allowed types and maximum file size.
 - Worker retry jobs are executed by flow and use exponential backoff until max attempts.
+
+## Docker Compose operations
+
+`backend`, `frontend` and `worker` are the only long-running Compose services. Database migrations are deliberately not part of normal runtime lifecycle commands: `migrate` is a controlled one-shot release action and must only be run after a verified database and storage backup while backend and worker are stopped.
+
+Use the reproducible release, runtime lifecycle, observation and rollback procedures in [docs/docker-compose-operations.md](docs/docker-compose-operations.md). In particular, do not use a broad `docker compose up` as a runtime command, because it selects every service in the Compose file, including `migrate`.
 
 ## Release-readiness checklist
 

@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "102",
+                "date": "2026-08-12",
+                "title": "Wervelnieuws start betrouwbaarder na onderhoud",
+                "highlights": [
+                    "De onderdelen voor website, beheer en achtergrondwerk starten voortaan apart en blijven daardoor beter beschikbaar na gewoon onderhoud.",
+                    "Technisch onderhoud aan de database gebeurt nu bewust als aparte release-stap, zodat een normale herstart geen onverwachte wijziging uitvoert.",
+                ],
+            },
+            {
                 "iteration": "101",
                 "date": "2026-08-12",
                 "title": "Urenregistratie kiest deelnemers en duur duidelijker",

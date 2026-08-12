@@ -674,6 +674,15 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "102",
+        date: "2026-08-12",
+        title: "Wervelnieuws start betrouwbaarder na onderhoud",
+        highlights: [
+          "De onderdelen voor website, beheer en achtergrondwerk starten voortaan apart en blijven daardoor beter beschikbaar na gewoon onderhoud.",
+          "Technisch onderhoud aan de database gebeurt nu bewust als aparte release-stap, zodat een normale herstart geen onverwachte wijziging uitvoert."
+        ]
+      },
+      {
         iteration: "101",
         date: "2026-08-12",
         title: "Urenregistratie kiest deelnemers en duur duidelijker",
@@ -1224,6 +1233,7 @@ describe("App", () => {
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
     expect(headings).toEqual([
+      "Iteratie 102 - Wervelnieuws start betrouwbaarder na onderhoud",
       "Iteratie 101 - Urenregistratie kiest deelnemers en duur duidelijker",
       "Iteratie 100 - Topicbronnen ondersteunen nu veilige audio-transcriptie",
       "Iteratie 92 - Vergaderborden verfijnen tabs, tooltips en archief",
