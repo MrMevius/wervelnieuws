@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UrenverantwoordingPage } from "./UrenverantwoordingPage";
+import { WorkHoursHistoryAdminTab } from "./WorkHoursAdminTabs";
 
 const api = vi.hoisted(() => ({
   getCurrentUser: vi.fn(), listWorkHoursMeta: vi.fn(), listWorkHourGroups: vi.fn(), listWorkHoursAudit: vi.fn(),
@@ -24,6 +25,11 @@ const group = {
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(<QueryClientProvider client={queryClient}><MemoryRouter><UrenverantwoordingPage /></MemoryRouter></QueryClientProvider>);
+}
+
+function renderHistoryTab() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  return { ...render(<QueryClientProvider client={queryClient}><WorkHoursHistoryAdminTab /></QueryClientProvider>), queryClient };
 }
 
 async function waitForSelectOption(select: HTMLElement, optionName: string) {
@@ -58,6 +64,86 @@ beforeEach(() => {
 });
 
 describe("UrenverantwoordingPage compact central management", () => {
+  it("keeps external-person edit and merge dialogs accessible after moving them to Admin", async () => {
+    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [
+      { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", note: "", is_active: true, deleted_at: null, row_version: 1 },
+      { id: "ep2", display_name: "Externe Piet", email: "piet@example.com", note: "", is_active: true, deleted_at: null, row_version: 2 }
+    ] });
+    renderHistoryTab();
+    const person = await screen.findByText("Externe Anna");
+    const row = person.closest("li")!;
+    const editTrigger = within(row).getByRole("button", { name: "Bewerk" });
+    await userEvent.click(editTrigger);
+    const editDialog = await screen.findByRole("dialog", { name: "Externe persoon bewerken" });
+    expect(editDialog.parentElement?.parentElement?.dataset.hoursModalHost).toBeTruthy();
+    expect(document.body.querySelector<HTMLElement>('[aria-hidden="true"]')?.inert).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Externe persoon bewerken" })).not.toBeInTheDocument());
+    expect(editTrigger).toHaveFocus();
+    await userEvent.click(within(row).getByRole("button", { name: "Samenvoegen" }));
+    const mergeDialog = await screen.findByRole("dialog", { name: "Externe personen samenvoegen" });
+    await userEvent.keyboard("{Tab}");
+    expect(mergeDialog.contains(document.activeElement)).toBe(true);
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Externe personen samenvoegen" })).not.toBeInTheDocument());
+  });
+
+  it("keeps merge errors in the active modal and disables all closing controls while pending", async () => {
+    let resolveMerge: ((value: { id: string }) => void) | undefined;
+    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [
+      { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", note: "", is_active: true, deleted_at: null, row_version: 1 },
+      { id: "ep2", display_name: "Externe Piet", email: "piet@example.com", note: "", is_active: true, deleted_at: null, row_version: 2 }
+    ] });
+    const { queryClient } = renderHistoryTab();
+    const row = (await screen.findByText("Externe Anna")).closest("li")!;
+    await userEvent.click(within(row).getByRole("button", { name: "Samenvoegen" }));
+    const dialog = await screen.findByRole("dialog", { name: "Externe personen samenvoegen" });
+    await userEvent.selectOptions(within(dialog).getByLabelText("Doelpersoon"), "ep2");
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    api.mergeWorkExternalPerson.mockImplementationOnce(() => new Promise((resolve) => { resolveMerge = resolve; }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Samenvoegen" }));
+    expect(api.mergeWorkExternalPerson).toHaveBeenCalledWith("ep1", { target_id: "ep2", expected_source_row_version: 1, expected_target_row_version: 2 });
+    expect(within(dialog).getByRole("button", { name: "Annuleren" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Samenvoegen" })).toBeDisabled();
+    resolveMerge?.({ id: "ep1" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Externe personen samenvoegen" })).not.toBeInTheDocument());
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([
+      { queryKey: ["work-hours-meta"] },
+      { queryKey: ["work-hours-groups"] }
+    ]);
+
+    api.mergeWorkExternalPerson.mockRejectedValueOnce(new Error("Samenvoegen geweigerd"));
+    await userEvent.click(within(row).getByRole("button", { name: "Samenvoegen" }));
+    const failedDialog = await screen.findByRole("dialog", { name: "Externe personen samenvoegen" });
+    await userEvent.selectOptions(within(failedDialog).getByLabelText("Doelpersoon"), "ep2");
+    await userEvent.click(within(failedDialog).getByRole("button", { name: "Samenvoegen" }));
+    expect(await within(failedDialog).findByRole("alert")).toHaveTextContent("Samenvoegen geweigerd");
+  });
+
+  it("preserves the original query invalidation contract for each external-person mutation", async () => {
+    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [
+      { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", note: "", is_active: true, deleted_at: null, row_version: 1 }
+    ] });
+    const { queryClient } = renderHistoryTab();
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const row = (await screen.findByText("Externe Anna")).closest("li")!;
+
+    await userEvent.click(within(row).getByRole("button", { name: "Bewerk" }));
+    await userEvent.click(within(await screen.findByRole("dialog", { name: "Externe persoon bewerken" })).getByRole("button", { name: "Opslaan" }));
+    await waitFor(() => expect(api.updateWorkExternalPerson).toHaveBeenCalledWith("ep1", expect.objectContaining({ expected_row_version: 1 })));
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+
+    invalidateQueries.mockClear();
+    await userEvent.click(within(row).getByRole("button", { name: "Archiveer" }));
+    await waitFor(() => expect(api.archiveWorkExternalPerson).toHaveBeenCalledWith("ep1", 1));
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+
+    invalidateQueries.mockClear();
+    await userEvent.click(within(row).getByRole("button", { name: "Herstel" }));
+    await waitFor(() => expect(api.restoreWorkExternalPerson).toHaveBeenCalledWith("ep1", 1));
+    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+  });
+
   it("shows the permanent complete inline create row and no create modal trigger", async () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "Urenregistratie" })).toBeInTheDocument();
@@ -418,14 +504,13 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(post).not.toHaveAttribute("aria-describedby");
   });
 
-  it("offers historical filter facets and displays stable audit snapshot names", async () => {
+  it("offers historical filter facets without hours administration panels", async () => {
     api.listWorkHoursMeta.mockResolvedValue({
       projects: [{ id: "p1", name: "Project A", is_active: true, is_archived: false }],
       posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }], external_people: [], historical_identities: [], eligible_users: [], is_admin: true,
       filter_projects: [{ id: "p-old", name: "Historisch project", selectable: false }],
       filter_posts: [{ id: "post-old", name: "Historische post", selectable: false }], filter_participants: ["Oude deelnemer"], filter_dates: ["2025-12-31"]
     });
-    api.listWorkHoursAudit.mockResolvedValue({ items: [{ id: "audit1", actor_display_name: "Admin", created_at: "2026-08-09T10:00:00Z", action: "work_hours_group_updated", project_name: "Historisch project", post_name: "Historische post", request_method: "PUT", request_path: "/api/urenverantwoording/groepen/g1", result: "success" }], total: 1, page: 1, page_size: 25 });
     renderPage();
     const projectFilter = (await screen.findByLabelText("Filter Project")).closest("details")!;
     await userEvent.click(within(projectFilter).getByLabelText("Filter Project"));
@@ -440,24 +525,25 @@ describe("UrenverantwoordingPage compact central management", () => {
     await userEvent.click(within(dateFilter).getByLabelText("Filter Datum"));
     await userEvent.click(within(dateFilter).getByRole("button", { name: "31-12-2025" }));
     await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ project_id: "p-old", post_id: "post-old", participant_query: "Oude deelnemer", work_date: "2025-12-31" })));
-    expect(await screen.findByText(/work_hours_group_updated · Historisch project · Historische post/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Urenbeheer" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Historie en identiteiten" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Audit" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Verwijderde registraties")).not.toBeInTheDocument();
   });
 
   it("does not expose hours JSON backup or import controls", async () => {
     renderPage();
-    expect(await screen.findByRole("heading", { name: "Urenbeheer" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Urenregistratie" })).toBeInTheDocument();
     expect(screen.queryByText(/JSON-back-up/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /import en backup/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /JSON backup/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /full restore/i })).not.toBeInTheDocument();
   });
 
-  it("preserves edit, soft-delete, and restore group flows", async () => {
-    const deletedGroup = { ...group, id: "g-deleted", deleted_at: "2026-08-09T12:00:00Z", row_version: 8 };
-    api.listWorkHourGroups.mockImplementation((params) => Promise.resolve(params?.deleted_only ? { ...emptyList, items: [deletedGroup], total: 1 } : { ...emptyList, items: [group], total: 1 }));
+  it("preserves edit and soft-delete group flows without deleted-registration UI", async () => {
+    api.listWorkHourGroups.mockResolvedValue({ ...emptyList, items: [group], total: 1 });
     api.updateWorkHourGroup.mockResolvedValue({ ...group, description: "Aangepast" });
     api.deleteWorkHourGroup.mockResolvedValue({ ...group, deleted_at: "2026-08-09T12:00:00Z" });
-    api.restoreWorkHourGroup.mockResolvedValue({ ...deletedGroup, deleted_at: null });
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Bewerk registratie Project A" }));
     let dialog = within(await screen.findByRole("dialog", { name: "Registratie bewerken" }));
@@ -469,31 +555,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     dialog = within(await screen.findByRole("dialog", { name: "Registratie verwijderen" }));
     await userEvent.click(dialog.getByRole("button", { name: "Bevestig verwijderen" }));
     await waitFor(() => expect(api.deleteWorkHourGroup).toHaveBeenCalledWith("g-existing", 7));
-    await userEvent.click(screen.getByRole("button", { name: "Toon verwijderde items" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Herstel groep" }));
-    dialog = within(await screen.findByRole("dialog", { name: "Registratie herstellen" }));
-    await userEvent.click(dialog.getByRole("button", { name: "Bevestig herstellen" }));
-    await waitFor(() => expect(api.restoreWorkHourGroup).toHaveBeenCalledWith("g-deleted", 8));
-  });
-
-  it("exposes and invokes individual external-person restore with its row version", async () => {
-    const archivedPerson = {
-      id: "ep-archived",
-      display_name: "Gearchiveerde externe",
-      email: "archived@example.com",
-      note: "Historisch",
-      is_active: false,
-      deleted_at: "2026-08-09T12:00:00Z",
-      row_version: 12
-    };
-    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [archivedPerson] });
-    api.restoreWorkExternalPerson.mockResolvedValue({ ...archivedPerson, is_active: true, deleted_at: null, row_version: 13 });
-
-    renderPage();
-
-    const personRow = closestHTMLElement(await screen.findByText(/Gearchiveerde externe/), "li");
-    await userEvent.click(within(personRow).getByRole("button", { name: "Herstel" }));
-    await waitFor(() => expect(api.restoreWorkExternalPerson).toHaveBeenCalledWith("ep-archived", 12));
+    expect(screen.queryByRole("button", { name: /verwijderde items/i })).not.toBeInTheDocument();
   });
 
   it("keeps list and CSV on the identical canonical filter contract", async () => {
@@ -509,7 +571,7 @@ describe("UrenverantwoordingPage compact central management", () => {
 
   it("contains no project or post masterdata controls on the hours page", async () => {
     renderPage();
-    await screen.findByRole("heading", { name: "Urenbeheer" });
+    await screen.findByRole("heading", { name: "Urenregistratie" });
     expect(screen.queryByRole("button", { name: /project aanmaken/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /post aanmaken/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Projecten" })).not.toBeInTheDocument();

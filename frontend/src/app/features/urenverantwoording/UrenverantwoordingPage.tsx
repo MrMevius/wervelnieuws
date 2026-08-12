@@ -1,9 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentUser,
-  listWorkHoursAudit,
   listWorkHoursMeta,
   listWorkHourGroups,
   createWorkHourGroup,
@@ -13,18 +11,14 @@ import {
   updateWorkExternalPerson,
   archiveWorkExternalPerson,
   restoreWorkExternalPerson,
-  mergeWorkExternalPerson,
   downloadWorkHoursCsv,
-  restoreWorkHourGroup,
-  listWorkHoursAdminHistory,
-  listWorkHoursAdminMasterdata,
-  relinkWorkHistoricalIdentity,
   type WorkHourGroup,
   type WorkHourParticipant,
   type WorkHourExternalPerson,
   type WorkHourSortKey
 } from "../../../lib/api/client";
 import { formatAmsterdamDateInput, formatAmsterdamDateTime, formatAmsterdamDisplayDate } from "../../../lib/datetime";
+import { AccessibleModal } from "./AccessibleModal";
 
 const PAGE_SIZES = [25, 50, 100] as const;
 const DURATION_HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => index + 1);
@@ -124,75 +118,12 @@ function downloadBlob(blob: Blob, fileName: string) {
   window.URL.revokeObjectURL(url);
 }
 
-const openHoursModals: string[] = [];
-
-function AccessibleModal({ title, onClose, children, committing = false }: { title: string; onClose: () => void; children: ReactNode; committing?: boolean }) {
-  const modalId = useId();
-  const headingId = `${modalId}-heading`;
-  const dialogRef = useRef<HTMLElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(document.activeElement as HTMLElement | null);
-  const portalHost = useMemo(() => {
-    const host = document.createElement("div");
-    host.dataset.hoursModalHost = modalId;
-    return host;
-  }, [modalId]);
-  const onCloseRef = useRef(onClose);
-  const committingRef = useRef(committing);
-  onCloseRef.current = onClose;
-  committingRef.current = committing;
-  useEffect(() => {
-    document.body.appendChild(portalHost);
-    openHoursModals.push(modalId);
-    const dialog = dialogRef.current;
-    const focusable = () => Array.from(dialog?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') ?? []);
-    const background = Array.from(document.body.children).filter((element) => element !== portalHost) as HTMLElement[];
-    const previous = background.map((element) => ({ element, inert: element.inert, ariaHidden: element.getAttribute("aria-hidden") }));
-    background.forEach((element) => { element.inert = true; element.setAttribute("aria-hidden", "true"); });
-    (dialog?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? dialog?.querySelector<HTMLElement>("h2") ?? focusable()[0])?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (openHoursModals.at(-1) !== modalId) return;
-      if (event.key === "Escape") { event.preventDefault(); if (!committingRef.current) onCloseRef.current(); return; }
-      if (event.key !== "Tab") return;
-      const controls = focusable();
-      if (!controls.length) { event.preventDefault(); dialog?.focus(); return; }
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && (document.activeElement === first || !dialog?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && (document.activeElement === last || !dialog?.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      const stackIndex = openHoursModals.lastIndexOf(modalId);
-      if (stackIndex >= 0) openHoursModals.splice(stackIndex, 1);
-      previous.forEach(({ element, inert, ariaHidden }) => {
-        element.inert = inert;
-        if (ariaHidden === null) element.removeAttribute("aria-hidden"); else element.setAttribute("aria-hidden", ariaHidden);
-      });
-      portalHost.remove();
-      const trigger = returnFocusRef.current;
-      if (trigger?.isConnected && !trigger.hasAttribute("disabled")) trigger.focus();
-      else document.querySelector<HTMLElement>("[data-hours-focus-fallback]:not([disabled])")?.focus();
-    };
-  }, [modalId, portalHost]);
-  return createPortal(<div className="work-hours-modal-backdrop"><section ref={dialogRef} className="panel work-hours-modal" role="dialog" aria-modal="true" aria-labelledby={headingId} tabIndex={-1}><h2 id={headingId} tabIndex={-1}>{title}</h2>{children}</section></div>, portalHost);
-}
-
 export function UrenverantwoordingPage() {
   const queryClient = useQueryClient();
   const desktopCreateFormRef = useRef<HTMLFormElement>(null);
   const mobileCreateFormRef = useRef<HTMLFormElement>(null);
   const currentUserQuery = useQuery({ queryKey: ["work-hours-current-user"], queryFn: getCurrentUser });
   const metaQuery = useQuery({ queryKey: ["work-hours-meta"], queryFn: listWorkHoursMeta });
-  const [auditFilters, setAuditFilters] = useState({ actor: "", action: "", result: "", method: "", path: "", from: "", to: "" });
-  const [auditPage, setAuditPage] = useState(1);
-  const [auditPageSize, setAuditPageSize] = useState<25 | 50 | 100>(25);
-  const auditQuery = useQuery({
-    queryKey: ["work-hours-audit", auditFilters, auditPage, auditPageSize],
-    queryFn: () => listWorkHoursAudit({ ...auditFilters, page: auditPage, page_size: auditPageSize }),
-    enabled: Boolean(currentUserQuery.data?.is_admin)
-  });
-  const auditEvents = Array.isArray(auditQuery.data) ? auditQuery.data : (auditQuery.data?.items ?? []);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
   const [projectId, setProjectId] = useState("");
@@ -207,20 +138,11 @@ export function UrenverantwoordingPage() {
   const [participantQuery, setParticipantQuery] = useState("");
   const [sortKey, setSortKey] = useState<WorkHourSortKey>("work_date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
-  const [showDeleted, setShowDeleted] = useState(false);
   const [editingGroup, setEditingGroup] = useState<WorkHourGroup | null>(null);
   const [showParticipantEditor, setShowParticipantEditor] = useState(false);
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<WorkHourGroup | null>(null);
-  const [restoreGroupTarget, setRestoreGroupTarget] = useState<WorkHourGroup | null>(null);
   const [forceCreateConfirm, setForceCreateConfirm] = useState(false);
-  const [mergeSource, setMergeSource] = useState<WorkHourExternalPerson | null>(null);
-  const [mergeTargetId, setMergeTargetId] = useState("");
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
-  const [historyPage, setHistoryPage] = useState(1);
-  const [historyPageSize, setHistoryPageSize] = useState<25 | 50 | 100>(25);
-  const [historyKind, setHistoryKind] = useState<"" | "post" | "external_person" | "historical_identity">("");
-  const [historyQueryText, setHistoryQueryText] = useState("");
-  const [editingPerson, setEditingPerson] = useState<WorkHourExternalPerson | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [participants, setParticipants] = useState<ParticipantDraft[]>([]);
@@ -257,25 +179,10 @@ export function UrenverantwoordingPage() {
     [sharedFilters, page, pageSize]
   );
 
-  const deletedListQueryParams = useMemo(
-    () => ({
-      ...sharedFilters,
-      include_deleted: true,
-      deleted_only: true,
-      page,
-      page_size: pageSize
-    }),
-    [sharedFilters, page, pageSize]
-  );
 
   const groupsQuery = useQuery({
     queryKey: ["work-hours-groups", listQueryParams],
     queryFn: () => listWorkHourGroups(listQueryParams)
-  });
-  const deletedGroupsQuery = useQuery({
-    queryKey: ["work-hours-deleted-groups", deletedListQueryParams],
-    queryFn: () => listWorkHourGroups(deletedListQueryParams),
-    enabled: showDeleted
   });
 
   const projectOptions = useMemo(() => (metaQuery.data?.projects ?? []).map((project) => ({ ...project, name: project.name ?? project.display_name ?? "", description: project.description ?? "", row_version: project.row_version ?? 1 })), [metaQuery.data?.projects]);
@@ -297,13 +204,9 @@ export function UrenverantwoordingPage() {
   const filterParticipantNames = useMemo(() => Array.from(new Set([...(metaQuery.data?.filter_participants ?? []), ...eligibleUsers.map((item) => item.full_name || item.username), ...activeExternalPeople.map((item) => item.display_name)])), [metaQuery.data?.filter_participants, eligibleUsers, activeExternalPeople]);
   const currentUser = currentUserQuery.data;
   const isAdmin = Boolean(currentUser?.is_admin);
-  const historyParams = { page: historyPage, page_size: historyPageSize, kind: historyKind || undefined, query: historyQueryText.trim() || undefined, sort_key: "display_name" as const, sort_direction: "asc" as const };
-  const historyQuery = useQuery({ queryKey: ["work-hours-admin-history", historyParams], queryFn: () => listWorkHoursAdminHistory(historyParams), enabled: isAdmin });
-  const adminMasterdataQuery = useQuery({ queryKey: ["work-hours-admin-masterdata"], queryFn: listWorkHoursAdminMasterdata, enabled: isAdmin });
   const totalPages = Math.max(1, Math.ceil((groupsQuery.data?.total ?? 0) / pageSize));
   const newGroupPostOptions = normalizedPosts;
   const editingGroupPostOptions = normalizedPosts;
-  const adminPeople = adminMasterdataQuery.data?.external_people ?? [];
 
   function currentUserParticipant(): SelectableParticipantDraft | null {
     if (!currentUser) return null;
@@ -316,11 +219,6 @@ export function UrenverantwoordingPage() {
     setParticipants([currentUserParticipant()!]);
   }, [currentUser]);
 
-  async function invalidateAdminMasterdata() {
-    await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
-    await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-masterdata"] });
-    await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-history"] });
-  }
 
   useEffect(() => {
     if (newGroupPostOptions.length === 0) {
@@ -385,7 +283,6 @@ export function UrenverantwoordingPage() {
       setStatusMessage("Registratie opgeslagen.");
       resetCreate();
       await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-audit"] });
     },
     onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Opslaan mislukt")
   });
@@ -407,20 +304,10 @@ export function UrenverantwoordingPage() {
       setEditingGroup(null);
       setEditParticipants([]);
       await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-audit"] });
     },
     onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Bijwerken mislukt")
   });
 
-  const restoreGroupMutation = useMutation({
-    mutationFn: (group: WorkHourGroup) => restoreWorkHourGroup(group.id, group.row_version),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-deleted-groups"] });
-      setStatusMessage("Registratie hersteld.");
-      setRestoreGroupTarget(null);
-    }
-  });
 
   useEffect(() => {
     if (!errorMessage) return;
@@ -435,7 +322,7 @@ export function UrenverantwoordingPage() {
     onSuccess: async (created) => {
       setStatusMessage("Externe persoon opgeslagen.");
       setSelectedExternalPersonId(created.id);
-      setSelectedExternalPersonCandidate(created);
+       setSelectedExternalPersonCandidate({ ...created, is_active: created.is_active ?? true, deleted_at: created.deleted_at ?? null });
       setDuplicateCandidates([]);
       setDuplicateConflictCode("");
       setPendingExternalPerson(null);
@@ -443,32 +330,6 @@ export function UrenverantwoordingPage() {
       clearCreateError("participants");
       await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
     }
-  });
-  const updatePersonMutation = useMutation({
-    mutationFn: ({ personId, payload }: { personId: string; payload: Parameters<typeof updateWorkExternalPerson>[1] }) => updateWorkExternalPerson(personId, payload),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] }); }
-  });
-  const archivePersonMutation = useMutation({
-    mutationFn: (person: WorkHourExternalPerson) => archiveWorkExternalPerson(person.id, person.row_version ?? 1),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] }); }
-  });
-  const restorePersonMutation = useMutation({
-    mutationFn: (person: WorkHourExternalPerson) => restoreWorkExternalPerson(person.id, person.row_version ?? 1),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] }); }
-  });
-  const mergePersonMutation = useMutation({
-    mutationFn: ({ personId, payload }: { personId: string; payload: Parameters<typeof mergeWorkExternalPerson>[1] }) => mergeWorkExternalPerson(personId, payload),
-    onSuccess: async () => { setMergeSource(null); setStatusMessage("Externe personen zijn samengevoegd."); await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] }); await queryClient.invalidateQueries({ queryKey: ["work-hours-groups"] }); },
-    onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Samenvoegen mislukt")
-  });
-  const relinkIdentityMutation = useMutation({
-    mutationFn: ({ identityId, userId, rowVersion }: { identityId: string; userId: string; rowVersion: number }) => relinkWorkHistoricalIdentity(identityId, userId, rowVersion),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-history"] });
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-audit"] });
-      setStatusMessage("Historische identiteit gekoppeld; de snapshot blijft behouden.");
-    },
-    onError: (error) => setErrorMessage(error instanceof Error ? error.message : "Koppelen mislukt")
   });
 
   function addUserParticipant(_target?: "create" | "edit") {
@@ -582,11 +443,6 @@ export function UrenverantwoordingPage() {
     setSelectedExternalPersonCandidate(null);
   }
 
-  function startEditingPerson(person: WorkHourExternalPerson) {
-    setEditingPerson(person);
-    setStatusMessage(null);
-    setErrorMessage(null);
-  }
 
   async function onCreateGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -677,21 +533,6 @@ export function UrenverantwoordingPage() {
     });
   }
 
-  async function onSaveEditingPerson(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!editingPerson) return;
-    const data = new FormData(event.currentTarget);
-    await updatePersonMutation.mutateAsync({
-      personId: editingPerson.id,
-      payload: {
-        display_name: String(data.get("display_name") ?? editingPerson.display_name),
-        email: String(data.get("email") ?? editingPerson.email ?? "") || null,
-        note: String(data.get("note") ?? editingPerson.note),
-        expected_row_version: editingPerson.row_version
-      }
-    });
-    setEditingPerson(null);
-  }
 
   async function onQuickAddExternalPerson(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -790,7 +631,6 @@ export function UrenverantwoordingPage() {
                   <td className="work-hours-row-actions">
                     <button type="button" aria-label={`Bewerk registratie ${group.project_name}`} title="Bewerk" onClick={() => startEditingGroup(group)}>✎</button>
                     <button type="button" aria-label={`Verwijder registratie ${group.project_name}`} title="Verwijder" onClick={() => setDeleteGroupTarget(group)}>×</button>
-                    {isAdmin && group.deleted_at && <button type="button" aria-label="Herstel registratie" title="Herstel" onClick={() => restoreGroupMutation.mutate(group)}>↺</button>}
                   </td>
                 </tr>
               ))}
@@ -892,13 +732,6 @@ export function UrenverantwoordingPage() {
         </AccessibleModal>
       )}
 
-      {restoreGroupTarget && (
-        <AccessibleModal title="Registratie herstellen" onClose={() => setRestoreGroupTarget(null)} committing={restoreGroupMutation.isPending}>
-          <p>Herstel deze registratie met de volledige deelnemershistorie?</p>
-          <div className="section-actions"><button type="button" disabled={restoreGroupMutation.isPending} onClick={() => restoreGroupMutation.mutate(restoreGroupTarget)}>Bevestig herstellen</button><button type="button" disabled={restoreGroupMutation.isPending} onClick={() => setRestoreGroupTarget(null)}>Annuleren</button></div>
-        </AccessibleModal>
-      )}
-
       {forceCreateConfirm && pendingExternalPerson && (
         <AccessibleModal title="Nieuwe persoon toch aanmaken" onClose={() => setForceCreateConfirm(false)} committing={personMutation.isPending}>
           <p>De naam lijkt op een bestaande persoon. Bevestig alleen wanneer dit echt een andere persoon is.</p>
@@ -906,105 +739,6 @@ export function UrenverantwoordingPage() {
         </AccessibleModal>
       )}
 
-      {mergeSource && (
-        <AccessibleModal title="Externe personen samenvoegen" onClose={() => setMergeSource(null)} committing={mergePersonMutation.isPending}>
-          {errorMessage && <p className="notice error" role="alert" tabIndex={-1}>{errorMessage}</p>}
-          <label><span>Doelpersoon</span><select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}><option value="">Kies een andere persoon</option>{externalPeople.filter((person) => person.id !== mergeSource.id && person.is_active).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
-          <div className="section-actions"><button type="button" disabled={!mergeTargetId || mergePersonMutation.isPending} onClick={() => { const target = externalPeople.find((person) => person.id === mergeTargetId); if (target) mergePersonMutation.mutate({ personId: mergeSource.id, payload: { target_id: target.id, expected_source_row_version: mergeSource.row_version, expected_target_row_version: target.row_version } }); }}>Samenvoegen</button><button type="button" disabled={mergePersonMutation.isPending} onClick={() => setMergeSource(null)}>Annuleren</button></div>
-        </AccessibleModal>
-      )}
-
-      {currentUser?.is_admin && (
-         <section className="panel">
-           <h2>Urenbeheer</h2>
-           <div className="panel-grid">
-            <section className="panel">
-              <h3>Externe personen</h3>
-              <ul>
-                {adminPeople.map((person) => (
-                  <li key={person.id}>
-                    {person.display_name} {person.deleted_at ? "· verwijderd" : ""}
-                    <button type="button" onClick={() => startEditingPerson(person)}>Bewerk</button>
-                    <button type="button" onClick={() => { setMergeSource(person); setMergeTargetId(""); }}>Samenvoegen</button>
-                     <button type="button" onClick={() => archivePersonMutation.mutate(person)}>Archiveer</button>
-                     <button type="button" onClick={() => restorePersonMutation.mutate(person)}>Herstel</button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-            <section className="panel">
-              <h3>Verwijderde registraties</h3>
-              <button type="button" onClick={() => setShowDeleted((current) => !current)}>{showDeleted ? "Verberg" : "Toon"} verwijderde items</button>
-              {showDeleted && (
-                <ul>
-                  {(deletedGroupsQuery.data?.items ?? []).map((group) => (
-                    <li key={group.id}>
-                       {formatAmsterdamDisplayDate(group.work_date)} · {group.project_name} · {group.post_name}
-                       <button type="button" onClick={() => setRestoreGroupTarget(group)}>Herstel groep</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-            <section className="panel">
-              <h3>Historie en identiteiten</h3>
-              <p className="muted">Alleen beheerders zien verwijderde personen en historische koppelingen.</p>
-              <div className="form-grid">
-                <label><span>Type historie</span><select value={historyKind} onChange={(event) => { setHistoryKind(event.target.value as typeof historyKind); setHistoryPage(1); }}><option value="">Alles</option><option value="post">Posten</option><option value="external_person">Externe personen</option><option value="historical_identity">Historische identiteiten</option></select></label>
-                <label><span>Zoek historie</span><input value={historyQueryText} onChange={(event) => { setHistoryQueryText(event.target.value); setHistoryPage(1); }} /></label>
-                <label><span>Historie per pagina</span><select value={historyPageSize} onChange={(event) => { setHistoryPageSize(Number(event.target.value) as 25 | 50 | 100); setHistoryPage(1); }}><option value={25}>25</option><option value={50}>50</option><option value={100}>100</option></select></label>
-              </div>
-              <ul>
-                {(historyQuery.data?.items ?? []).map((item) => (
-                  <li key={`${item.kind}-${item.id}`}>
-                    {item.display_name || item.id} · {item.kind.replace("_", " ")}
-                    {item.kind === "external_person" && <button type="button" onClick={() => restorePersonMutation.mutate({ id: item.id, display_name: item.display_name, row_version: item.row_version })}>Herstel persoon</button>}
-                    {item.kind === "historical_identity" && eligibleUsers[0] && <button type="button" onClick={() => relinkIdentityMutation.mutate({ identityId: item.id, userId: eligibleUsers[0].id, rowVersion: item.row_version })}>Koppel aan {eligibleUsers[0].full_name || eligibleUsers[0].username}</button>}
-                  </li>
-                ))}
-              </ul>
-              <div className="section-actions"><button type="button" disabled={historyPage <= 1} onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}>Vorige historiepagina</button><span>Historiepagina {historyPage}</span><button type="button" disabled={historyPage * historyPageSize >= (historyQuery.data?.total ?? 0)} onClick={() => setHistoryPage((current) => current + 1)}>Volgende historiepagina</button></div>
-            </section>
-          </div>
-        </section>
-      )}
-
-      {editingPerson && (
-        <AccessibleModal title="Externe persoon bewerken" onClose={() => setEditingPerson(null)}>
-          <form onSubmit={onSaveEditingPerson} className="form-grid">
-            <label><span>Naam</span><input name="display_name" defaultValue={editingPerson.display_name} /></label>
-            <label><span>E-mail</span><input name="email" defaultValue={editingPerson.email ?? ""} /></label>
-            <label className="span-2"><span>Notitie</span><textarea name="note" rows={3} defaultValue={editingPerson.note} /></label>
-            <div className="section-actions span-2"><button type="submit">Opslaan</button><button type="button" onClick={() => setEditingPerson(null)}>Annuleren</button></div>
-          </form>
-        </AccessibleModal>
-      )}
-
-      {currentUser?.is_admin && (
-        <section className="panel">
-          <h2>Audit</h2>
-          <div className="form-grid" aria-label="Auditfilters">
-            <label><span>Actor-ID</span><input value={auditFilters.actor} onChange={(event) => { setAuditFilters((current) => ({ ...current, actor: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Actie</span><input value={auditFilters.action} onChange={(event) => { setAuditFilters((current) => ({ ...current, action: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Resultaat</span><input value={auditFilters.result} onChange={(event) => { setAuditFilters((current) => ({ ...current, result: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>HTTP-methode</span><input value={auditFilters.method} onChange={(event) => { setAuditFilters((current) => ({ ...current, method: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Requestpad</span><input value={auditFilters.path} onChange={(event) => { setAuditFilters((current) => ({ ...current, path: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Vanaf</span><input type="datetime-local" value={auditFilters.from} onChange={(event) => { setAuditFilters((current) => ({ ...current, from: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Tot en met</span><input type="datetime-local" value={auditFilters.to} onChange={(event) => { setAuditFilters((current) => ({ ...current, to: event.target.value })); setAuditPage(1); }} /></label>
-            <label><span>Auditregels per pagina</span><select value={auditPageSize} onChange={(event) => { setAuditPageSize(Number(event.target.value) as 25 | 50 | 100); setAuditPage(1); }}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
-          </div>
-          <ul>
-            {auditEvents.map((event) => (
-              <li key={event.id}>{event.actor_display_name} · {formatAmsterdamDateTime(event.created_at)} · {event.action}{event.project_name ? ` · ${event.project_name}` : ""}{event.post_name ? ` · ${event.post_name}` : ""} · {event.request_method} {event.request_path} · {event.result}</li>
-            ))}
-          </ul>
-          <div className="section-actions">
-            <button type="button" disabled={auditPage <= 1 || (auditQuery.data?.total ?? 0) === 0} onClick={() => setAuditPage((current) => Math.max(1, current - 1))}>Vorige auditpagina</button>
-            <span>Auditpagina {auditQuery.data?.page ?? auditPage} van {Math.max(1, Math.ceil((auditQuery.data?.total ?? 0) / auditPageSize))} · totaal {auditQuery.data?.total ?? 0}</span>
-            <button type="button" disabled={auditPage * auditPageSize >= (auditQuery.data?.total ?? 0)} onClick={() => setAuditPage((current) => current + 1)}>Volgende auditpagina</button>
-          </div>
-        </section>
-      )}
     </section>
   );
 }

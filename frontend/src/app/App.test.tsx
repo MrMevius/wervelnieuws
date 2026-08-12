@@ -674,6 +674,15 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "103",
+        date: "2026-08-12",
+        title: "Urenhistorie staat overzichtelijk bij Admin",
+        highlights: [
+          "Urenhistorie, identiteiten en de uren-audit staan nu als eigen onderdelen bij Admin, terwijl de dagelijkse urenregistratie overzichtelijk blijft.",
+          "Het bewerken en samenvoegen van externe personen blijft daarbij volledig toegankelijk met toetsenbord en schermlezer."
+        ]
+      },
+      {
         iteration: "102",
         date: "2026-08-12",
         title: "Wervelnieuws start betrouwbaarder na onderhoud",
@@ -1233,6 +1242,7 @@ describe("App", () => {
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
     expect(headings).toEqual([
+      "Iteratie 103 - Urenhistorie staat overzichtelijk bij Admin",
       "Iteratie 102 - Wervelnieuws start betrouwbaarder na onderhoud",
       "Iteratie 101 - Urenregistratie kiest deelnemers en duur duidelijker",
       "Iteratie 100 - Topicbronnen ondersteunen nu veilige audio-transcriptie",
@@ -3280,6 +3290,50 @@ describe("App", () => {
       expect(screen.getAllByText("Onderwerp test").length).toBeGreaterThan(0);
       expect(mockApi.listAdminActivity).toHaveBeenCalled();
     });
+  });
+
+  it("keeps the grouped hours history, audit, identity, modal and Admin-log behavior in Admin tabs", async () => {
+    const externalPerson = { id: "ep-archived", display_name: "Gearchiveerde externe", email: "archived@example.com", note: "Historisch", is_active: false, deleted_at: "2026-08-09T12:00:00Z", row_version: 12 };
+    const activePerson = { id: "ep-active", display_name: "Actieve externe", email: "active@example.com", note: "", is_active: true, deleted_at: null, row_version: 5 };
+    mockApi.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [externalPerson, activePerson] });
+    mockApi.listWorkHoursMeta.mockResolvedValue({ projects: [], posts: [], external_people: [], historical_identities: [], eligible_users: [{ id: "u2", username: "piet", full_name: "Piet", email: "piet@example.com" }], is_admin: true });
+    mockApi.listWorkHoursAdminHistory.mockResolvedValue({ items: [{ kind: "historical_identity", id: "hi1", display_name: "Oude Piet", row_version: 3 }], total: 26, page: 1, page_size: 25 });
+    mockApi.listWorkHoursAudit.mockResolvedValue({ items: [{ id: "audit1", actor_display_name: "Admin", created_at: "2026-08-09T10:00:00Z", action: "work_hours_group_updated", request_method: "PUT", request_path: "/api/urenverantwoording/groepen/g1", result: "success" }], total: 26, page: 1, page_size: 25 });
+    renderApp();
+    await loginIntoApp();
+    await waitFor(() => expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Urenhistorie en identiteiten" }));
+    expect(await screen.findByRole("heading", { name: "Urenhistorie en identiteiten" })).toBeInTheDocument();
+    await waitFor(() => expect(mockApi.listWorkHoursAdminHistory).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 25, sort_key: "display_name" })));
+    expect(screen.getByText(/Oude Piet · historical identity/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Koppel aan Piet" }));
+    await waitFor(() => expect(mockApi.relinkWorkHistoricalIdentity).toHaveBeenCalledWith("hi1", "u2", 3));
+    await userEvent.selectOptions(screen.getByLabelText("Type historie"), "historical_identity");
+    await userEvent.type(screen.getByLabelText("Zoek historie"), "Oude");
+    await userEvent.click(screen.getByRole("button", { name: "Volgende historiepagina" }));
+    await waitFor(() => expect(mockApi.listWorkHoursAdminHistory).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "historical_identity", query: "Oude", page: 2 })));
+    await userEvent.click(screen.getByRole("tab", { name: "Uren-audit" }));
+    expect(await screen.findByRole("heading", { name: "Uren-audit" })).toBeInTheDocument();
+    expect(screen.getByText(/work_hours_group_updated/)).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Resultaat"), "success");
+    await userEvent.click(screen.getByRole("button", { name: "Volgende auditpagina" }));
+    await waitFor(() => expect(mockApi.listWorkHoursAudit).toHaveBeenLastCalledWith(expect.objectContaining({ result: "success", page: 2, page_size: 25 })));
+    await userEvent.click(screen.getByRole("tab", { name: "Admin log" }));
+    expect(await screen.findByRole("heading", { name: "Admin log" })).toBeInTheDocument();
+    expect(mockApi.listAdminActivity).toHaveBeenCalled();
+  });
+
+  it("keeps the Admin guard for the hours submenu tabs", async () => {
+    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
+    renderApp();
+    await userEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+    await screen.findByRole("navigation", { name: "Hoofdnavigatie" });
+    await userEvent.click(screen.getByRole("button", { name: "editor" }));
+    expect(screen.queryByRole("menuitem", { name: "Admin" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Urenhistorie en identiteiten" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Uren-audit" })).not.toBeInTheDocument();
   });
 
   it("loads about content from API", async () => {

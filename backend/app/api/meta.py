@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "103",
+                "date": "2026-08-12",
+                "title": "Urenhistorie staat overzichtelijk bij Admin",
+                "highlights": [
+                    "Urenhistorie, identiteiten en de uren-audit staan nu als eigen onderdelen bij Admin, terwijl de dagelijkse urenregistratie overzichtelijk blijft.",
+                    "Het bewerken en samenvoegen van externe personen blijft daarbij volledig toegankelijk met toetsenbord en schermlezer.",
+                ],
+            },
+            {
                 "iteration": "102",
                 "date": "2026-08-12",
                 "title": "Wervelnieuws start betrouwbaarder na onderhoud",
@@ -1055,6 +1064,16 @@ def _default_about() -> AboutResponse:
                     "Bij topic-updates kun je nu een audio-opname uploaden; de transcriptie start automatisch op de achtergrond.",
                     "Na verwerking verschijnt de transcriptie als normale, read-only tekstbron die mee kan in zoekresultaten en generatie.",
                     "Bij een mislukte transcriptie blijft de opname bewaard en kun je de bron direct opnieuw laten verwerken.",
+                ],
+            },
+            {
+                "iteration": "48",
+                "date": "2026-08-12",
+                "title": "Urenbeheer overzichtelijker in Admin",
+                "highlights": [
+                    "De dagelijkse urenregistratie is rustiger doordat historie en audit nu onder eigen Admin-tabs staan.",
+                    "Beheerders vinden historische identiteiten, externe personen en de uren-audit sneller terug in het Admin-submenu.",
+                    "De bestaande Admin log blijft een afzonderlijk overzicht voor algemene beheeracties.",
                 ],
             },
         ],

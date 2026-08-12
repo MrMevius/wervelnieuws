@@ -13,6 +13,11 @@
 - Beheer urenposten/categorieën onder **Admin > Projecten > Globale urenposten / categorieën**. Een actieve post is bij ieder selecteerbaar project beschikbaar.
 - Alleen admins kunnen projecten en posten aanmaken, wijzigen, archiveren of herstellen.
 
+## Historie en audit
+
+- Beheerders vinden **Urenhistorie en identiteiten** en **Uren-audit** als afzonderlijke tabs in **Admin**.
+- De dagelijkse urenpagina toont geen overzicht of herstelactie voor verwijderde registraties meer.
+
 ## Operationele backup en rollback
 
 - De urenpagina heeft geen eigen JSON-backup of import. Gebruik CSV alleen voor rapportage; CSV kan niet worden teruggezet.

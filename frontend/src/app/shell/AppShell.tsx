@@ -94,6 +94,7 @@ import { useMainDashboardData } from "../features/main/hooks/useMainDashboardDat
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
 import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
 import { UrenverantwoordingPage } from "../features/urenverantwoording/UrenverantwoordingPage";
+import { WorkHoursAuditAdminTab, WorkHoursHistoryAdminTab } from "../features/urenverantwoording/WorkHoursAdminTabs";
 import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
@@ -4379,7 +4380,7 @@ function AdminQueryStatus({
 }
 
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
-  type AdminTab = "users" | "boardRights" | "projects" | "themes" | "ai" | "scheduler" | "activity";
+  type AdminTab = "users" | "boardRights" | "projects" | "themes" | "ai" | "scheduler" | "workHoursHistory" | "workHoursAudit" | "activity";
 
   const queryClient = useQueryClient();
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>("users");
@@ -5050,6 +5051,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         <button type="button" role="tab" aria-selected={activeAdminTab === "themes"} onClick={() => setActiveAdminTab("themes")}>Thema&apos;s</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "ai"} onClick={() => setActiveAdminTab("ai")}>AI</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "scheduler"} onClick={() => setActiveAdminTab("scheduler")}>Scheduler</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "workHoursHistory"} onClick={() => setActiveAdminTab("workHoursHistory")}>Urenhistorie en identiteiten</button>
+        <button type="button" role="tab" aria-selected={activeAdminTab === "workHoursAudit"} onClick={() => setActiveAdminTab("workHoursAudit")}>Uren-audit</button>
         <button type="button" role="tab" aria-selected={activeAdminTab === "activity"} onClick={() => setActiveAdminTab("activity")}>Admin log</button>
       </div>
       <div hidden={activeAdminTab !== "boardRights"}>
@@ -5810,6 +5813,10 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </div>
         )}
       </div>
+
+      {activeAdminTab === "workHoursHistory" && <WorkHoursHistoryAdminTab />}
+
+      {activeAdminTab === "workHoursAudit" && <WorkHoursAuditAdminTab />}
 
       <div hidden={activeAdminTab !== "activity"}>
         <h2>Admin log</h2>
