@@ -145,6 +145,47 @@ describe("Vergaderborden drag/drop", () => {
     vi.restoreAllMocks();
   });
 
+  it("houdt een direct geopend verborgen bord leesbaar maar zonder mutatieacties", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Historische kaart", description: "Historie", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 1, attachments_count: 1 };
+    const archivedCard = { id: "c-archive", project_id: "p1", title: "Gearchiveerde historie", description: "Oude kaart", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, attachments_count: 0, is_archived: true };
+    api.listBoardProjects.mockResolvedValue([]);
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Verborgen", invited_user_ids: ["u1"], cards: [card], archived_cards: [archivedCard], is_read_only: true });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [{ id: "update-1", author_user_id: "u1", author_username: "admin", author_display_name: "Admin", message: "Historische update", created_at: "2026-08-10T10:00:00Z" }],
+      recordings: [{ id: "recording-1", filename: "historisch.webm", duration: 7, size_bytes: 12, created_at: "2026-08-10T10:00:00Z", download_url: "/download" }],
+      attachments: [{ id: "attachment-1", filename: "historisch.txt", mime_type: "text/plain", size_bytes: 9, created_at: "2026-08-10T10:00:00Z", download_url: "/download" }]
+    });
+
+    renderPage("/vergaderborden?project=p1");
+
+    expect(await screen.findByText(/alleen-lezen/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "+ Kaart toevoegen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Prullenbak/ })).not.toBeInTheDocument();
+    expect(screen.getByTestId("board-card-c1")).toHaveAttribute("draggable", "false");
+    fireEvent.click(screen.getByTestId("board-card-c1"));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Historische update")).toBeInTheDocument();
+    expect(screen.getByText("Audio-opname")).toBeInTheDocument();
+    expect(screen.getByText("historisch.txt")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Kaarttitel bewerken: Historische kaart")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Beschrijving bewerken")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kaart archiveren: Historische kaart" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kaart verwijderen: Historische kaart" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kaart terugzetten: Historische kaart" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kaart herstellen: Historische kaart" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update plaatsen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Verwijderen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /start opname/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toevoegen" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Archief/ }));
+    expect(await screen.findByText("Gearchiveerde historie")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Kaart terugzetten: Gearchiveerde historie" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/kun je hier terugzetten/i)).not.toBeInTheDocument();
+  });
+
   it("slaat direct op bij verplaatsen naar andere kolom", async () => {
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
@@ -949,10 +990,11 @@ describe("Vergaderborden drag/drop", () => {
       expect(api.getBoardProject).toHaveBeenCalledWith("p1");
     });
 
-    expect(window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY)).toBe("p1");
+    await waitFor(() => expect(window.localStorage.getItem(VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY)).toBe("p1"));
   });
 
   it("valideert ongeldige projectquery en valt terug op Algemeen", async () => {
+    api.getBoardProject.mockRejectedValueOnce(new Error("Niet gevonden"));
     api.getBoardProject.mockResolvedValue({
       project_id: "p0",
       project_name: "Algemeen",

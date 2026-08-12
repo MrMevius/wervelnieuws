@@ -20,7 +20,30 @@ class BoardRepository:
         self.db = db
 
     def list_projects(self) -> list[Project]:
-        return list(self.db.scalars(select(Project).where(Project.is_archived.is_(False)).order_by(Project.name.asc())).all())
+        return list(
+            self.db.scalars(
+                select(Project)
+                .where(
+                    Project.is_archived.is_(False),
+                    Project.is_active.is_(True),
+                    Project.is_visible_in_boards.is_(True),
+                )
+                .order_by(Project.name.asc())
+            ).all()
+        )
+
+    def list_rights_projects(self) -> list[Project]:
+        """Return active projects for membership administration, irrespective of board visibility."""
+        return list(
+            self.db.scalars(
+                select(Project)
+                .where(
+                    Project.is_archived.is_(False),
+                    Project.is_active.is_(True),
+                )
+                .order_by(Project.name.asc())
+            ).all()
+        )
 
     def list_users(self) -> list[User]:
         return list(self.db.scalars(select(User).order_by(User.username.asc())).all())

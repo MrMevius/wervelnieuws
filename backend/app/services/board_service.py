@@ -29,6 +29,19 @@ class BoardService:
         self.ensure_project_access(self.repo.get_project(card.project_id), user)
         return card
 
+    def ensure_project_writable(self, project: Project) -> Project:
+        if not project.is_visible_in_boards:
+            raise HTTPException(
+                status_code=409,
+                detail="Dit verborgen vergaderbord is alleen-lezen; historische kaarten en updates blijven beschikbaar.",
+            )
+        return project
+
+    def ensure_card_writable(self, card: BoardCard | None, user: User) -> BoardCard:
+        card = self.ensure_card_access(card, user)
+        self.ensure_project_writable(self.repo.get_project(card.project_id))
+        return card
+
     def list_visible_projects(self, user: User) -> list[Project]:
         all_projects = self.repo.list_projects()
         if user.is_admin:

@@ -227,6 +227,8 @@ export type Project = {
   id: string;
   name: string;
   is_active: boolean;
+  is_visible_in_boards: boolean;
+  is_visible_in_work_hours: boolean;
 };
 
 export type BoardProjectSummary = {
@@ -275,6 +277,7 @@ export type BoardProjectDetail = {
   access_users: BoardAccessUser[];
   cards: BoardCard[];
   archived_cards: BoardCard[];
+  is_read_only?: boolean;
 };
 
 export type BoardRecycleBinCard = BoardCard & {
@@ -617,14 +620,14 @@ export function listAdminProjects() {
   return request<Project[]>("/admin/projects");
 }
 
-export function createAdminProject(name: string) {
+export function createAdminProject(payload: { name: string; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean }) {
   return request<Project>("/admin/projects", {
     method: "POST",
-    body: JSON.stringify({ name })
+    body: JSON.stringify(payload)
   });
 }
 
-export function updateAdminProject(projectId: string, payload: { name?: string; is_active?: boolean }) {
+export function updateAdminProject(projectId: string, payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean }) {
   return request<Project>(`/admin/projects/${projectId}`, {
     method: "PATCH",
     body: JSON.stringify(payload)

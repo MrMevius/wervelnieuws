@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 import re
 import time
@@ -103,6 +104,9 @@ def test_remembered_login_sets_secure_cookie_and_stores_only_hash(client):
 def test_remembered_login_persistence_failure_falls_back_to_normal_session(
     client, caplog, monkeypatch
 ):
+    auth_logger = logging.getLogger("app.api.auth")
+    monkeypatch.setattr(auth_logger, "disabled", False)
+    caplog.set_level(logging.WARNING, logger="app.api.auth")
     sensitive_remember_token = "SENSITIVE_REMEMBER_TOKEN_SHOULD_NOT_APPEAR_IN_LOGS"
     monkeypatch.setattr(
         "app.api.auth.create_remember_token", lambda: sensitive_remember_token

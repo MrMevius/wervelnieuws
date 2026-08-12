@@ -260,7 +260,7 @@ class WorkHoursService:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Post niet gevonden")
         historical_unchanged = allow_unchanged == (project_id, post_id)
         if not historical_unchanged and (
-            not project.is_active or project.is_archived
+            not project.is_active or project.is_archived or not project.is_visible_in_work_hours
             or post.deleted_at is not None or not post.is_active or post.is_archived
         ):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project of post is niet actief/selecteerbaar")
@@ -438,7 +438,12 @@ class WorkHoursService:
 
     @staticmethod
     def _is_selectable_masterdata(row: WorkProjectResponse | WorkPostResponse | Project | WorkPost) -> bool:
-        return bool(row.is_active and not row.is_archived and getattr(row, "deleted_at", None) is None)
+        return bool(
+            row.is_active
+            and not row.is_archived
+            and getattr(row, "deleted_at", None) is None
+            and (not isinstance(row, Project) or row.is_visible_in_work_hours)
+        )
 
     def relink_historical_identity(self, current: User, identity_id: str, payload: WorkHistoricalIdentityRelinkRequest) -> WorkHistoricalIdentityResponse:
         self._ensure_admin(current)
@@ -699,7 +704,11 @@ class WorkHoursService:
         before = self._full_group_snapshot(group)
         project_id = payload.project_id or group.project_id
         post_id = payload.post_id or group.post_id
-        self._validate_project_post(project_id, post_id)
+        self._validate_project_post(
+            project_id,
+            post_id,
+            allow_unchanged=(group.project_id, group.post_id),
+        )
         existing = {participant.id: participant for participant in group.participants if participant.deleted_at is None}
         validated_participants = self._validate_patch_participants(payload.participants, existing, current) if payload.participants is not None else None
 

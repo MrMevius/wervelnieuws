@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, FocusEvent, ReactNode, RefObject, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, FocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   AdminUser,
@@ -898,20 +898,38 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const usersQuery = useQuery({ queryKey: ["admin-users"], queryFn: listAdminUsers });
   const currentUserQuery = useQuery({ queryKey: ["current-user"], queryFn: getCurrentUser });
   const requestedProjectId = searchParams.get("project");
+  const [missingDirectProjectId, setMissingDirectProjectId] = useState<string | null>(null);
   const resolvedProjectId = useMemo(() => {
     const projects = projectsQuery.data ?? [];
+    // A known URL can target a project that is deliberately absent from the
+    // selector. The API decides whether it is an authorized historical board.
+    if (
+      requestedProjectId
+      && !projects.some((project) => project.id === requestedProjectId)
+      && missingDirectProjectId !== requestedProjectId
+    ) return requestedProjectId;
     return resolveVergaderbordenProjectId(projects, requestedProjectId);
-  }, [projectsQuery.data, requestedProjectId]);
+  }, [projectsQuery.data, requestedProjectId, missingDirectProjectId]);
 
   const boardQuery = useQuery({
     queryKey: ["board-project", resolvedProjectId],
     queryFn: () => getBoardProject(resolvedProjectId || ""),
     enabled: Boolean(resolvedProjectId)
   });
+  useEffect(() => {
+    if (boardQuery.isError && requestedProjectId && resolvedProjectId === requestedProjectId) {
+      setMissingDirectProjectId(requestedProjectId);
+    }
+  }, [boardQuery.isError, requestedProjectId, resolvedProjectId]);
+  useEffect(() => {
+    setMissingDirectProjectId(null);
+  }, [requestedProjectId]);
   const recycleBinQuery = useQuery({
     queryKey: ["board-recycle-bin"],
     queryFn: listBoardRecycleBin,
-    enabled: canManageProjects
+    // A hidden board is historical read-only, including for admins. Do not
+    // load or expose its restore-only recycle-bin surface.
+    enabled: canManageProjects && boardQuery.data?.is_read_only !== true
   });
   const cardQuery = useQuery({ queryKey: ["board-card", selectedCardId], queryFn: () => getBoardCard(selectedCardId || ""), enabled: Boolean(selectedCardId) });
   const resolvedProjectName = useMemo(() => {
@@ -921,6 +939,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
 
   const boardAccessUsers = boardQuery.data?.access_users ?? [];
+  const isReadOnly = boardQuery.data?.is_read_only === true;
+  useEffect(() => {
+    if (isReadOnly && boardView === "recycle") {
+      setBoardView("active");
+    }
+  }, [boardView, isReadOnly]);
   const boardAssignableUsers = useMemo(
     () => boardAccessUsers.filter((user) => user.is_active),
     [boardAccessUsers]
@@ -1196,9 +1220,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           className={`vergaderborden-board-card${card.is_archived ? " is-archived" : ""}${isArchiveView ? " is-archive-view" : ""}`}
           data-testid={`board-card-${card.id}`}
           tabIndex={-1}
-          draggable={!isArchiveView}
+          draggable={!isArchiveView && !isReadOnly}
           onDragStart={
-            isArchiveView
+            isArchiveView || isReadOnly
               ? undefined
               : (e) => {
                   setMoveError(null);
@@ -1209,7 +1233,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 }
           }
           onDragOver={
-            isArchiveView
+            isArchiveView || isReadOnly
               ? undefined
               : (e) => {
                   e.preventDefault();
@@ -1221,7 +1245,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 }
           }
           onDragLeave={
-            isArchiveView
+            isArchiveView || isReadOnly
               ? undefined
               : (e) => {
                   if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -1229,7 +1253,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 }
           }
           onDragEnd={
-            isArchiveView
+            isArchiveView || isReadOnly
               ? undefined
               : () => {
                   dragCardMetaRef.current = null;
@@ -1237,7 +1261,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 }
           }
           onDrop={
-            isArchiveView
+            isArchiveView || isReadOnly
               ? undefined
               : (e) => {
                   e.preventDefault();
@@ -1269,7 +1293,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           </div>
           <AssignedUserAvatarRow assignments={card.assignments} />
           <small>Updates: {card.updates_count} · Opnames: {card.recordings_count} · Bijlagen: {card.attachments_count ?? 0}</small>
-          {isArchiveView ? (
+          {isArchiveView && !isReadOnly ? (
             <div className="board-card-recording-controls board-card-archive-controls">
               <IconActionButton
                 label={`Kaart terugzetten: ${card.title}`}
@@ -1292,7 +1316,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <TrashIcon />
               </IconActionButton>
             </div>
-          ) : (
+          ) : !isArchiveView && !isReadOnly ? (
             <div className="board-card-recording-controls">
               {activeRecordingCardId === card.id && <p className="board-card-recording-timer">Timer: {recordingSeconds}s</p>}
               <button
@@ -1309,7 +1333,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <RecordIcon active={activeRecordingCardId === card.id} />
               </button>
             </div>
-          )}
+          ) : null}
         </article>
         {!isArchiveView && dragDropTarget?.column === column && dragDropTarget.cardId === card.id && dragDropTarget.placement === "after" && (
           <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${column}-${card.id}-after`} aria-hidden="true" />
@@ -1330,6 +1354,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         onDragOver={
           isActiveView
             ? (e) => {
+                if (isReadOnly) return;
                 e.preventDefault();
                 if (!dragCardMetaRef.current) return;
                 setDragDropTarget(resolveColumnDragTarget(e.currentTarget, column, e.clientY));
@@ -1339,6 +1364,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         onDragLeave={
           isActiveView
             ? (e) => {
+                if (isReadOnly) return;
                 if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
                 setDragDropTarget((current) => (current?.column === column ? null : current));
               }
@@ -1347,6 +1373,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         onDrop={
           isActiveView
             ? (e) => {
+                if (isReadOnly) return;
                 e.preventDefault();
                 e.stopPropagation();
                 setDragDropTarget(null);
@@ -1367,7 +1394,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       >
         <h3>{KOLOM_TITEL[column]}</h3>
         {isActiveView ? (
-          activeCreateColumn !== column ? (
+          isReadOnly ? null : activeCreateColumn !== column ? (
             <button
               type="button"
               className="vergaderborden-card-add-toggle"
@@ -1733,7 +1760,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             >
               Archief ({archivedCards.length})
             </button>
-            {canManageProjects && (
+            {canManageProjects && !isReadOnly && (
               <button
                 type="button"
                 aria-pressed={boardView === "recycle"}
@@ -1772,6 +1799,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
           {boardView === "active" && (
             <div className="board-grid">
+              {isReadOnly && <p className="muted" role="status">Dit verborgen vergaderbord is alleen-lezen. Historische kaarten en updates blijven zichtbaar.</p>}
               {createCardProgress && <p className="vergaderborden-saving-indicator" role="status" aria-live="polite">Kaart wordt aangemaakt…</p>}
               {createCardNotice && <p className="error vergaderborden-inline-error" role="alert">{createCardNotice}</p>}
               {moveError && <p className="error vergaderborden-inline-error vergaderborden-move-error">{moveError}</p>}
@@ -1784,7 +1812,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             <section className="board-archive-panel" aria-label="Archief">
               <div className="board-detail-section-heading">
                 <h3>Archief</h3>
-                <p className="board-section-help">Gearchiveerde kaarten blijven bewaard en kun je hier terugzetten.</p>
+                <p className="board-section-help">Gearchiveerde kaarten blijven bewaard{isReadOnly ? "." : " en kun je hier terugzetten."}</p>
               </div>
               {archivedCards.length === 0 && <p className="board-archive-empty">Er zijn nog geen gearchiveerde kaarten.</p>}
               <div className="board-grid board-archive-grid" aria-label="Gearchiveerde kaarten">
@@ -1793,7 +1821,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             </section>
           )}
 
-          {boardView === "recycle" && canManageProjects && (
+          {boardView === "recycle" && canManageProjects && !isReadOnly && (
             <section className="board-recycle-panel" aria-label="Prullenbak">
               <div className="board-detail-section-heading">
                 <h3>Prullenbak</h3>
@@ -1881,7 +1909,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           <div className="board-detail-modal">
             <header className="board-detail-header">
               <div className="board-detail-header-copy">
-                {titleEdit?.cardId === cardQuery.data.card.id ? (
+                {!isReadOnly && titleEdit?.cardId === cardQuery.data.card.id ? (
                   <div className="board-detail-title-edit">
                     <label className="vergaderborden-field">
                       <span>Kaarttitel</span>
@@ -1918,18 +1946,18 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   </div>
                 ) : (
                   <div className="board-detail-title-row">
-                    <h2
-                      role="button"
-                      tabIndex={0}
-                      aria-label={`Kaarttitel bewerken: ${cardQuery.data.card.title}`}
-                      onClick={() => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title)}
-                      onKeyDown={(evt) => {
+                    <h2 {...(!isReadOnly ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-label": `Kaarttitel bewerken: ${cardQuery.data.card.title}`,
+                      onClick: () => startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title),
+                      onKeyDown: (evt: ReactKeyboardEvent) => {
                         if (evt.key === "Enter" || evt.key === " ") {
                           evt.preventDefault();
                           startTitleEdit(cardQuery.data!.card.id, cardQuery.data!.card.title);
                         }
-                      }}
-                    >
+                      }
+                    } : {})}>
                       {cardQuery.data.card.title}
                     </h2>
                   </div>
@@ -1937,7 +1965,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
               </div>
               <div className="board-detail-header-actions">
-                {cardQuery.data.card.is_archived ? (
+                {!isReadOnly && (cardQuery.data.card.is_archived ? (
                   <IconActionButton
                     label={`Kaart terugzetten: ${cardQuery.data.card.title}`}
                     title={`Kaart terugzetten: ${cardQuery.data.card.title}`}
@@ -1955,8 +1983,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   >
                     <ArchiveIcon />
                   </IconActionButton>
-                )}
-                <IconActionButton
+                ))}
+                {!isReadOnly && <IconActionButton
                   label={`Kaart verwijderen: ${cardQuery.data.card.title}`}
                   title={`Kaart verwijderen: ${cardQuery.data.card.title}`}
                   disabled={deleteCardMutation.isPending}
@@ -1967,7 +1995,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   }}
                 >
                   <TrashIcon />
-                </IconActionButton>
+                </IconActionButton>}
                 <button type="button" className="board-detail-close" ref={boardDetailCloseButtonRef} onClick={closeCardDetail} aria-label="Kaartdetail sluiten">Sluiten</button>
               </div>
             </header>
@@ -1976,7 +2004,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               <div className="board-detail-section-heading">
                 <h3>Beschrijving</h3>
               </div>
-              {descriptionEdit?.cardId === cardQuery.data.card.id ? (
+              {!isReadOnly && descriptionEdit?.cardId === cardQuery.data.card.id ? (
                 <label className="vergaderborden-field">
                   <DescriptionEditor
                     ariaLabel="Beschrijving"
@@ -2002,17 +2030,19 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               ) : (
                 <div className="vergaderborden-field">
                   <div
-                    role="button"
-                    tabIndex={0}
-                    className="board-card-description-preview board-card-description-edit-trigger"
-                    aria-label={cardQuery.data.card.description.trim() ? "Beschrijving bewerken" : "Beschrijving toevoegen"}
-                    onClick={() => startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description)}
-                    onKeyDown={(evt) => {
-                      if (evt.key === "Enter" || evt.key === " ") {
-                        evt.preventDefault();
-                        startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description);
+                    {...(!isReadOnly ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-label": cardQuery.data.card.description.trim() ? "Beschrijving bewerken" : "Beschrijving toevoegen",
+                      onClick: () => startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description),
+                      onKeyDown: (evt: ReactKeyboardEvent) => {
+                        if (evt.key === "Enter" || evt.key === " ") {
+                          evt.preventDefault();
+                          startDescriptionEdit(cardQuery.data!.card.id, cardQuery.data!.card.description);
+                        }
                       }
-                    }}
+                    } : {})}
+                    className="board-card-description-preview board-card-description-edit-trigger"
                   >
                     <CardDescriptionRenderer description={cardQuery.data.card.description} emptyFallback={<>Beschrijving toevoegen</>} />
                   </div>
@@ -2020,7 +2050,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               )}
             </section>
 
-            <form
+            {!isReadOnly && <form
               className="board-update-form board-detail-section"
               onSubmit={(e: FormEvent) => {
                 e.preventDefault();
@@ -2064,13 +2094,13 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   {postUpdateMutation.isPending ? "Update plaatsen…" : "Update plaatsen"}
                 </button>
               </div>
-            </form>
+            </form>}
 
             <section className="board-detail-section board-attachments-section">
               <div className="board-detail-section-heading">
                 <h3>Bijlagen</h3>
               </div>
-              <form
+              {!isReadOnly && <form
                 className={`board-attachment-form ${attachmentDragActive ? "is-drag-active" : ""}`}
                 onDragOver={(evt) => {
                   evt.preventDefault();
@@ -2144,7 +2174,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     {isAttachmentUploading ? "Toevoegen…" : "Toevoegen"}
                   </button>
                 </div>
-              </form>
+              </form>}
               {cardAttachments.length === 0 ? (
                 <p className="board-attachments-empty">Er zijn nog geen bijlagen toegevoegd.</p>
               ) : (
@@ -2176,7 +2206,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                           <a className="board-attachment-action board-attachment-action--download" href={attachment.download_url}>
                             Downloaden
                           </a>
-                          <button
+                          {!isReadOnly && <button
                             type="button"
                             className="board-attachment-action board-attachment-action--danger"
                             disabled={deleteAttachmentMutation.isPending}
@@ -2187,7 +2217,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                             }}
                           >
                             Verwijderen
-                          </button>
+                          </button>}
                         </div>
                       </article>
                     );
@@ -2245,7 +2275,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                           <small className="board-update-meta">{dateLabel}</small>
                         </div>
                       </div>
-                      {updateEdit?.updateId === u.id && !isMoveUpdate ? (
+                      {updateEdit?.updateId === u.id && !isMoveUpdate && !isReadOnly ? (
                         <div className="board-update-editor">
                           <div className="board-update-editor-shell" onFocus={showUpdateEditToolbar} onBlur={hideUpdateEditToolbar}>
                             {isUpdateEditToolbarVisible ? <UpdateFormattingToolbar onAction={handleUpdateEditToolbarAction} /> : null}
@@ -2314,7 +2344,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         <>
                           <div className="board-update-message">{renderBoardUpdateMessage(u.message)}</div>
                           {u.image_url && <img src={u.image_url} alt="Update-afbeelding" className="board-update-image" />}
-                          {!isMoveUpdate && u.author_user_id === currentUserQuery.data?.id && (
+                          {!isReadOnly && !isMoveUpdate && u.author_user_id === currentUserQuery.data?.id && (
                             <div className="board-update-actions">
                               <button
                                 type="button"
@@ -2359,7 +2389,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
               </div>
               {cardActivityItems.length === 0 && <p className="board-updates-empty">Er zijn nog geen updates geplaatst.</p>}
             </section>
-            {cardQuery.data.card.column === "doing" && (
+            {!isReadOnly && cardQuery.data.card.column === "doing" && (
               <div>
                 <button
                   type="button"

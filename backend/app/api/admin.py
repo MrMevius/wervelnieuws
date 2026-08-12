@@ -435,7 +435,11 @@ def create_project(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Project name already exists",
         )
-    created = repo.create_project(name)
+    created = repo.create_project(
+        name,
+        is_visible_in_boards=payload.is_visible_in_boards,
+        is_visible_in_work_hours=payload.is_visible_in_work_hours,
+    )
     return ProjectResponse.model_validate(created)
 
 
@@ -467,6 +471,10 @@ def update_project(
 
     if payload.is_active is not None:
         project.is_active = payload.is_active
+    if payload.is_visible_in_boards is not None:
+        project.is_visible_in_boards = payload.is_visible_in_boards
+    if payload.is_visible_in_work_hours is not None:
+        project.is_visible_in_work_hours = payload.is_visible_in_work_hours
 
     updated = repo.save_project(project)
     return ProjectResponse.model_validate(updated)

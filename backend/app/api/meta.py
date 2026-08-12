@@ -38,6 +38,24 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
+                "iteration": "99",
+                "date": "2026-08-10",
+                "title": "Admin-fouten zijn duidelijker per onderdeel",
+                "highlights": [
+                    "Beheerders zien nu welk onderdeel van Admin niet geladen kan worden en kunnen alleen dat onderdeel opnieuw proberen.",
+                    "Andere beschikbare beheeronderdelen blijven ondertussen bruikbaar.",
+                ],
+            },
+            {
+                "iteration": "98",
+                "date": "2026-08-10",
+                "title": "Projecten zijn per module in te stellen",
+                "highlights": [
+                    "Beheerders kiezen nu per project of het beschikbaar is in Vergaderborden, Urenverantwoording of beide.",
+                    "Beschrijvingen bij urenposten hebben meer ruimte voor langere, overzichtelijke teksten.",
+                ],
+            },
+            {
                 "iteration": "97",
                 "date": "2026-08-10",
                 "title": "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups",

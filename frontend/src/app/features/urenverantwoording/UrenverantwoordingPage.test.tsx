@@ -68,6 +68,25 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(screen.queryByRole("button", { name: "Nieuwe registratie" })).not.toBeInTheDocument();
   });
 
+  it("uses the visibility-filtered project contracts for registration and project filters", async () => {
+    api.listWorkHoursMeta.mockResolvedValueOnce({
+      projects: [{ id: "p-visible", name: "Beschikbaar project", is_active: true, is_archived: false }],
+      filter_projects: [{ id: "p-visible", name: "Beschikbaar project", selectable: true }],
+      posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }],
+      external_people: [], historical_identities: [], eligible_users: [], is_admin: true
+    });
+    renderPage();
+
+    const registrationProject = await screen.findByLabelText("Project voor nieuwe registratie");
+    await waitForSelectOption(registrationProject, "Beschikbaar project");
+    expect(within(registrationProject).queryByRole("option", { name: "Verborgen urenproject" })).not.toBeInTheDocument();
+
+    const projectFilter = (await screen.findByLabelText("Filter Project")).closest("details")!;
+    await userEvent.click(within(projectFilter).getByLabelText("Filter Project"));
+    expect(within(projectFilter).getByRole("button", { name: "Beschikbaar project" })).toBeInTheDocument();
+    expect(within(projectFilter).queryByRole("button", { name: /Verborgen urenproject/ })).not.toBeInTheDocument();
+  });
+
   it("creates a group with multiple participants without a create modal", async () => {
     renderPage();
     const desktopProject = await screen.findByLabelText("Project voor nieuwe registratie");

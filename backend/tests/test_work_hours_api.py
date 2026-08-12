@@ -40,6 +40,9 @@ from tests.work_hours_removal_migration_cases import (
 )
 
 
+VISIBILITY_RELEASED_REVISION = "20260810_0029"
+
+
 def test_every_new_sqlite_connection_enables_foreign_keys_pragma(tmp_path):
     engine = create_engine(f"sqlite:///{tmp_path / 'fk.db'}", pool_size=2, max_overflow=0)
     first = engine.connect()
@@ -87,6 +90,59 @@ def _login(client, username: str = "admin", password: str = "admin12345"):
     response = client.post("/api/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def test_work_hours_meta_and_writes_exclude_hidden_projects_but_keep_history(client):
+    headers = _login(client)
+    hours_only = client.post(
+        "/api/admin/projects",
+        headers=headers,
+        json={"name": "Uren zichtbaar", "is_visible_in_boards": False, "is_visible_in_work_hours": True},
+    ).json()
+    hidden = client.post(
+        "/api/admin/projects",
+        headers=headers,
+        json={"name": "Uren verborgen", "is_visible_in_boards": True, "is_visible_in_work_hours": True},
+    ).json()
+    post = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Werk", "description": ""}).json()
+    participant = {
+        "participant_kind": "live_user",
+        "user_id": client.get("/api/auth/me", headers=headers).json()["id"],
+        "display_name_snapshot": "Admin",
+        "display_type_snapshot": "WindWilly-gebruiker",
+    }
+    created = client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={"work_date": "2026-08-09", "project_id": hidden["id"], "post_id": post["id"], "duration_half_hours": 2, "participants": [participant]},
+    )
+    assert created.status_code == 201
+    assert client.patch(
+        f"/api/admin/projects/{hidden['id']}", headers=headers, json={"is_visible_in_work_hours": False}
+    ).status_code == 200
+    visible_existing = client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={"work_date": "2026-08-10", "project_id": hours_only["id"], "post_id": post["id"], "duration_half_hours": 2, "participants": [participant]},
+    )
+    assert visible_existing.status_code == 201
+
+    meta = client.get("/api/urenverantwoording/meta", headers=headers).json()
+    assert {item["id"] for item in meta["projects"]} == {hours_only["id"]}
+    assert {item["id"] for item in meta["filter_projects"]} == {hours_only["id"]}
+    assert {item["project_id"] for item in client.get("/api/urenverantwoording/groepen", headers=headers).json()["items"]} == {hidden["id"], hours_only["id"]}
+    rejected = client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={"work_date": "2026-08-09", "project_id": hidden["id"], "post_id": post["id"], "duration_half_hours": 2, "participants": [participant]},
+    )
+    assert rejected.status_code == 422
+    changed_to_hidden = client.patch(
+        f"/api/urenverantwoording/groepen/{visible_existing.json()['id']}",
+        headers=headers,
+        json={"project_id": hidden["id"], "expected_row_version": visible_existing.json()["row_version"]},
+    )
+    assert changed_to_hidden.status_code == 422
 
 
 def test_removed_hours_json_routes_are_404_for_admin_and_editor_without_audit_writes(client):
@@ -206,7 +262,7 @@ def test_populated_work_hours_migration_upgrade_downgrade_upgrade_preserves_rows
         connection.execute(text("INSERT INTO work_hour_groups (id, work_date, project_id, post_id, description, duration_half_hours, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version) VALUES ('group-1', '2026-01-01', 'legacy-a', 'post-a', 'Behoud', 3, :ts, :ts, 'u1', 'u1', 7)"), {"ts": timestamp})
         connection.execute(text("INSERT INTO work_hour_group_participants (id, group_id, participant_kind, user_id, display_name_snapshot, display_type_snapshot, sort_order, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version, active_identity_key) VALUES ('participant-1', 'group-1', 'live_user', 'u1', 'Migratie', 'WindWilly-gebruiker', 0, :ts, :ts, 'u1', 'u1', 4, 'live_user:u1')"), {"ts": timestamp})
 
-    command.upgrade(config, "head")
+    command.upgrade(config, VISIBILITY_RELEASED_REVISION)
     with engine.connect() as connection:
         group = connection.execute(text("SELECT project_id, post_id, duration_half_hours, row_version FROM work_hour_groups WHERE id='group-1'")).one()
         assert group == ("central", "post-a", 3, 7)
@@ -219,7 +275,7 @@ def test_populated_work_hours_migration_upgrade_downgrade_upgrade_preserves_rows
     with engine.connect() as connection:
         assert connection.execute(text("SELECT project_id, post_id, row_version FROM work_hour_groups WHERE id='group-1'")).one() == ("legacy-a", "post-a", 7)
         assert connection.scalar(text("SELECT count(*) FROM work_posts")) == 2
-    command.upgrade(config, "head")
+    command.upgrade(config, VISIBILITY_RELEASED_REVISION)
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT count(*) FROM work_hour_groups")) == 1
         assert connection.scalar(text("SELECT count(*) FROM work_hour_group_participants")) == 1
@@ -242,8 +298,26 @@ def _upgraded_migration_guard_database(tmp_path, monkeypatch, name: str):
         connection.execute(text("INSERT INTO work_posts (id, project_id, name, description, is_active, is_archived, created_at, updated_at, row_version) VALUES ('post-a', 'legacy-a', 'Werk', '', 1, 0, :ts, :ts, 1)"), {"ts": timestamp})
         connection.execute(text("INSERT INTO work_hour_groups (id, work_date, project_id, post_id, description, duration_half_hours, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version) VALUES ('group-1', '2026-01-01', 'legacy-a', 'post-a', 'Behoud', 3, :ts, :ts, 'u1', 'u1', 7)"), {"ts": timestamp})
         connection.execute(text("INSERT INTO work_hour_group_participants (id, group_id, participant_kind, user_id, display_name_snapshot, display_type_snapshot, sort_order, created_at, updated_at, created_by_user_id, updated_by_user_id, row_version, active_identity_key) VALUES ('participant-1', 'group-1', 'live_user', 'u1', 'Migratie', 'WindWilly-gebruiker', 0, :ts, :ts, 'u1', 'u1', 4, 'live_user:u1')"), {"ts": timestamp})
-    command.upgrade(config, "head")
+    command.upgrade(config, VISIBILITY_RELEASED_REVISION)
     return config, engine
+
+
+def test_work_hours_migration_helpers_preserve_audio_history(tmp_path, monkeypatch):
+    config, engine = _upgraded_migration_guard_database(tmp_path, monkeypatch, "visibility-release")
+
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == VISIBILITY_RELEASED_REVISION
+        topic_source_columns = {column[1] for column in connection.execute(text("PRAGMA table_info(topic_source_documents)"))}
+        assert "transcription_status" in topic_source_columns
+
+    command.downgrade(config, "20260730_0026")
+    command.upgrade(config, VISIBILITY_RELEASED_REVISION)
+
+    with engine.connect() as connection:
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == VISIBILITY_RELEASED_REVISION
+        topic_source_columns = {column[1] for column in connection.execute(text("PRAGMA table_info(topic_source_documents)"))}
+        assert "transcription_status" in topic_source_columns
+    get_settings.cache_clear()
 
 
 @pytest.mark.parametrize(
@@ -373,7 +447,7 @@ def test_meta_filter_facets_keep_historical_project_post_person_and_date_values(
     meta = client.get("/api/urenverantwoording/meta", headers=headers).json()
     assert project["id"] not in {item["id"] for item in meta["projects"]}
     assert post["id"] not in {item["id"] for item in meta["posts"]}
-    assert {item["id"]: item["selectable"] for item in meta["filter_projects"]}[project["id"]] is False
+    assert project["id"] not in {item["id"] for item in meta["filter_projects"]}
     assert {item["id"]: item["selectable"] for item in meta["filter_posts"]}[post["id"]] is False
     assert "Historische naam" in meta["filter_participants"]
     assert "2026-08-01" in meta["filter_dates"]

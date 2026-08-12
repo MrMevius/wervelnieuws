@@ -149,8 +149,13 @@ See `.env.example` for all required values (deploy path: `/mnt/wervelwind/databa
 ## Release-readiness checklist
 
 - `/mnt/wervelwind/database/config/.env` values verified (secrets, endpoints, channel credentials).
-- Migrations applied: `alembic upgrade head`.
-- Backend tests green: `docker compose run --rm backend sh -lc "pip install -e .[dev] && pytest"`.
+- Preflight the release source before any migration: `docker build --no-cache --target test -f backend/Dockerfile -t wervelnieuws-backend-test:preflight .` followed by `docker run --rm --entrypoint sh wervelnieuws-backend-test:preflight -lc 'python scripts/release_schema_preflight.py'`. It must report `Release schema preflight passed: 20260811_0030`; it validates one expected Alembic head and upgrades only a temporary SQLite database before checking both project-visibility columns.
+- Record the source commit and dirty-state manifest (or clean state), SHA-256 digests of `backend/Dockerfile` and rendered `docker compose config`, UTC build time, and the IDs/digests of the runtime and test images. Only images built in that same recorded source run are release-valid.
+- Build separate artifacts from that source: `docker build --no-cache --target runtime -f backend/Dockerfile -t wervelnieuws-backend-runtime:preflight .` and the test-target command above. The runtime target intentionally excludes `pytest` and all dev dependencies.
+- Run isolated backend tests from the fresh test image; do not install dependencies in a runtime container:
+  `docker run --rm wervelnieuws-backend-test:preflight sh -lc 'pytest -q tests/test_release_schema_preflight.py tests/test_project_visibility_migration.py tests/test_audio_migration_revision.py tests/test_admin_api.py tests/test_boards_api.py tests/test_meta_and_me.py'`. The test target includes the repository documentation read by the selected documentation regression test; its migration tests do not require a Git checkout.
+- Inspect canonical Compose only (do not start services for this preflight): `docker compose config` and `docker compose config --images`. The `migrate` service must retain `alembic upgrade head` and the canonical backend runtime Dockerfile/build context.
+- After a verified database and storage backup, stop writers, apply `alembic upgrade head`, and smoke-check an authenticated project route. On failure, keep the release stopped and restore the database plus matching release artifact from that backup; do not downgrade or edit historical migrations in production.
 - Frontend tests green: `cd frontend && npm test`.
 - Frontend production build green: `cd frontend && npm run build`.
 - Docker images build cleanly: `docker compose build backend frontend worker`.

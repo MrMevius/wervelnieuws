@@ -4349,6 +4349,35 @@ function BoardRightsAdminTab() {
   );
 }
 
+function AdminQueryStatus({
+  resource,
+  isLoading,
+  isError,
+  onRetry
+}: {
+  resource: string;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+}) {
+  if (isLoading) {
+    return <p className="muted">{resource} laden...</p>;
+  }
+
+  if (isError) {
+    return (
+      <div className="error" role="alert">
+        <p>{resource} konden niet worden geladen.</p>
+        <button type="button" className="button-neutral" onClick={onRetry} aria-label={`${resource} opnieuw laden`}>
+          Opnieuw laden
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   type AdminTab = "users" | "boardRights" | "projects" | "themes" | "ai" | "scheduler" | "activity";
 
@@ -4363,9 +4392,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [newProjectName, setNewProjectName] = useState("");
+  const [newProjectVisibility, setNewProjectVisibility] = useState({
+    is_visible_in_boards: true,
+    is_visible_in_work_hours: true
+  });
   const [newWorkPostName, setNewWorkPostName] = useState("");
   const [newWorkPostDescription, setNewWorkPostDescription] = useState("");
-  const [workPostSearch, setWorkPostSearch] = useState("");
   const [workPostDrafts, setWorkPostDrafts] = useState<Record<string, { name: string; description: string }>>({});
   const [newThemeName, setNewThemeName] = useState("");
   const [genAIApiKey, setGenAIApiKey] = useState("");
@@ -4376,6 +4408,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     newsletter_prompt: string;
     text_model: string;
     image_model: string;
+    whisper_model: string;
+    whisper_language: string;
     websearch_enabled: boolean;
     websearch_max_results: number;
   } | null>(null);
@@ -4458,6 +4492,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       newsletter_prompt: genAIConfigQuery.data.newsletter_prompt,
       text_model: genAIConfigQuery.data.text_model,
       image_model: genAIConfigQuery.data.image_model,
+      whisper_model: genAIConfigQuery.data.whisper_model,
+      whisper_language: genAIConfigQuery.data.whisper_language,
       websearch_enabled: genAIConfigQuery.data.websearch_enabled,
       websearch_max_results: genAIConfigQuery.data.websearch_max_results
     });
@@ -4565,7 +4601,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   });
 
   const createProjectMutation = useMutation({
-    mutationFn: (name: string) => createAdminProject(name),
+    mutationFn: (payload: { name: string; is_visible_in_boards: boolean; is_visible_in_work_hours: boolean }) => createAdminProject(payload),
     onSuccess: (created) => {
       queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
         if (!existing) {
@@ -4574,6 +4610,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         return [...existing, created].sort((a, b) => a.name.localeCompare(b.name));
       });
       setNewProjectName("");
+      setNewProjectVisibility({ is_visible_in_boards: true, is_visible_in_work_hours: true });
       setFeedback("Project toegevoegd.");
     },
     onError: (error) => {
@@ -4587,7 +4624,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   });
 
   const updateProjectMutation = useMutation({
-    mutationFn: ({ projectId, payload }: { projectId: string; payload: { name?: string; is_active?: boolean } }) =>
+    mutationFn: ({ projectId, payload }: { projectId: string; payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean } }) =>
       updateAdminProject(projectId, payload),
     onSuccess: (updated) => {
       queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
@@ -4689,6 +4726,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       newsletter_prompt: string;
       text_model: string;
       image_model: string;
+      whisper_model: string;
+      whisper_language: string;
       websearch_enabled: boolean;
       websearch_max_results: number;
       openai_api_key?: string;
@@ -4996,36 +5035,6 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     );
   }
 
-  if (
-    usersQuery.isLoading ||
-    projectsQuery.isLoading ||
-    themesQuery.isLoading ||
-    genAIConfigQuery.isLoading ||
-    adminUiSettingsQuery.isLoading
-  ) {
-    return (
-      <section className="panel">
-        <h1>Admin</h1>
-        <p>Laden...</p>
-      </section>
-    );
-  }
-
-  if (
-    usersQuery.isError ||
-    projectsQuery.isError ||
-    themesQuery.isError ||
-    genAIConfigQuery.isError ||
-    adminUiSettingsQuery.isError
-  ) {
-    return (
-      <section className="panel">
-        <h1>Admin</h1>
-        <p>Gebruikers konden niet worden geladen.</p>
-      </section>
-    );
-  }
-
   return (
     <section className="panel">
       <h1>Admin</h1>
@@ -5063,6 +5072,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       )}
 
       <div hidden={activeAdminTab !== "users"}>
+      <AdminQueryStatus resource="Gebruikers" isLoading={usersQuery.isLoading} isError={usersQuery.isError} onRetry={() => void usersQuery.refetch()} />
       <header className="admin-users-header">
         <h2>Gebruikers beheren</h2>
         <p className="muted">Beheer accounts, tijdelijke wachtwoorden, actieve status en adminrechten voor het team.</p>
@@ -5362,6 +5372,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       </div>
 
       <div hidden={activeAdminTab !== "projects"}>
+      <AdminQueryStatus resource="Projecten" isLoading={projectsQuery.isLoading} isError={projectsQuery.isError} onRetry={() => void projectsQuery.refetch()} />
       <h2>Projecten</h2>
       <p className="muted">Beheer hier de projecten waaraan databasebestanden gekoppeld worden.</p>
       <form
@@ -5369,7 +5380,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         onSubmit={(event) => {
           event.preventDefault();
           setFeedback(null);
-          createProjectMutation.mutate(newProjectName.trim());
+          createProjectMutation.mutate({ name: newProjectName.trim(), ...newProjectVisibility });
         }}
       >
         <input
@@ -5382,7 +5393,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           maxLength={120}
           required
         />
-        <span />
+        <label className="admin-checkbox-field"><input type="checkbox" aria-label="Nieuw project zichtbaar in Vergaderborden" checked={newProjectVisibility.is_visible_in_boards} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_boards: event.target.checked }))} />Vergaderborden</label>
+        <label className="admin-checkbox-field"><input type="checkbox" aria-label="Nieuw project zichtbaar in Urenverantwoording" checked={newProjectVisibility.is_visible_in_work_hours} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_work_hours: event.target.checked }))} />Urenverantwoording</label>
         <button
           type="submit"
           disabled={createProjectMutation.isPending || newProjectName.trim().length < 2}
@@ -5395,7 +5407,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           <thead>
             <tr>
               <th>Project</th>
-              <th>Status</th>
+              <th>Status en beschikbaarheid</th>
               <th>Bewerken</th>
             </tr>
           </thead>
@@ -5412,7 +5424,11 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                       onChange={(event) => updateProjectDraft(project.id, event.target.value)}
                     />
                   </td>
-                  <td>{project.is_active ? "actief" : "inactief"}</td>
+                  <td>
+                    <div>{project.is_active ? "actief" : "inactief"}</div>
+                    <label className="admin-checkbox-field"><input type="checkbox" aria-label={`Zichtbaar in Vergaderborden voor ${project.name}`} checked={project.is_visible_in_boards} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_boards: event.target.checked } })} disabled={updateProjectMutation.isPending} />Vergaderborden</label>
+                    <label className="admin-checkbox-field"><input type="checkbox" aria-label={`Zichtbaar in Urenverantwoording voor ${project.name}`} checked={project.is_visible_in_work_hours} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_work_hours: event.target.checked } })} disabled={updateProjectMutation.isPending} />Urenverantwoording</label>
+                  </td>
                   <td>
                     <div className="admin-account-actions">
                       <button
@@ -5450,24 +5466,25 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         </table>
       </div>
       <section className="admin-work-posts" aria-labelledby="admin-work-posts-title">
+        <AdminQueryStatus resource="Globale urenposten" isLoading={workPostsQuery.isLoading} isError={workPostsQuery.isError} onRetry={() => void workPostsQuery.refetch()} />
         <h2 id="admin-work-posts-title">Globale urenposten / categorieën</h2>
         <p className="muted">Deze posten zijn bij ieder actief project beschikbaar. Beheer ze uitsluitend hier in Admin.</p>
         <form className="admin-create-user" onSubmit={(event) => { event.preventDefault(); setFeedback(null); createWorkPostMutation.mutate(); }}>
           <input aria-label="Nieuwe globale post" placeholder="Naam post" value={newWorkPostName} onChange={(event) => setNewWorkPostName(event.target.value)} minLength={2} maxLength={120} required />
-          <input aria-label="Beschrijving nieuwe globale post" placeholder="Beschrijving" value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
+          <textarea aria-label="Beschrijving nieuwe globale post" placeholder="Beschrijving" rows={3} style={{ resize: "vertical" }} value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
           <button type="submit" disabled={createWorkPostMutation.isPending || newWorkPostName.trim().length < 2}>Post toevoegen</button>
         </form>
-        <label className="admin-field"><span>Posten zoeken</span><input value={workPostSearch} onChange={(event) => setWorkPostSearch(event.target.value)} /></label>
         <div className="table-wrap"><table><thead><tr><th>Post</th><th>Beschrijving</th><th>Status</th><th>Acties</th></tr></thead><tbody>
-          {(workPostsQuery.data?.posts ?? []).filter((post) => `${post.name} ${post.description ?? ""}`.toLowerCase().includes(workPostSearch.toLowerCase())).map((post) => {
+          {(workPostsQuery.data?.posts ?? []).map((post) => {
             const draft = workPostDrafts[post.id] ?? { name: post.name, description: post.description ?? "" };
-            return <tr key={post.id}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><input aria-label={`Beschrijving post ${post.name}`} value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td>{post.deleted_at ? "verwijderd" : post.is_archived ? "gearchiveerd" : post.is_active ? "actief" : "inactief"}</td><td><div className="admin-account-actions"><button type="button" onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{post.is_archived || post.deleted_at ? <button type="button" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></tr>;
+            return <tr key={post.id}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><textarea aria-label={`Beschrijving post ${post.name}`} rows={3} style={{ resize: "vertical" }} value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td>{post.deleted_at ? "verwijderd" : post.is_archived ? "gearchiveerd" : post.is_active ? "actief" : "inactief"}</td><td><div className="admin-account-actions"><button type="button" onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{post.is_archived || post.deleted_at ? <button type="button" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></tr>;
           })}
         </tbody></table></div>
       </section>
       </div>
 
       <div hidden={activeAdminTab !== "themes"}>
+        <AdminQueryStatus resource="UI-instellingen" isLoading={adminUiSettingsQuery.isLoading} isError={adminUiSettingsQuery.isError} onRetry={() => void adminUiSettingsQuery.refetch()} />
         <h2>Thema&apos;s</h2>
         <p className="muted">Beheer hier de themalijst die gebruikt wordt in Planning en AI-context.</p>
         <article className="panel">
@@ -5487,6 +5504,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             Windthema actief
           </label>
         </article>
+        <AdminQueryStatus resource="Thema's" isLoading={themesQuery.isLoading} isError={themesQuery.isError} onRetry={() => void themesQuery.refetch()} />
         <form
           className="admin-create-user"
           onSubmit={(event) => {
@@ -5575,6 +5593,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       </div>
 
       <div hidden={activeAdminTab !== "ai"}>
+      <AdminQueryStatus resource="GenAI-instellingen" isLoading={genAIConfigQuery.isLoading} isError={genAIConfigQuery.isError} onRetry={() => void genAIConfigQuery.refetch()} />
+      <AdminQueryStatus resource="GenAI-modelopties" isLoading={modelOptionsQuery.isLoading} isError={modelOptionsQuery.isError} onRetry={() => void modelOptionsQuery.refetch()} />
       <h2>GenAI configuratie</h2>
       <p className="muted">Compact beheer van prompts, modellen en websearch.</p>
       {genAIForm && (
@@ -5661,6 +5681,27 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             </select>
           </label>
           <label>
+            Whisper-model
+            <input
+              type="text"
+              value={genAIForm.whisper_model}
+              onChange={(event) => updateGenAIField("whisper_model", event.target.value)}
+              minLength={2}
+              required
+            />
+          </label>
+          <label>
+            Whisper-taal
+            <input
+              type="text"
+              value={genAIForm.whisper_language}
+              onChange={(event) => updateGenAIField("whisper_language", event.target.value)}
+              minLength={2}
+              maxLength={20}
+              required
+            />
+          </label>
+          <label>
             OpenAI API key {genAIConfigQuery.data?.has_api_key ? "(ingesteld)" : "(niet ingesteld)"}
             <input
               type="password"
@@ -5703,7 +5744,9 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                 genAIForm.system_prompt.trim().length < 10 ||
                 genAIForm.website_prompt.trim().length < 5 ||
                 genAIForm.facebook_prompt.trim().length < 5 ||
-                genAIForm.newsletter_prompt.trim().length < 5
+                genAIForm.newsletter_prompt.trim().length < 5 ||
+                genAIForm.whisper_model.trim().length < 2 ||
+                genAIForm.whisper_language.trim().length < 2
               }
             >
               GenAI-config opslaan
@@ -5715,8 +5758,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
 
       <div hidden={activeAdminTab !== "scheduler"}>
         <h2>Scheduler</h2>
-        {schedulerQuery.isLoading && <p>Laden...</p>}
-        {schedulerQuery.isError && <p className="error">Scheduler-overzicht kon niet worden geladen.</p>}
+        <AdminQueryStatus resource="Scheduler-overzicht" isLoading={schedulerQuery.isLoading} isError={schedulerQuery.isError} onRetry={() => void schedulerQuery.refetch()} />
         {schedulerQuery.data && (
           <div className="scheduler-grid">
             <article className="panel">
@@ -5772,6 +5814,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       <div hidden={activeAdminTab !== "activity"}>
         <h2>Admin log</h2>
         <p className="muted">Recente beheeracties en systeemevents (automatisch elke 30 sec ververst).</p>
+        <AdminQueryStatus resource="Admin log" isLoading={adminActivityQuery.isLoading} isError={adminActivityQuery.isError} onRetry={() => void adminActivityQuery.refetch()} />
         <div className="table-wrap">
           <table>
             <thead>

@@ -36,8 +36,19 @@ class DatabaseRepository:
         stmt = stmt.order_by(Project.name.asc())
         return list(self.db.scalars(stmt).all())
 
-    def create_project(self, name: str) -> Project:
-        project = Project(name=name, is_active=True)
+    def create_project(
+        self,
+        name: str,
+        *,
+        is_visible_in_boards: bool = True,
+        is_visible_in_work_hours: bool = True,
+    ) -> Project:
+        project = Project(
+            name=name,
+            is_active=True,
+            is_visible_in_boards=is_visible_in_boards,
+            is_visible_in_work_hours=is_visible_in_work_hours,
+        )
         self.db.add(project)
         self.db.commit()
         self.db.refresh(project)

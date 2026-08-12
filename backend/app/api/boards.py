@@ -215,7 +215,7 @@ def list_board_rights(current: User = Depends(require_admin), db: Session = Depe
     ]
     return BoardRightsOverviewResponse(
         users=users,
-        projects=[_project_rights_response(repo, project) for project in repo.list_projects()],
+        projects=[_project_rights_response(repo, project) for project in repo.list_rights_projects()],
     )
 
 
@@ -266,6 +266,7 @@ def get_project_board(project_id: str, current: User = Depends(get_current_user)
         access_users=_project_access_users(repo, project),
         cards=[_card_response(repo, card) for card in cards],
         archived_cards=[_card_response(repo, card) for card in archived_cards],
+        is_read_only=not project.is_visible_in_boards,
     )
 
 
@@ -274,6 +275,7 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     repo = BoardRepository(db)
     service = BoardService(repo)
     project = service.ensure_project_access(repo.get_project(project_id), current)
+    service.ensure_project_writable(project)
     assignment_user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
     card = repo.create_card(project.id, payload.title, payload.description, payload.column)
     repo.replace_assignments(card, assignment_user_ids)
@@ -287,7 +289,7 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
 def archive_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     archived = repo.archive_card(card)
     service.touch_activity(service.ensure_project_access(repo.get_project(archived.project_id), current))
     AuditService(db).log("board.card.archived", actor_user_id=current.id, details_json=service.audit_details(card_id=archived.id, project_id=archived.project_id))
@@ -298,7 +300,7 @@ def archive_card(card_id: str, current: User = Depends(get_current_user), db: Se
 def restore_archived_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     restored = repo.restore_card(card)
     service.touch_activity(service.ensure_project_access(repo.get_project(restored.project_id), current))
     AuditService(db).log("board.card.restored", actor_user_id=current.id, details_json=service.audit_details(card_id=restored.id, project_id=restored.project_id))
@@ -309,7 +311,7 @@ def restore_archived_card(card_id: str, current: User = Depends(get_current_user
 def soft_delete_card(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> dict[str, str]:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     repo.soft_delete_card(card, current.id)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.card.deleted", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, project_id=card.project_id))
@@ -330,6 +332,7 @@ def restore_deleted_card(card_id: str, current: User = Depends(require_admin), d
     card = repo.get_card(card_id, include_deleted=True)
     if not card or card.deleted_at is None:
         raise HTTPException(status_code=404, detail="Kaart niet gevonden")
+    service.ensure_project_writable(service.ensure_project_access(repo.get_project(card.project_id), current))
     restored = repo.restore_deleted_card(card)
     service.touch_activity(service.ensure_project_access(repo.get_project(restored.project_id), current))
     AuditService(db).log("board.card.deleted_restored", actor_user_id=current.id, details_json=service.audit_details(card_id=restored.id, project_id=restored.project_id))
@@ -340,7 +343,7 @@ def restore_deleted_card(card_id: str, current: User = Depends(require_admin), d
 def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     old_column = card.column.value
     moved = repo.move_card(card, payload.column, payload.position)
     if old_column != moved.column.value:
@@ -358,7 +361,7 @@ def move_card(card_id: str, payload: BoardCardMoveRequest, current: User = Depen
 def update_card_title(card_id: str, payload: BoardCardTitleUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     previous_title = card.title
     updated = repo.update_card_title(card, payload.title)
     service.touch_activity(service.ensure_project_access(repo.get_project(updated.project_id), current))
@@ -374,7 +377,7 @@ def update_card_title(card_id: str, payload: BoardCardTitleUpdateRequest, curren
 def update_card_description(card_id: str, payload: BoardCardDescriptionUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     updated = repo.update_card_description(card, payload.description)
     service.touch_activity(service.ensure_project_access(repo.get_project(updated.project_id), current))
     return _card_response(repo, updated)
@@ -430,7 +433,7 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
 def post_update(card_id: str, payload: CardUpdateCreateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CardUpdateResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     row = repo.create_update(card.id, current.id, payload.message)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.card.updated", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=row.id))
@@ -458,7 +461,7 @@ def edit_own_update(
 ) -> CardUpdateResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     update = repo.get_update(update_id)
     if not update or update.card_id != card.id or update.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Update niet gevonden")
@@ -499,7 +502,7 @@ def delete_own_update(
 ) -> dict[str, str]:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     update = repo.get_update(update_id)
     if not update or update.card_id != card.id or update.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Update niet gevonden")
@@ -526,7 +529,7 @@ def upload_recording(
 ) -> RecordingResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     normalized_duration = duration if (isinstance(duration, int) and duration > 0) else None
     file_path, size_bytes, mime_type, filename = service.store_recording(card, file)
     row = repo.create_recording(card.id, current.id, filename, file_path, normalized_duration, mime_type, size_bytes)
@@ -559,7 +562,7 @@ def upload_attachment(
 ) -> BoardAttachmentResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     file_path, size_bytes, mime_type, filename = service.store_card_attachment(card, file)
     row = repo.create_attachment(card.id, current.id, filename, file_path, mime_type, size_bytes)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
@@ -580,7 +583,7 @@ def delete_attachment(
 ) -> dict[str, str]:
     repo = BoardRepository(db)
     service = BoardService(repo)
-    card = service.ensure_card_access(repo.get_card(card_id), current)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
     attachment = repo.get_attachment(attachment_id)
     if not attachment or attachment.card_id != card.id:
         raise HTTPException(status_code=404, detail="Bijlage niet gevonden")

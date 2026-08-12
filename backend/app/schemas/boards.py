@@ -171,6 +171,7 @@ class ProjectBoardResponse(BaseModel):
     access_users: list[BoardAccessUserResponse]
     cards: list[BoardCardResponse]
     archived_cards: list[BoardCardResponse] = Field(default_factory=list)
+    is_read_only: bool = False
 
 
 class BoardRecycleBinCardResponse(BaseModel):

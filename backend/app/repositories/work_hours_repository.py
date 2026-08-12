@@ -76,6 +76,7 @@ class WorkHoursRepository:
         return list(self.db.scalars(select(Project).where(
             Project.is_active.is_(True),
             Project.is_archived.is_(False),
+            Project.is_visible_in_work_hours.is_(True),
         ).order_by(Project.name.asc())).all())
 
     def get_project(self, project_id: str) -> Project | None:
@@ -101,6 +102,11 @@ class WorkHoursRepository:
     def list_filter_projects(self) -> list[Project]:
         return list(self.db.scalars(
             select(Project).join(WorkHourGroup, WorkHourGroup.project_id == Project.id)
+            .where(
+                Project.is_active.is_(True),
+                Project.is_archived.is_(False),
+                Project.is_visible_in_work_hours.is_(True),
+            )
             .distinct().order_by(Project.name.asc())
         ).all())
 

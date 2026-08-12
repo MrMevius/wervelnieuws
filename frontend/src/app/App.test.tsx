@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App, LegacyWorkHoursRedirect } from "./App";
@@ -162,18 +163,24 @@ const mockApi = vi.hoisted(() => ({
     {
       id: "p1",
       name: "Windpark de Boldijk",
-      is_active: true
+      is_active: true,
+      is_visible_in_boards: true,
+      is_visible_in_work_hours: true
     }
   ]),
   createAdminProject: vi.fn().mockResolvedValue({
     id: "p2",
     name: "Project Noord",
-    is_active: true
+    is_active: true,
+    is_visible_in_boards: true,
+    is_visible_in_work_hours: true
   }),
   updateAdminProject: vi.fn().mockResolvedValue({
     id: "p1",
     name: "Windpark de Boldijk Updated",
-    is_active: false
+    is_active: false,
+    is_visible_in_boards: false,
+    is_visible_in_work_hours: true
   }),
   listAdminThemes: vi.fn().mockResolvedValue([
     {
@@ -753,6 +760,17 @@ function renderApp(initialEntries: string[] = ["/"]) {
   );
 }
 
+function renderAppWithoutQueryRetries(initialEntries: string[] = ["/"]) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={initialEntries}>
+        <App />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
+
 function LocationEcho() {
   const location = useLocation();
   return <p>{`${location.pathname}${location.search}${location.hash}`}</p>;
@@ -1236,6 +1254,41 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "admin" }));
 
     expect(screen.getByRole("menuitem", { name: "Admin" })).toBeInTheDocument();
+  });
+
+  it.each([
+    { tab: "Gebruikers", resource: "Gebruikers", request: () => mockApi.listAdminUsers, error: "Admin users unavailable" },
+    { tab: "Projecten", resource: "Projecten", request: () => mockApi.listAdminProjects, error: "no such column: projects.is_visible_in_boards" },
+    { tab: "Projecten", resource: "Globale urenposten", request: () => mockApi.listWorkHoursAdminMasterdata, error: "Work-hour master data unavailable" },
+    { tab: "Thema's", resource: "Thema's", request: () => mockApi.listAdminThemes, error: "Themes unavailable" },
+    { tab: "Thema's", resource: "UI-instellingen", request: () => mockApi.getAdminUiSettings, error: "UI settings unavailable" },
+    { tab: "AI", resource: "GenAI-instellingen", request: () => mockApi.getAdminGenAIConfig, error: "GenAI settings unavailable" },
+    { tab: "AI", resource: "GenAI-modelopties", request: () => mockApi.getAdminGenAIModelOptions, error: "GenAI model options unavailable" },
+    { tab: "Scheduler", resource: "Scheduler-overzicht", request: () => mockApi.getSchedulerOverview, error: "Scheduler unavailable" },
+    { tab: "Admin log", resource: "Admin log", request: () => mockApi.listAdminActivity, error: "Activity unavailable" }
+  ])("isolates a failed $resource request and retries only that request", async ({ tab, resource, request, error }) => {
+    const failedRequest = request();
+    failedRequest.mockClear();
+    failedRequest.mockRejectedValueOnce(new Error(error));
+
+    renderAppWithoutQueryRetries();
+    await loginIntoApp();
+    await waitFor(() => expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    fireEvent.click(screen.getByRole("tab", { name: tab }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(`${resource} konden niet worden geladen.`);
+    if (resource !== "Gebruikers") {
+      expect(screen.queryByText("Gebruikers konden niet worden geladen.")).not.toBeInTheDocument();
+    }
+    expect(screen.getByRole("heading", { name: "Admin" })).toBeInTheDocument();
+
+    const callsBeforeRetry = failedRequest.mock.calls.length;
+    fireEvent.click(within(alert).getByRole("button", { name: `${resource} opnieuw laden` }));
+    await waitFor(() => expect(failedRequest).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
   it("hides admin option in user menu for non-admins", async () => {
@@ -2993,15 +3046,88 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Project toevoegen" }));
 
     await waitFor(() => {
-      expect(mockApi.createAdminProject).toHaveBeenCalledWith("Project Noord");
+      expect(mockApi.createAdminProject).toHaveBeenCalledWith({ name: "Project Noord", is_visible_in_boards: true, is_visible_in_work_hours: true });
       expect(screen.getByText("Project toegevoegd.")).toBeInTheDocument();
     });
 
+    expect(screen.queryByText("Posten zoeken")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Beschrijving nieuwe globale post").tagName).toBe("TEXTAREA");
+    expect(screen.getByLabelText("Beschrijving post Communicatie").tagName).toBe("TEXTAREA");
+    expect(screen.getByLabelText("Beschrijving nieuwe globale post")).toHaveAttribute("rows", "3");
+    expect(screen.getByLabelText("Beschrijving post Communicatie")).toHaveAttribute("rows", "3");
+
+    fireEvent.change(screen.getByLabelText("Beschrijving post Communicatie"), { target: { value: "Aangepast\nmet tweede regel" } });
+    fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    await waitFor(() => expect(mockApi.updateWorkPost).toHaveBeenCalledWith("whpost1", expect.objectContaining({ description: "Aangepast\nmet tweede regel" })));
     fireEvent.change(screen.getByLabelText("Nieuwe globale post"), { target: { value: "Techniek" } });
+    fireEvent.change(screen.getByLabelText("Beschrijving nieuwe globale post"), { target: { value: "Eerste regel\nTweede regel" } });
     fireEvent.click(screen.getByRole("button", { name: "Post toevoegen" }));
     await waitFor(() => {
-      expect(mockApi.createWorkPost).toHaveBeenCalledWith({ name: "Techniek", description: "" });
+      expect(mockApi.createWorkPost).toHaveBeenCalledWith({ name: "Techniek", description: "Eerste regel\nTweede regel" });
     });
+  });
+
+  it("persists an existing project's visibility toggle after an Admin reload", async () => {
+    let persistedProject = {
+      id: "p1", name: "Windpark de Boldijk", is_active: true,
+      is_visible_in_boards: true, is_visible_in_work_hours: true
+    };
+    mockApi.listAdminProjects.mockImplementation(async () => [persistedProject]);
+    mockApi.updateAdminProject.mockImplementation(async (_projectId, payload) => {
+      persistedProject = { ...persistedProject, ...payload };
+      return persistedProject;
+    });
+
+    const firstApp = renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Projecten" }));
+
+    const boardVisibility = await screen.findByLabelText("Zichtbaar in Vergaderborden voor Windpark de Boldijk");
+    expect(boardVisibility).toBeChecked();
+    await userEvent.click(boardVisibility);
+    await waitFor(() => expect(mockApi.updateAdminProject).toHaveBeenCalledWith("p1", { is_visible_in_boards: false }));
+    await waitFor(() => expect(boardVisibility).not.toBeChecked());
+
+    firstApp.unmount();
+    renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Projecten" }));
+    expect(await screen.findByLabelText("Zichtbaar in Vergaderborden voor Windpark de Boldijk")).not.toBeChecked();
+  });
+
+  it("persists multiline global-post descriptions after create and edit reloads", async () => {
+    let posts = [{ id: "whpost1", name: "Communicatie", description: "Eerste regel\nTweede regel", is_active: true, is_archived: false, deleted_at: null, row_version: 1 }];
+    mockApi.listWorkHoursAdminMasterdata.mockImplementation(async () => ({ projects: [], posts, external_people: [] }));
+    mockApi.createWorkPost.mockImplementation(async (payload) => {
+      posts = [...posts, { id: "whpost2", name: payload.name, description: payload.description, is_active: true, is_archived: false, deleted_at: null, row_version: 1 }];
+      return posts.at(-1);
+    });
+    mockApi.updateWorkPost.mockImplementation(async (id, payload) => {
+      posts = posts.map((post) => post.id === id ? { ...post, ...payload, row_version: post.row_version + 1 } : post);
+      return posts.find((post) => post.id === id);
+    });
+
+    renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Projecten" }));
+
+    const editedDescription = await screen.findByLabelText("Beschrijving post Communicatie");
+    expect(editedDescription).toHaveValue("Eerste regel\nTweede regel");
+    await userEvent.clear(editedDescription);
+    await userEvent.type(editedDescription, "Aangepast{shift>}{enter}met tweede regel");
+    await userEvent.click(screen.getByRole("button", { name: "Opslaan" }));
+    await waitFor(() => expect(screen.getByLabelText("Beschrijving post Communicatie")).toHaveValue("Aangepast\nmet tweede regel"));
+
+    await userEvent.type(screen.getByLabelText("Nieuwe globale post"), "Techniek");
+    await userEvent.type(screen.getByLabelText("Beschrijving nieuwe globale post"), "Nieuwe eerste regel{shift>}{enter}Nieuwe tweede regel");
+    await userEvent.click(screen.getByRole("button", { name: "Post toevoegen" }));
+    await waitFor(() => expect(screen.getByLabelText("Beschrijving post Techniek")).toHaveValue("Nieuwe eerste regel\nNieuwe tweede regel"));
   });
 
   it("allows admin to update GenAI configuration", async () => {

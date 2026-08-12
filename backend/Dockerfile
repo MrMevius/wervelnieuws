@@ -5,6 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 COPY backend /app/backend
+COPY README.md /app/README.md
+COPY docs /app/docs
 
 FROM base AS ffmpeg-base
 ARG APP_UID=1000

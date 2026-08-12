@@ -64,6 +64,147 @@ def test_board_project_card_update_and_recording_flow(client):
     assert download.status_code == 200
 
 
+def test_board_project_list_composes_visibility_with_existing_access(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    editor = next(item for item in client.get("/api/admin/users", headers=admin_headers).json() if item["username"] == "editor")
+    visible = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Zichtbaar bord", "description": "", "invited_user_ids": [editor["id"]]},
+    ).json()
+    hidden = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Verborgen bord", "description": "", "invited_user_ids": [editor["id"]]},
+    ).json()
+    assert client.patch(
+        f"/api/admin/projects/{hidden['id']}",
+        headers=admin_headers,
+        json={"is_visible_in_boards": False},
+    ).status_code == 200
+
+    assert [item["id"] for item in client.get("/api/boards/projects", headers=admin_headers).json()] == [visible["id"]]
+    assert [item["id"] for item in client.get("/api/boards/projects", headers=editor_headers).json()] == [visible["id"]]
+    # Hiding removes future selection only; existing board detail remains available.
+    assert client.get(f"/api/boards/projects/{hidden['id']}", headers=admin_headers).status_code == 200
+
+
+def test_board_rights_keeps_active_hidden_projects_while_board_list_excludes_them(client):
+    admin_headers = _login(client)
+    visible = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Selecteerbaar bord", "description": "", "invited_user_ids": []},
+    ).json()
+    hidden = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Rechten verborgen bord", "description": "", "invited_user_ids": []},
+    ).json()
+    assert client.patch(
+        f"/api/admin/projects/{hidden['id']}",
+        headers=admin_headers,
+        json={"is_visible_in_boards": False},
+    ).status_code == 200
+
+    board_project_ids = {item["id"] for item in client.get("/api/boards/projects", headers=admin_headers).json()}
+    rights_project_ids = {item["id"] for item in client.get("/api/boards/admin/rights", headers=admin_headers).json()["projects"]}
+
+    assert visible["id"] in board_project_ids
+    assert hidden["id"] not in board_project_ids
+    assert {visible["id"], hidden["id"]}.issubset(rights_project_ids)
+
+
+def test_hidden_board_direct_url_is_authorized_historical_read_only(client):
+    admin_headers = _login(client)
+    editor_headers = _login(client, "editor", "editor12345")
+    editor = next(item for item in client.get("/api/admin/users", headers=admin_headers).json() if item["username"] == "editor")
+    project = client.post(
+        "/api/boards/projects",
+        headers=admin_headers,
+        json={"name": "Historisch bord", "description": "", "invited_user_ids": [editor["id"]]},
+    ).json()
+    card = client.post(
+        f"/api/boards/projects/{project['id']}/cards",
+        headers=admin_headers,
+        json={"title": "Bestaande kaart", "description": "Historie", "column": "todo", "assignment_user_ids": []},
+    ).json()
+    archived_card = client.post(
+        f"/api/boards/projects/{project['id']}/cards",
+        headers=admin_headers,
+        json={"title": "Gearchiveerde kaart", "description": "Historie", "column": "todo", "assignment_user_ids": []},
+    ).json()
+    deleted_card = client.post(
+        f"/api/boards/projects/{project['id']}/cards",
+        headers=admin_headers,
+        json={"title": "Verwijderde kaart", "description": "Historie", "column": "todo", "assignment_user_ids": []},
+    ).json()
+    assert client.patch(f"/api/boards/cards/{archived_card['id']}/archive", headers=admin_headers).status_code == 200
+    assert client.delete(f"/api/boards/cards/{deleted_card['id']}", headers=admin_headers).status_code == 200
+    update = client.post(
+        f"/api/boards/cards/{card['id']}/updates", headers=admin_headers, json={"message": "Bestaande update"}
+    ).json()
+    recording = client.post(
+        f"/api/boards/cards/{card['id']}/recordings",
+        headers=admin_headers,
+        data={"duration": "7"},
+        files={"file": ("historisch.webm", BytesIO(b"RIFF....WEBM"), "audio/webm")},
+    ).json()
+    attachment = client.post(
+        f"/api/boards/cards/{card['id']}/attachments",
+        headers=admin_headers,
+        files={"file": ("historisch.txt", BytesIO(b"historie"), "text/plain")},
+    ).json()
+    assert client.patch(
+        f"/api/admin/projects/{project['id']}", headers=admin_headers, json={"is_visible_in_boards": False}
+    ).status_code == 200
+
+    board = client.get(f"/api/boards/projects/{project['id']}", headers=editor_headers)
+    assert board.status_code == 200
+    assert board.json()["is_read_only"] is True
+    assert board.json()["cards"][0]["id"] == card["id"]
+    detail = client.get(f"/api/boards/cards/{card['id']}", headers=editor_headers)
+    assert detail.status_code == 200
+    assert detail.json()["updates"][0]["id"] == update["id"]
+    assert detail.json()["recordings"][0]["id"] == recording["id"]
+    assert detail.json()["attachments"][0]["id"] == attachment["id"]
+    assert client.get(recording["download_url"], headers=editor_headers).status_code == 200
+    assert client.get(attachment["download_url"], headers=editor_headers).status_code == 200
+
+    rejected = [
+        client.patch(f"/api/boards/cards/{card['id']}/archive", headers=admin_headers),
+        client.patch(f"/api/boards/cards/{archived_card['id']}/restore", headers=admin_headers),
+        client.delete(f"/api/boards/cards/{card['id']}", headers=admin_headers),
+        client.patch(f"/api/boards/admin/recycle-bin/{deleted_card['id']}/restore", headers=admin_headers),
+    ]
+
+    rejected.extend([
+        client.post(f"/api/boards/projects/{project['id']}/cards", headers=editor_headers, json={"title": "Nieuw", "description": "", "column": "todo", "assignment_user_ids": []}),
+        client.patch(f"/api/boards/cards/{card['id']}/title", headers=admin_headers, json={"title": "Gewijzigd"}),
+        client.patch(f"/api/boards/cards/{card['id']}/description", headers=admin_headers, json={"description": "Gewijzigd"}),
+        client.patch(f"/api/boards/cards/{card['id']}/move", headers=admin_headers, json={"column": "doing", "position": 0}),
+        client.patch(f"/api/boards/cards/{card['id']}/archive", headers=admin_headers),
+        client.post(f"/api/boards/cards/{card['id']}/updates", headers=admin_headers, json={"message": "Nieuw"}),
+        client.patch(f"/api/boards/cards/{card['id']}/updates/{update['id']}", headers=admin_headers, data={"message": "Gewijzigd"}),
+        client.delete(f"/api/boards/cards/{card['id']}/updates/{update['id']}", headers=admin_headers),
+        client.post(
+            f"/api/boards/cards/{card['id']}/recordings",
+            headers=admin_headers,
+            data={"duration": "7"},
+            files={"file": ("nieuw.webm", BytesIO(b"RIFF....WEBM"), "audio/webm")},
+        ),
+        client.post(
+            f"/api/boards/cards/{card['id']}/attachments",
+            headers=admin_headers,
+            files={"file": ("nieuw.txt", BytesIO(b"nieuw"), "text/plain")},
+        ),
+        client.delete(f"/api/boards/cards/{card['id']}/attachments/{attachment['id']}", headers=admin_headers),
+    ])
+    assert all(response.status_code == 409 for response in rejected)
+    assert all("alleen-lezen" in response.json()["detail"] for response in rejected)
+
+
 def test_board_card_archive_restore_and_archive_tab(client):
     headers = _login(client)
     editor_headers = _login(client, "editor", "editor12345")

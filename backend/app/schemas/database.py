@@ -9,12 +9,16 @@ class ProjectResponse(BaseModel):
     id: str
     name: str
     is_active: bool
+    is_visible_in_boards: bool
+    is_visible_in_work_hours: bool
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class CreateProjectRequest(BaseModel):
     name: str = Field(min_length=2, max_length=120)
+    is_visible_in_boards: bool = True
+    is_visible_in_work_hours: bool = True
 
     @field_validator("name", mode="before")
     @classmethod
@@ -25,6 +29,8 @@ class CreateProjectRequest(BaseModel):
 class UpdateProjectRequest(BaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=120)
     is_active: bool | None = None
+    is_visible_in_boards: bool | None = None
+    is_visible_in_work_hours: bool | None = None
 
     @field_validator("name", mode="before")
     @classmethod
