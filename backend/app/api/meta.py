@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "101",
+                "date": "2026-08-12",
+                "title": "Urenregistratie kiest deelnemers en duur duidelijker",
+                "highlights": [
+                    "WindWilly-personen en externe personen staan nu in aparte keuzelijsten, zodat je deelnemers sneller kunt controleren en aanpassen.",
+                    "De duur kies je nu direct in duidelijke stappen van een half uur, terwijl de compacte registratie op mobiel en desktop bruikbaar blijft.",
+                ],
+            },
+            {
                 "iteration": "100",
                 "date": "2026-08-11",
                 "title": "Topicbronnen ondersteunen nu veilige audio-transcriptie",

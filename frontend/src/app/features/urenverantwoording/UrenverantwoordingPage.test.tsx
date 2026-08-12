@@ -94,12 +94,12 @@ describe("UrenverantwoordingPage compact central management", () => {
     await userEvent.selectOptions(desktopProject, "p1");
     await userEvent.selectOptions(screen.getByLabelText("Post voor nieuwe registratie"), "post1");
     await userEvent.type(screen.getByLabelText("Beschrijving nieuwe registratie"), "Werkbezoek");
-    await userEvent.click(screen.getByRole("button", { name: /deelnemer\(s\)/i }));
-    const desktopParticipantEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    await userEvent.selectOptions(within(desktopParticipantEditor).getByLabelText("WindWilly-persoon"), "u2");
-    await userEvent.selectOptions(within(desktopParticipantEditor).getByLabelText("Externe persoon"), "ep1");
-    await userEvent.click(within(desktopParticipantEditor).getByRole("button", { name: "Deelnemer toevoegen" }));
-    await userEvent.click(within(desktopParticipantEditor).getByRole("button", { name: "Externe toevoegen" }));
+    const participantSelector = screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0];
+    await userEvent.click(within(participantSelector).getByText("WindWilly-personen"));
+    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i }));
+    await userEvent.click(within(participantSelector).getByText("Externe personen"));
+    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i }));
     await userEvent.click(screen.getByRole("button", { name: "Registratie opslaan" }));
     await waitFor(() => expect(api.createWorkHourGroup.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       project_id: "p1", post_id: "post1", description: "Werkbezoek",
@@ -108,44 +108,190 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(screen.queryByRole("dialog", { name: /nieuwe registratie/i })).not.toBeInTheDocument();
   });
 
+  it("makes the current-user default explicit, submits only canonical checks, and restores it on reset", async () => {
+    renderPage();
+    const mobile = within(await screen.findByRole("region", { name: "Nieuwe registratie" }));
+    const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    await userEvent.click(within(selector).getByText("WindWilly-personen"));
+    const admin = within(selector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i });
+    expect(admin).toBeChecked();
+    const project = mobile.getByLabelText("Project voor nieuwe registratie mobiel");
+    await waitForSelectOption(project, "Project A");
+    await userEvent.selectOptions(project, "p1");
+    await userEvent.selectOptions(mobile.getByLabelText("Post voor nieuwe registratie mobiel"), "post1");
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    await waitFor(() => expect(api.createWorkHourGroup.mock.calls[0]?.[0].participants).toEqual([
+      expect.objectContaining({ participant_kind: "live_user", user_id: "u1" })
+    ]));
+    expect(admin).toBeChecked();
+
+    await userEvent.click(admin);
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    expect(api.createWorkHourGroup).toHaveBeenCalledTimes(1);
+    expect(mobile.getByText("Kies minimaal één deelnemer.")).toBeInTheDocument();
+    await userEvent.click(mobile.getByRole("button", { name: "Mobiele registratie resetten" }));
+    expect(admin).toBeChecked();
+  });
+
+  it("separates selectable participant groups, toggles selections, and keeps the half-hour payload", async () => {
+    renderPage();
+    const desktopProject = await screen.findByLabelText("Project voor nieuwe registratie");
+    await waitForSelectOption(desktopProject, "Project A");
+    await userEvent.selectOptions(desktopProject, "p1");
+    await userEvent.selectOptions(screen.getByLabelText("Post voor nieuwe registratie"), "post1");
+    await userEvent.click(screen.getByRole("button", { name: /deelnemer\(s\)/i }));
+    const participantSelector = screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0];
+    expect(within(participantSelector).getByText("WindWilly-personen")).toBeInTheDocument();
+    expect(within(participantSelector).getByText("Externe personen")).toBeInTheDocument();
+    await userEvent.click(within(participantSelector).getByText("WindWilly-personen"));
+    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i }));
+    await userEvent.click(within(participantSelector).getByText("Externe personen"));
+    const external = within(participantSelector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i });
+    await userEvent.click(external);
+    expect(screen.getByRole("list", { name: "Gekozen deelnemers" })).toHaveTextContent("Piet");
+    await userEvent.click(external);
+    expect(screen.getByRole("list", { name: "Gekozen deelnemers" })).not.toHaveTextContent("Externe Anna");
+    const duration = screen.getByLabelText("Duur in uren");
+    expect(within(duration).getByRole("option", { name: "0.5 uur" })).toBeInTheDocument();
+    expect(within(duration).getByRole("option", { name: "1 uur" })).toBeInTheDocument();
+    expect(within(duration).getByRole("option", { name: "1.5 uur" })).toBeInTheDocument();
+    await userEvent.selectOptions(duration, "3");
+    await userEvent.click(screen.getByRole("button", { name: "Registratie opslaan" }));
+    await waitFor(() => expect(api.createWorkHourGroup).toHaveBeenCalledWith(expect.objectContaining({ duration_half_hours: 3, participants: [expect.objectContaining({ user_id: "u2" })] }), expect.any(Object)));
+  });
+
+  it("filters explicitly non-selectable users and external people while retaining selected display", async () => {
+    api.listWorkHoursMeta.mockResolvedValueOnce({
+      projects: [{ id: "p1", name: "Project A", is_active: true, is_archived: false }],
+      posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }],
+      external_people: [
+        { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", is_active: true, deleted_at: null, selectable: true },
+        { id: "ep-old", display_name: "Historische externe", email: null, is_active: true, deleted_at: null, selectable: false }
+      ],
+      historical_identities: [],
+      eligible_users: [
+        { id: "u1", username: "admin", full_name: "Admin", email: "admin@example.com", selectable: false },
+        { id: "u2", username: "piet", full_name: "Piet", email: "piet@example.com", selectable: true }
+      ],
+      is_admin: true
+    });
+    renderPage();
+    const mobile = within(await screen.findByRole("region", { name: "Nieuwe registratie" }));
+    const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    await waitFor(() => expect(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).toHaveTextContent("Admin"));
+    await userEvent.click(within(selector).getByText("WindWilly-personen"));
+    expect(within(selector).queryByRole("checkbox", { name: /Admin WindWilly-persoon/i })).not.toBeInTheDocument();
+    expect(within(selector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i })).toBeInTheDocument();
+    await userEvent.click(within(selector).getByText("Externe personen"));
+    expect(within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i })).toBeInTheDocument();
+    expect(within(selector).queryByRole("checkbox", { name: /Historische externe/i })).not.toBeInTheDocument();
+  });
+
+  it("links the mobile participant error to its focusable region and clears it after checkbox selection", async () => {
+    renderPage();
+    const mobile = within(await screen.findByRole("region", { name: "Nieuwe registratie" }));
+    const project = mobile.getByLabelText("Project voor nieuwe registratie mobiel");
+    await waitForSelectOption(project, "Project A");
+    await userEvent.selectOptions(project, "p1");
+    await userEvent.selectOptions(mobile.getByLabelText("Post voor nieuwe registratie mobiel"), "post1");
+    const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    await userEvent.click(within(selector).getByText("WindWilly-personen"));
+    await userEvent.click(within(selector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    await waitFor(() => expect(selector).toHaveFocus());
+    expect(selector).toHaveAttribute("tabindex", "-1");
+    expect(selector).toHaveAttribute("aria-invalid", "true");
+    expect(selector).toHaveAttribute("aria-describedby", "hours-mobile-create-participants-error");
+    expect(document.getElementById("hours-mobile-create-participants-error")).toHaveTextContent("Kies minimaal één deelnemer.");
+    await userEvent.click(within(selector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i }));
+    expect(selector).not.toHaveAttribute("aria-invalid");
+    expect(selector).not.toHaveAttribute("aria-describedby");
+    expect(document.getElementById("hours-mobile-create-participants-error")).not.toBeInTheDocument();
+  });
+
+  it("clears stale participant validation after quick-add and duplicate candidate resolution", async () => {
+    renderPage();
+    const mobile = within(await screen.findByRole("region", { name: "Nieuwe registratie" }));
+    const project = mobile.getByLabelText("Project voor nieuwe registratie mobiel");
+    await waitForSelectOption(project, "Project A");
+    await userEvent.selectOptions(project, "p1");
+    await userEvent.selectOptions(mobile.getByLabelText("Post voor nieuwe registratie mobiel"), "post1");
+    const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    await userEvent.click(within(selector).getByText("WindWilly-personen"));
+    await userEvent.click(within(selector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    expect(await mobile.findByText("Kies minimaal één deelnemer.")).toBeInTheDocument();
+
+    api.createWorkExternalPerson.mockResolvedValueOnce({ id: "ep-new", display_name: "Nieuwe externe", email: null, is_active: true });
+    await userEvent.type(mobile.getByLabelText("Naam externe persoon mobiel"), "Nieuwe externe");
+    await userEvent.click(mobile.getByRole("button", { name: "Externe persoon mobiel aanmaken en toevoegen" }));
+    await waitFor(() => expect(selector).not.toHaveAttribute("aria-invalid"));
+
+    await userEvent.click(mobile.getByRole("button", { name: "Mobiele registratie resetten" }));
+    await userEvent.click(within(selector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    expect(await mobile.findByText("Kies minimaal één deelnemer.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /deelnemer\(s\)/i }));
+    api.createWorkExternalPerson.mockRejectedValueOnce(new Error(JSON.stringify({ detail: { code: "external_person_exact_duplicate", message: "Mogelijke dubbele externe persoon", candidates: [{ id: "ep1", display_name: "Externe Anna", email: "anna@example.com", is_active: true, deleted_at: null, selectable: true }] } })));
+    await userEvent.clear(mobile.getByLabelText("Naam externe persoon mobiel"));
+    await userEvent.type(mobile.getByLabelText("Naam externe persoon mobiel"), "Externe Anna");
+    await userEvent.click(mobile.getByRole("button", { name: "Externe persoon mobiel aanmaken en toevoegen" }));
+    const candidateButton = await screen.findByRole("button", { name: /Gebruik Externe Anna/ });
+    await userEvent.click(candidateButton);
+    expect(selector).not.toHaveAttribute("aria-invalid");
+    expect(mobile.queryByText("Kies minimaal één deelnemer.")).not.toBeInTheDocument();
+  });
+
   it("quick-adds an external person from the expanded inline participant editor", async () => {
     api.createWorkExternalPerson.mockResolvedValue({ id: "ep2", display_name: "Nieuwe externe", email: "nieuw@example.com", is_active: true });
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: /deelnemer\(s\)/i }));
-    await userEvent.type(screen.getByLabelText("Naam externe persoon"), "Nieuwe externe");
-    await userEvent.type(screen.getByLabelText("E-mail externe persoon"), "nieuw@example.com");
-    await userEvent.click(screen.getByRole("button", { name: "Aanmaken en toevoegen" }));
+    const desktopSelector = screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0];
+    const expandedRow = closestHTMLElement(desktopSelector, ".work-hours-create-participants-row");
+    expect(within(expandedRow).queryByLabelText("WindWilly-persoon")).not.toBeInTheDocument();
+    expect(within(expandedRow).queryByLabelText("Externe persoon")).not.toBeInTheDocument();
+    await userEvent.type(within(expandedRow).getByLabelText("Naam externe persoon"), "Nieuwe externe");
+    await userEvent.type(within(expandedRow).getByLabelText("E-mail externe persoon"), "nieuw@example.com");
+    await userEvent.click(within(expandedRow).getByRole("button", { name: "Aanmaken en toevoegen" }));
     await waitFor(() => expect(api.createWorkExternalPerson.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ display_name: "Nieuwe externe" })));
     expect(await within(screen.getByRole("list", { name: "Gekozen deelnemers mobiel" })).findByText("Nieuwe externe")).toBeInTheDocument();
   });
 
-  it("requires explicit external-person selection on desktop, mobile, and after reset", async () => {
+  it("uses grouped mobile checkbox controls with canonical selection, exact payload, and reset", async () => {
     renderPage();
     const mobile = within(await screen.findByRole("region", { name: "Nieuwe registratie" }));
-    const selectedParticipants = within(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" }));
-    const participantToggle = screen.getByRole("button", { name: /deelnemer\(s\)/i });
-    await userEvent.click(participantToggle);
-    let desktopEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    expect(within(desktopEditor).getByLabelText("Externe persoon")).toHaveValue("");
-    await userEvent.click(within(desktopEditor).getByRole("button", { name: "Externe toevoegen" }));
-    expect(selectedParticipants.queryAllByRole("listitem")).toHaveLength(0);
-
-    expect(mobile.getByLabelText("Externe persoon mobiel")).toHaveValue("");
-    await userEvent.click(mobile.getByRole("button", { name: "Externe deelnemer toevoegen" }));
-    expect(selectedParticipants.queryAllByRole("listitem")).toHaveLength(0);
-    await userEvent.selectOptions(mobile.getByLabelText("Externe persoon mobiel"), "ep1");
-    await userEvent.click(mobile.getByRole("button", { name: "Externe deelnemer toevoegen" }));
-    expect(selectedParticipants.getByText("Externe Anna")).toBeInTheDocument();
-
+    const selectedParticipants = mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" });
+    const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    expect(within(selector).getByText("WindWilly-personen")).toBeInTheDocument();
+    expect(within(selector).getByText("Externe personen")).toBeInTheDocument();
+    await userEvent.click(within(selector).getByText("WindWilly-personen"));
+    const admin = within(selector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i });
+    expect(admin).toBeChecked();
+    await userEvent.click(admin);
+    const piet = within(selector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i });
+    await userEvent.click(piet);
+    expect(piet).toBeChecked();
+    await userEvent.click(within(selector).getByText("Externe personen"));
+    const anna = within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i });
+    await userEvent.click(anna);
+    expect(selectedParticipants).toHaveTextContent("Piet");
+    expect(within(selectedParticipants).getByText("Externe Anna")).toBeInTheDocument();
+    await userEvent.click(anna);
+    expect(selectedParticipants).not.toHaveTextContent("Externe Anna");
+    const project = mobile.getByLabelText("Project voor nieuwe registratie mobiel");
+    await waitForSelectOption(project, "Project A");
+    await userEvent.selectOptions(project, "p1");
+    await userEvent.selectOptions(mobile.getByLabelText("Post voor nieuwe registratie mobiel"), "post1");
+    await userEvent.selectOptions(mobile.getByLabelText("Duur"), "3");
+    await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
+    await waitFor(() => expect(api.createWorkHourGroup).toHaveBeenCalledWith(expect.objectContaining({ duration_half_hours: 3, participants: [expect.objectContaining({ user_id: "u2" })] }), expect.any(Object)));
     await userEvent.click(mobile.getByRole("button", { name: "Mobiele registratie resetten" }));
-    expect(selectedParticipants.queryAllByRole("listitem")).toHaveLength(0);
-    expect(mobile.getByLabelText("Externe persoon mobiel")).toHaveValue("");
-    await userEvent.click(mobile.getByRole("button", { name: "Externe deelnemer toevoegen" }));
-    expect(selectedParticipants.queryAllByRole("listitem")).toHaveLength(0);
-    await userEvent.click(participantToggle);
-    desktopEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    await userEvent.click(within(desktopEditor).getByRole("button", { name: "Externe toevoegen" }));
-    expect(selectedParticipants.queryAllByRole("listitem")).toHaveLength(0);
+    expect(within(selectedParticipants).getAllByRole("listitem")).toHaveLength(1);
+    expect(selectedParticipants).toHaveTextContent("Admin");
+    expect(admin).toBeChecked();
+    expect(piet).not.toBeChecked();
+    expect(anna).not.toBeChecked();
   });
 
   it("searches/selects/resets header filters and resets paging to one", async () => {
@@ -182,21 +328,21 @@ describe("UrenverantwoordingPage compact central management", () => {
     await waitForSelectOption(mobileProject, "Project A");
     await userEvent.selectOptions(mobileProject, "p1");
     await userEvent.selectOptions(mobile.getByLabelText("Post voor nieuwe registratie mobiel"), "post1");
-    await userEvent.clear(mobile.getByLabelText("Duur (halve uren)"));
-    await userEvent.type(mobile.getByLabelText("Duur (halve uren)"), "6");
+    await userEvent.selectOptions(mobile.getByLabelText("Duur"), "6");
     await userEvent.type(mobile.getByLabelText("Beschrijving nieuwe registratie mobiel"), "Mobiel werk");
-    await userEvent.selectOptions(mobile.getByLabelText("WindWilly-persoon mobiel"), "u2");
-    await userEvent.click(mobile.getByRole("button", { name: "WindWilly-deelnemer toevoegen" }));
+    const mobileSelector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
+    await userEvent.click(within(mobileSelector).getByText("WindWilly-personen"));
+    await userEvent.click(within(mobileSelector).getByRole("checkbox", { name: /Admin WindWilly-persoon/i }));
+    await userEvent.click(within(mobileSelector).getByRole("checkbox", { name: /Piet WindWilly-persoon/i }));
     await userEvent.type(mobile.getByLabelText("Naam externe persoon mobiel"), "Mobiele externe");
     await userEvent.type(mobile.getByLabelText("E-mail externe persoon mobiel"), "mobiel@example.com");
     await userEvent.click(mobile.getByRole("button", { name: "Externe persoon mobiel aanmaken en toevoegen" }));
     await waitFor(() => expect(api.createWorkExternalPerson).toHaveBeenCalled());
     await userEvent.type(mobile.getByLabelText("Naam externe persoon mobiel"), "Mobiel onopgeslagen");
     await userEvent.type(mobile.getByLabelText("Notitie externe persoon mobiel"), "Nog wissen");
-    await userEvent.selectOptions(mobile.getByLabelText("Externe persoon mobiel"), "ep1");
     const participantToggle = screen.getByRole("button", { name: /deelnemer\(s\)/i });
     await userEvent.click(participantToggle);
-    const desktopParticipantEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
+    const desktopParticipantEditor = closestHTMLElement(screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0], ".work-hours-create-participants-row");
     await userEvent.type(within(desktopParticipantEditor).getByLabelText("Naam externe persoon"), "Desktop onopgeslagen");
     await userEvent.type(within(desktopParticipantEditor).getByLabelText("E-mail externe persoon"), "wissen@example.com");
     await userEvent.click(mobile.getByRole("button", { name: "Registratie mobiel opslaan" }));
@@ -208,18 +354,15 @@ describe("UrenverantwoordingPage compact central management", () => {
       expect(mobile.getByLabelText("Project voor nieuwe registratie mobiel")).toHaveValue("");
       expect(mobile.getByLabelText("Post voor nieuwe registratie mobiel")).toHaveValue("");
       expect(mobile.getByLabelText("Beschrijving nieuwe registratie mobiel")).toHaveValue("");
-      expect(mobile.getByLabelText("Duur (halve uren)")).toHaveValue(2);
-      expect(mobile.getByLabelText("WindWilly-persoon mobiel")).toHaveValue("");
-      expect(mobile.getByLabelText("Externe persoon mobiel")).toHaveValue("");
+      expect(mobile.getByLabelText("Duur")).toHaveValue("2");
       expect(mobile.getByLabelText("Naam externe persoon mobiel")).toHaveValue("");
       expect(mobile.getByLabelText("Notitie externe persoon mobiel")).toHaveValue("");
-      expect(within(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).queryAllByRole("listitem")).toHaveLength(0);
+      expect(within(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).getAllByRole("listitem")).toHaveLength(1);
+      expect(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).toHaveTextContent("Admin");
       expect(participantToggle).toHaveAttribute("aria-expanded", "false");
     });
     await userEvent.click(participantToggle);
-    const resetDesktopEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    expect(within(resetDesktopEditor).getByLabelText("WindWilly-persoon")).toHaveValue("");
-    expect(within(resetDesktopEditor).getByLabelText("Externe persoon")).toHaveValue("");
+    const resetDesktopEditor = closestHTMLElement(screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0], ".work-hours-create-participants-row");
     expect(within(resetDesktopEditor).getByLabelText("Naam externe persoon")).toHaveValue("");
     expect(within(resetDesktopEditor).getByLabelText("E-mail externe persoon")).toHaveValue("");
   });
@@ -235,10 +378,9 @@ describe("UrenverantwoordingPage compact central management", () => {
     await userEvent.type(mobile.getByLabelText("Beschrijving nieuwe registratie mobiel"), "Mobiele tekst");
     const participantToggle = screen.getByRole("button", { name: /deelnemer\(s\)/i });
     await userEvent.click(participantToggle);
-    const desktopParticipantEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    await userEvent.selectOptions(within(desktopParticipantEditor).getByLabelText("WindWilly-persoon"), "u2");
-    await userEvent.selectOptions(within(desktopParticipantEditor).getByLabelText("Externe persoon"), "ep1");
-    await userEvent.click(within(desktopParticipantEditor).getByRole("button", { name: "Deelnemer toevoegen" }));
+    const desktopParticipantEditor = closestHTMLElement(screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0], ".work-hours-create-participants-row");
+    await userEvent.click(within(desktopParticipantEditor).getByText("WindWilly-personen"));
+    await userEvent.click(within(desktopParticipantEditor).getByRole("checkbox", { name: /Piet WindWilly-persoon/i }));
     await userEvent.type(within(desktopParticipantEditor).getByLabelText("Naam externe persoon"), "Desktop concept");
     await userEvent.type(within(desktopParticipantEditor).getByLabelText("Notitie externe persoon"), "Wissen");
     await userEvent.type(mobile.getByLabelText("Naam externe persoon mobiel"), "Mobiel concept");
@@ -248,16 +390,13 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(screen.getByLabelText("Post voor nieuwe registratie")).toHaveValue("");
     expect(screen.getByLabelText("Beschrijving nieuwe registratie")).toHaveValue("");
     expect(mobile.getByLabelText("Beschrijving nieuwe registratie mobiel")).toHaveValue("");
-    expect(mobile.getByLabelText("WindWilly-persoon mobiel")).toHaveValue("");
-    expect(mobile.getByLabelText("Externe persoon mobiel")).toHaveValue("");
     expect(mobile.getByLabelText("Naam externe persoon mobiel")).toHaveValue("");
     expect(mobile.getByLabelText("E-mail externe persoon mobiel")).toHaveValue("");
     expect(participantToggle).toHaveAttribute("aria-expanded", "false");
-    expect(within(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).queryAllByRole("listitem")).toHaveLength(0);
+    expect(within(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(mobile.getByRole("list", { name: "Gekozen deelnemers mobiel" })).toHaveTextContent("Admin");
     await userEvent.click(participantToggle);
-    const resetDesktopEditor = closestHTMLElement(screen.getByRole("button", { name: "Deelnemer toevoegen" }), ".work-hours-participant-editor");
-    expect(within(resetDesktopEditor).getByLabelText("WindWilly-persoon")).toHaveValue("");
-    expect(within(resetDesktopEditor).getByLabelText("Externe persoon")).toHaveValue("");
+    const resetDesktopEditor = closestHTMLElement(screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0], ".work-hours-create-participants-row");
     expect(within(resetDesktopEditor).getByLabelText("Naam externe persoon")).toHaveValue("");
     expect(within(resetDesktopEditor).getByLabelText("Notitie externe persoon")).toHaveValue("");
   });

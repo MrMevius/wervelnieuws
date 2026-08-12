@@ -3,7 +3,7 @@
 ## Registreren en filteren
 
 - Open **Urenverantwoording** en gebruik de permanent zichtbare bovenste tabelrij.
-- Kies datum, project, globale post, duur en omschrijving. Open **deelnemer(s)** om meerdere gebruikers of externe personen toe te voegen; daar kan ook direct een externe persoon worden aangemaakt.
+- Kies datum, project, globale post, duur en omschrijving. Kies de duur in stappen van een half uur. Open de aparte keuzelijsten **WindWilly-personen** en **Externe personen** en vink deelnemers aan of uit; de gekozen deelnemers blijven eronder zichtbaar. Via **deelnemer(s)** kan ook direct een externe persoon worden aangemaakt.
 - Gebruik de filters in de kolomkoppen om waarden te zoeken, te selecteren of per kolom te wissen. **Alle filters wissen** herstelt het actieve ongefilterde overzicht.
 - De totalen en CSV-export gebruiken altijd precies dezelfde filters; CSV exporteert alle treffers en niet alleen de zichtbare pagina.
 
