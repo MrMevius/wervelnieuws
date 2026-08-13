@@ -386,19 +386,13 @@ def test_work_hours_group_create_export_and_admin_meta(client):
                     "display_type_snapshot": "WindWilly-gebruiker",
                     "sort_order": 0,
                 },
-                {
-                    "participant_kind": "external_person",
-                    "external_person_id": external_id,
-                    "display_name_snapshot": "Externe Medewerker",
-                    "display_email_snapshot": "extern@example.com",
-                    "display_type_snapshot": "Extern",
-                    "sort_order": 1,
-                },
             ],
         },
     )
     assert create_group.status_code == 201
     group_id = create_group.json()["id"]
+    _add_historical_external_participant(client, group_id, external_id, client.get("/api/auth/me", headers=headers).json()["id"])
+    create_group = client.get(f"/api/urenverantwoording/groepen/{group_id}", headers=headers)
     assert create_group.json()["person_count"] == 2
     assert create_group.json()["duration_hours"] == 2
 
@@ -525,12 +519,11 @@ def test_work_hours_group_edit_delete_restore_and_audit(client):
             "expected_row_version": created.json()["row_version"],
             "participants": [
                 {"id": participant_id, "participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0},
-                {"participant_kind": "external_person", "external_person_id": external.json()["id"], "display_name_snapshot": "Externe", "display_email_snapshot": "extern2@example.com", "display_type_snapshot": "Extern", "sort_order": 1},
             ],
         },
     )
     assert updated.status_code == 200
-    assert updated.json()["person_count"] == 2
+    assert updated.json()["person_count"] == 1
 
     deleted = client.delete(f"/api/urenverantwoording/groepen/{group_id}?expected_row_version={updated.json()['row_version']}", headers=headers)
     assert deleted.status_code == 200
@@ -555,7 +548,6 @@ def test_work_hours_group_edit_delete_restore_and_audit(client):
     assert audit.status_code == 200
     event_types = [event["event_type"] for event in audit.json()["items"]]
     assert "work_hours.group.updated" in event_types
-    assert "work_hours.group.participant.added" in event_types
     assert "work_hours.group.deleted" in event_types
     assert "work_hours.group.restored" in event_types
 
@@ -709,14 +701,12 @@ def test_work_hours_participant_filter_paginates_after_unique_grouping(client):
                     "post_id": post["id"],
                     "description": f"Groep {index + 1}",
                     "duration_half_hours": 2,
-                    "participants": [
-                        {"participant_kind": "external_person", "external_person_id": external_a["id"], "display_name_snapshot": "Extern A", "display_email_snapshot": "a@example.com", "display_type_snapshot": "Extern", "sort_order": 0},
-                        {"participant_kind": "external_person", "external_person_id": external_b["id"], "display_name_snapshot": "Extern B", "display_email_snapshot": "b@example.com", "display_type_snapshot": "Extern", "sort_order": 1},
-                        {"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 2},
-                    ],
+                    "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
                 },
             ).json()
         )
+        _add_historical_external_participant(client, created_groups[-1]["id"], external_a["id"], me["id"])
+        _add_historical_external_participant(client, created_groups[-1]["id"], external_b["id"], me["id"])
 
     page_one = client.get("/api/urenverantwoording/groepen?participant_kind=external_person&page=1&page_size=25&sort_key=work_date&sort_direction=asc", headers=headers)
     page_two = client.get("/api/urenverantwoording/groepen?participant_kind=external_person&page=2&page_size=25&sort_key=work_date&sort_direction=asc", headers=headers)
@@ -760,20 +750,26 @@ def test_work_hours_project_totals_follow_every_list_filter_and_return_empty_res
             },
         )
         assert response.status_code == 201
-        return response.json()
+        group = response.json()
+        for participant in participants:
+            if participant["participant_kind"] == "external_person":
+                _add_historical_external_participant(client, group["id"], participant["external_person_id"], user_id)
+        return group
 
     admin = {"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}
     anna_participant = {"participant_kind": "external_person", "external_person_id": anna["id"], "display_name_snapshot": "Totalen Anna", "display_email_snapshot": "totalen-anna@example.com", "display_type_snapshot": "Extern", "sort_order": 1}
-    create_group(work_date="2026-08-01", project_id=alpha["id"], post_id=post_one["id"], description="Speld Alpha", duration_half_hours=4, participants=[admin, anna_participant])
+    alpha_group = create_group(work_date="2026-08-01", project_id=alpha["id"], post_id=post_one["id"], description="Speld Alpha", duration_half_hours=4, participants=[admin])
+    _add_historical_external_participant(client, alpha_group["id"], anna["id"], user_id)
     create_group(work_date="2026-08-02", project_id=alpha["id"], post_id=post_two["id"], description="Speld Beta", duration_half_hours=2, participants=[admin])
-    create_group(work_date="2026-08-01", project_id=beta["id"], post_id=post_one["id"], description="Andere speld", duration_half_hours=6, participants=[anna_participant])
+    beta_group = create_group(work_date="2026-08-01", project_id=beta["id"], post_id=post_one["id"], description="Andere speld", duration_half_hours=6, participants=[admin])
+    _add_historical_external_participant(client, beta_group["id"], anna["id"], user_id)
     deleted = create_group(work_date="2026-08-01", project_id=alpha["id"], post_id=post_one["id"], description="Verwijderde speld", duration_half_hours=8, participants=[admin])
     assert client.delete(f"/api/urenverantwoording/groepen/{deleted['id']}?expected_row_version={deleted['row_version']}", headers=headers).status_code == 200
 
     alpha_total = [{"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 5.0}]
     first_post_totals = [
         {"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 4.0},
-        {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 3.0},
+        {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 6.0},
     ]
     cases = {
         "work_date=2026-08-01": first_post_totals,
@@ -781,7 +777,7 @@ def test_work_hours_project_totals_follow_every_list_filter_and_return_empty_res
         f"post_id={post_one['id']}": first_post_totals,
         "query=Speld": [
             {"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 5.0},
-            {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 3.0},
+            {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 6.0},
         ],
         "participant_query=Totalen%20Anna": first_post_totals,
         f"work_date=2026-08-01&project_id={alpha['id']}&post_id={post_one['id']}&participant_query=Totalen%20Anna&query=Speld": [
@@ -813,6 +809,11 @@ def test_work_hours_sort_contract_accepts_person_and_type_and_rejects_extras(cli
             "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Berta", "display_email_snapshot": "berta@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
         },
     ).json()
+    external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Anna", "email": "anna@example.com", "note": ""},
+    ).json()
     beta = client.post(
         "/api/urenverantwoording/groepen",
         headers=headers,
@@ -822,9 +823,10 @@ def test_work_hours_sort_contract_accepts_person_and_type_and_rejects_extras(cli
             "post_id": post["id"],
             "description": "Groep Beta",
             "duration_half_hours": 2,
-            "participants": [{"participant_kind": "external_person", "external_person_id": client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Anna", "email": "anna@example.com", "note": ""}).json()["id"], "display_name_snapshot": "Anna", "display_email_snapshot": "anna@example.com", "display_type_snapshot": "Extern", "sort_order": 0}],
+            "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Anna", "display_email_snapshot": "anna@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
         },
     ).json()
+    _replace_with_historical_external_participant(client, beta["participants"][0]["id"], external["id"])
 
     by_name = client.get("/api/urenverantwoording/groepen?sort_key=name_person&sort_direction=asc", headers=headers)
     by_type = client.get("/api/urenverantwoording/groepen?sort_key=type_person&sort_direction=asc", headers=headers)
@@ -1236,6 +1238,239 @@ def _create_validation_group(client, headers):
     return me, project, post, payload, group
 
 
+def _add_historical_external_participant(client, group_id: str, external_id: str, actor_id: str) -> None:
+    db_generator = client.app.dependency_overrides[get_db]()
+    db = next(db_generator)
+    try:
+        person = db.get(WorkExternalPerson, external_id)
+        db.add(WorkHourGroupParticipant(
+            group_id=group_id,
+            participant_kind="external_person",
+            external_person_id=external_id,
+            display_name_snapshot=person.display_name,
+            display_email_snapshot=person.email,
+            display_type_snapshot="Extern",
+            sort_order=1,
+            active_identity_key=f"external_person:{external_id}",
+            created_by_user_id=actor_id,
+            updated_by_user_id=actor_id,
+        ))
+        db.commit()
+    finally:
+        db.close()
+        db_generator.close()
+
+
+def _replace_with_historical_external_participant(client, participant_id: str, external_id: str) -> None:
+    db_generator = client.app.dependency_overrides[get_db]()
+    db = next(db_generator)
+    try:
+        person = db.get(WorkExternalPerson, external_id)
+        participant = db.get(WorkHourGroupParticipant, participant_id)
+        participant.participant_kind = "external_person"
+        participant.user_id = None
+        participant.external_person_id = external_id
+        participant.display_name_snapshot = person.display_name
+        participant.display_email_snapshot = person.email
+        participant.display_type_snapshot = "Extern"
+        participant.active_identity_key = f"external_person:{external_id}"
+        db.commit()
+    finally:
+        db.close()
+        db_generator.close()
+
+
+def test_external_people_are_rejected_for_new_groups_and_preserved_for_unchanged_historical_edits(client):
+    headers = _login(client)
+    me, project, post, payload, group = _create_validation_group(client, headers)
+    external = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Historische externe", "email": "historisch@example.com", "note": ""}).json()
+    external_participant = {
+        "participant_kind": "external_person", "external_person_id": external["id"],
+        "display_name_snapshot": "Historische externe", "display_email_snapshot": "historisch@example.com",
+        "display_type_snapshot": "Extern", "sort_order": 1,
+    }
+    before_total = client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"]
+    before_audit = len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"])
+    rejected_create = client.post("/api/urenverantwoording/groepen", headers=headers, json={**payload, "description": "Niet opslaan", "participants": [payload["participants"][0], external_participant]})
+    assert rejected_create.status_code == 422
+    assert rejected_create.json()["detail"] == "Externe personen kunnen niet aan nieuwe urenregistraties worden toegevoegd."
+    assert client.get("/api/urenverantwoording/groepen", headers=headers).json()["total"] == before_total
+    assert len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]) == before_audit
+
+    _add_historical_external_participant(client, group["id"], external["id"], me["id"])
+    historical = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+    assert {participant["participant_kind"] for participant in historical["participants"]} == {"live_user", "external_person"}
+    replacement_external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Nieuwe externe", "email": "nieuwe-historische@example.com", "note": ""},
+    ).json()
+    before_audit = len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"])
+    rejected_patch = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}", headers=headers,
+        json={"description": "Niet opslaan", "expected_row_version": historical["row_version"], "participants": [
+            {"id": historical["participants"][0]["id"], "participant_kind": "external_person", "external_person_id": replacement_external["id"], "display_name_snapshot": "Nieuwe externe", "display_email_snapshot": "nieuwe-historische@example.com", "display_type_snapshot": "Extern", "sort_order": 0},
+            historical["participants"][1],
+        ]},
+    )
+    assert rejected_patch.status_code == 422
+    assert rejected_patch.json()["detail"] == "Externe personen kunnen niet aan nieuwe urenregistraties worden toegevoegd."
+    unchanged = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+    assert unchanged["description"] == "Ongewijzigd"
+    assert unchanged["row_version"] == historical["row_version"]
+    assert len(client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]) == before_audit
+
+    saved = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}", headers=headers,
+        json={"description": "Historie bijgewerkt", "expected_row_version": historical["row_version"], "participants": historical["participants"]},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["description"] == "Historie bijgewerkt"
+    assert {participant["participant_kind"] for participant in saved.json()["participants"]} == {"live_user", "external_person"}
+
+
+def test_patch_rejects_adding_external_participant_beside_existing_participants_without_writes(client):
+    headers = _login(client)
+    _, _, _, _, group = _create_validation_group(client, headers)
+    external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Nieuwe externe", "email": "nieuwe-externe@example.com", "note": ""},
+    ).json()
+    before = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+    before_audit = client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]
+
+    rejected = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}",
+        headers=headers,
+        json={
+            "description": "Mag niet gedeeltelijk worden opgeslagen",
+            "expected_row_version": before["row_version"],
+            "participants": [
+                before["participants"][0],
+                {
+                    "participant_kind": "external_person",
+                    "external_person_id": external["id"],
+                    "display_name_snapshot": "Nieuwe externe",
+                    "display_email_snapshot": "nieuwe-externe@example.com",
+                    "display_type_snapshot": "Extern",
+                    "sort_order": 1,
+                },
+            ],
+        },
+    )
+
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "Externe personen kunnen niet aan nieuwe urenregistraties worden toegevoegd."
+    assert client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json() == before
+    assert client.get("/api/urenverantwoording/audit", headers=headers).json()["items"] == before_audit
+
+
+def test_patch_accepts_equivalent_historical_identity_set_without_row_ids_in_reordered_payload(client):
+    headers = _login(client)
+    me, _, _, _, group = _create_validation_group(client, headers)
+    external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Historische volgorde", "email": "volgorde@example.com", "note": ""},
+    ).json()
+    _add_historical_external_participant(client, group["id"], external["id"], me["id"])
+    before = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+    rows_by_identity = {
+        (participant["participant_kind"], participant.get("user_id") or participant.get("external_person_id")): participant["id"]
+        for participant in before["participants"]
+    }
+    requested = [
+        {
+            key: value
+            for key, value in participant.items()
+            if key in {
+                "participant_kind", "user_id", "external_person_id", "historical_identity_id",
+                "display_name_snapshot", "display_email_snapshot", "display_type_snapshot", "sort_order",
+            }
+        }
+        for participant in reversed(before["participants"])
+    ]
+    for index, participant in enumerate(requested):
+        participant["sort_order"] = index
+
+    response = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}",
+        headers=headers,
+        json={"description": "Canoniek bijgewerkt", "expected_row_version": before["row_version"], "participants": requested},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == "Canoniek bijgewerkt"
+    assert {
+        (participant["participant_kind"], participant.get("user_id") or participant.get("external_person_id")): participant["id"]
+        for participant in response.json()["participants"]
+    } == rows_by_identity
+    assert [participant["participant_kind"] for participant in response.json()["participants"]] == ["external_person", "live_user"]
+
+
+def test_patch_allows_non_participant_edit_for_external_only_historical_group(client):
+    headers = _login(client)
+    _, _, _, _, group = _create_validation_group(client, headers)
+    external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Alleen extern", "email": "alleen-extern@example.com", "note": ""},
+    ).json()
+    _replace_with_historical_external_participant(client, group["participants"][0]["id"], external["id"])
+    before = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+
+    response = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}",
+        headers=headers,
+        json={"description": "Alleen toelichting gewijzigd", "expected_row_version": before["row_version"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["description"] == "Alleen toelichting gewijzigd"
+    assert response.json()["participants"] == before["participants"]
+
+
+def test_patch_rejects_replacement_external_identity_before_any_group_or_audit_write(client):
+    headers = _login(client)
+    _, _, _, _, group = _create_validation_group(client, headers)
+    existing_external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Bestaande externe", "email": "bestaand@example.com", "note": ""},
+    ).json()
+    attempted_external = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Vervangende externe", "email": "vervangend@example.com", "note": ""},
+    ).json()
+    _replace_with_historical_external_participant(client, group["participants"][0]["id"], existing_external["id"])
+    before = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
+    before_audit = client.get("/api/urenverantwoording/audit", headers=headers).json()["items"]
+
+    rejected = client.patch(
+        f"/api/urenverantwoording/groepen/{group['id']}",
+        headers=headers,
+        json={
+            "description": "Mag niet wijzigen",
+            "expected_row_version": before["row_version"],
+            "participants": [{
+                "participant_kind": "external_person",
+                "external_person_id": attempted_external["id"],
+                "display_name_snapshot": attempted_external["display_name"],
+                "display_email_snapshot": attempted_external["email"],
+                "display_type_snapshot": "Extern",
+                "sort_order": 0,
+            }],
+        },
+    )
+
+    assert rejected.status_code == 422
+    assert rejected.json()["detail"] == "Externe personen kunnen niet aan nieuwe urenregistraties worden toegevoegd."
+    assert client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json() == before
+    assert client.get("/api/urenverantwoording/audit", headers=headers).json()["items"] == before_audit
+
+
 def test_create_unknown_live_user_returns_controlled_422_without_writes(client):
     headers = _login(client)
     _, project, post, payload, _ = _create_validation_group(client, headers)
@@ -1617,37 +1852,37 @@ def test_force_create_cannot_bypass_hard_identity_or_normalized_email_uniqueness
 
 def test_external_merge_retargets_reference_but_keeps_all_participant_display_snapshots_byte_identical(client):
     headers = _login(client)
-    _, project, post, _, _ = _create_validation_group(client, headers)
+    me, project, post, _, _ = _create_validation_group(client, headers)
     source = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Oude naam", "email": "oud@example.com", "note": ""}).json()
     target = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Nieuwe naam", "email": "nieuw@example.com", "note": ""}).json()
     group = client.post("/api/urenverantwoording/groepen", headers=headers, json={
         "work_date": "2026-08-04", "project_id": project["id"], "post_id": post["id"], "description": "Merge snapshot", "duration_half_hours": 2,
-        "participants": [{"participant_kind": "external_person", "external_person_id": source["id"], "display_name_snapshot": "Historische schrijfwijze", "display_email_snapshot": "historisch@example.com", "display_type_snapshot": "Extern oud", "sort_order": 0}],
+        "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
     }).json()
-    before = group["participants"][0]
+    _add_historical_external_participant(client, group["id"], source["id"], me["id"])
+    before = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()["participants"][1]
     merged = client.post(f"/api/urenverantwoording/externe-personen/{source['id']}/merge", headers=headers, json={"target_id": target["id"], "expected_source_row_version": source["row_version"], "expected_target_row_version": target["row_version"]})
     assert merged.status_code == 200
-    after = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()["participants"][0]
+    after = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()["participants"][1]
     assert after["external_person_id"] == target["id"]
     assert (after["display_name_snapshot"], after["display_email_snapshot"], after["display_type_snapshot"]) == (before["display_name_snapshot"], before["display_email_snapshot"], before["display_type_snapshot"])
 
 
 def test_external_merge_rejects_source_target_participant_collision_without_silent_dedupe(client):
     headers = _login(client)
-    _, project, post, _, _ = _create_validation_group(client, headers)
+    me, project, post, _, _ = _create_validation_group(client, headers)
     source = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Bron", "email": "bron@example.com", "note": ""}).json()
     target = client.post("/api/urenverantwoording/externe-personen", headers=headers, json={"display_name": "Doel", "email": "doel@example.com", "note": ""}).json()
     group = client.post("/api/urenverantwoording/groepen", headers=headers, json={
         "work_date": "2026-08-04", "project_id": project["id"], "post_id": post["id"], "description": "Collision", "duration_half_hours": 2,
-        "participants": [
-            {"participant_kind": "external_person", "external_person_id": source["id"], "display_name_snapshot": "Bron", "display_type_snapshot": "Extern", "sort_order": 0},
-            {"participant_kind": "external_person", "external_person_id": target["id"], "display_name_snapshot": "Doel", "display_type_snapshot": "Extern", "sort_order": 1},
-        ],
+        "participants": [{"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}],
     }).json()
+    _add_historical_external_participant(client, group["id"], source["id"], me["id"])
+    _add_historical_external_participant(client, group["id"], target["id"], me["id"])
     response = client.post(f"/api/urenverantwoording/externe-personen/{source['id']}/merge", headers=headers, json={"target_id": target["id"], "expected_source_row_version": source["row_version"], "expected_target_row_version": target["row_version"]})
     assert response.status_code == 409
     unchanged = client.get(f"/api/urenverantwoording/groepen/{group['id']}", headers=headers).json()
-    assert {item["external_person_id"] for item in unchanged["participants"]} == {source["id"], target["id"]}
+    assert {item["external_person_id"] for item in unchanged["participants"] if item["participant_kind"] == "external_person"} == {source["id"], target["id"]}
 
 
 def test_central_project_restore_returns_project_to_active_state(client):

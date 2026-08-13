@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "108",
+                "date": "2026-08-13",
+                "title": "Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
+                "highlights": [
+                    "Externe personen zijn niet meer te kiezen voor een nieuwe urenregistratie.",
+                    "Bestaande registraties met externe deelnemers blijven zichtbaar en kunnen zonder deelnemerswijziging worden bijgewerkt.",
+                ],
+            },
+            {
                 "iteration": "107",
                 "date": "2026-08-13",
                 "title": "Urenregistratie toont een rustiger overzicht",

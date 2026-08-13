@@ -35,14 +35,13 @@ type ParticipantDraft =
   | { kind: "historical_identity"; historical_identity_id: string; display_name_snapshot: string; display_email_snapshot: string; display_type_snapshot: string };
 
 type ParticipantEditDraft = (ParticipantDraft & { id?: string }) | { id: string; kind: "preserved"; display_name_snapshot: string; display_email_snapshot: string; display_type_snapshot: string };
-type SelectableParticipantDraft = Extract<ParticipantDraft, { kind: "live_user" | "external_person" }>;
+type CreateParticipantDraft = Extract<ParticipantDraft, { kind: "live_user" }>;
 
 function ParticipantSelectionControls({
   id,
   className,
   participants,
   eligibleUsers,
-  externalPeople,
   onToggle,
   open,
   onOpenChange,
@@ -51,10 +50,9 @@ function ParticipantSelectionControls({
 }: {
   id: string;
   className: string;
-  participants: ParticipantDraft[];
+  participants: CreateParticipantDraft[];
   eligibleUsers: Array<{ id: string; username: string; full_name: string | null; email: string | null }>;
-  externalPeople: Array<{ id: string; display_name: string; email: string | null }>;
-  onToggle: (draft: SelectableParticipantDraft) => void;
+  onToggle: (draft: CreateParticipantDraft) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   invalid?: boolean;
@@ -161,15 +159,6 @@ function ParticipantSelectionControls({
               })}
             </div>
           </fieldset>
-          <fieldset className="work-hours-participant-group">
-            <legend>Externe personen</legend>
-            <div className="work-hours-participant-options">
-              {externalPeople.map((person) => {
-                const selected = participants.some((participant) => participant.kind === "external_person" && participant.external_person_id === person.id);
-                return <label key={person.id}><input type="checkbox" checked={selected} onChange={() => onToggle({ kind: "external_person", external_person_id: person.id, display_name_snapshot: person.display_name, display_email_snapshot: person.email || "", display_type_snapshot: "Extern" })} />{person.display_name}<span>Externe persoon</span></label>;
-              })}
-            </div>
-          </fieldset>
         </div>
       </div>}
     </section>
@@ -203,12 +192,11 @@ export function UrenverantwoordingPage() {
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [participants, setParticipants] = useState<ParticipantDraft[]>([]);
+  const [participants, setParticipants] = useState<CreateParticipantDraft[]>([]);
   const [desktopParticipantDisclosureOpen, setDesktopParticipantDisclosureOpen] = useState(false);
   const [mobileParticipantDisclosureOpen, setMobileParticipantDisclosureOpen] = useState(false);
   const createParticipantsInitialized = useRef(false);
   const [editParticipants, setEditParticipants] = useState<ParticipantEditDraft[]>([]);
-  const [selectedExternalPersonId, setSelectedExternalPersonId] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
   const listQueryParams = useMemo(
     () => ({
@@ -229,9 +217,6 @@ export function UrenverantwoordingPage() {
   const projectOptions = useMemo(() => (metaQuery.data?.projects ?? []).map((project) => ({ ...project, name: project.name ?? project.display_name ?? "", description: project.description ?? "", row_version: project.row_version ?? 1 })), [metaQuery.data?.projects]);
   const normalizedPosts = useMemo(() => (metaQuery.data?.posts ?? []).map((post) => ({ ...post, name: post.name ?? post.display_name ?? "", description: post.description ?? "", row_version: post.row_version ?? 1 })), [metaQuery.data?.posts]);
   const postOptions = normalizedPosts;
-  const externalPeople = useMemo(() => (metaQuery.data?.external_people ?? []).map((person) => ({ ...person, email: person.email ?? null, note: person.note ?? "", is_active: person.is_active ?? person.selectable ?? true, row_version: person.row_version ?? 1 })), [metaQuery.data?.external_people]);
-  const activeExternalPeople = useMemo(() => externalPeople.filter((person) => person.selectable !== false && person.is_active && !person.deleted_at), [externalPeople]);
-  const inactiveHistoricalExternalPeople = useMemo(() => externalPeople.filter((person) => !person.is_active || person.deleted_at), [externalPeople]);
   const historicalIdentities = useMemo(() => (metaQuery.data?.historical_identities ?? []).map((identity) => ({ ...identity, snapshot_display_label: identity.snapshot_display_label ?? identity.display_name ?? "Historische identiteit", snapshot_name: identity.snapshot_name ?? identity.display_name ?? "" })), [metaQuery.data?.historical_identities]);
   const eligibleUsers = useMemo(() => (metaQuery.data?.eligible_users ?? []).filter((user) => user.selectable !== false).map((user) => ({ ...user, username: user.username ?? user.display_name ?? "Gebruiker", full_name: user.full_name ?? user.display_name ?? null, email: user.email ?? null })), [metaQuery.data?.eligible_users]);
   const currentUser = currentUserQuery.data;
@@ -240,7 +225,7 @@ export function UrenverantwoordingPage() {
   const newGroupPostOptions = normalizedPosts;
   const editingGroupPostOptions = normalizedPosts;
 
-  function currentUserParticipant(): SelectableParticipantDraft | null {
+  function currentUserParticipant(): CreateParticipantDraft | null {
     if (!currentUser) return null;
     return { kind: "live_user", user_id: currentUser.id, display_name_snapshot: currentUser.full_name || currentUser.username, display_email_snapshot: currentUser.email || "", display_type_snapshot: "WindWilly-gebruiker" };
   }
@@ -329,23 +314,8 @@ export function UrenverantwoordingPage() {
     setEditParticipants((current) => current.some((item) => item.kind === "live_user" && item.user_id === user.id) ? current : [...current, draft]);
   }
 
-  function resolveSelectedExternalPerson() {
-    if (!selectedExternalPersonId) return undefined;
-    return activeExternalPeople.find((person) => person.id === selectedExternalPersonId);
-  }
-
-  function addExternalParticipant(_target?: "create" | "edit") {
-    const selected = resolveSelectedExternalPerson();
-    if (!selected) return;
-    const draft: ParticipantDraft = { kind: "external_person", external_person_id: selected.id, display_name_snapshot: selected.display_name, display_email_snapshot: selected.email || "", display_type_snapshot: "Extern" };
-    setEditParticipants((current) => current.some((item) => item.kind === "external_person" && item.external_person_id === selected.id) ? current : [...current, draft]);
-  }
-
-  function toggleCreateParticipant(draft: SelectableParticipantDraft) {
-    const matchesDraft = (participant: ParticipantDraft) =>
-      participant.kind === draft.kind && (draft.kind === "live_user"
-        ? participant.kind === "live_user" && participant.user_id === draft.user_id
-        : participant.kind === "external_person" && participant.external_person_id === draft.external_person_id);
+  function toggleCreateParticipant(draft: CreateParticipantDraft) {
+    const matchesDraft = (participant: CreateParticipantDraft) => participant.user_id === draft.user_id;
     const nextParticipants = participants.some(matchesDraft) ? participants.filter((participant) => !matchesDraft(participant)) : [...participants, draft];
     setParticipants(nextParticipants);
     if (nextParticipants.length > 0) clearCreateError("participants");
@@ -421,7 +391,6 @@ export function UrenverantwoordingPage() {
     setNewGroupProjectId("");
     setNewGroupPostId("");
     setSelectedUserId("");
-    setSelectedExternalPersonId("");
     setParticipants(currentUserParticipant() ? [currentUserParticipant()!] : []);
     setCreateErrors({});
     setErrorMessage(null);
@@ -470,22 +439,14 @@ export function UrenverantwoordingPage() {
       post_id: post,
       description,
       duration_half_hours: durationHalfHours,
-      participants: participants.map((participant, index) =>
-        participant.kind === "live_user"
-          ? (() => {
-              const item = participant as Extract<ParticipantDraft, { kind: "live_user" }>;
-              return { participant_kind: "live_user", user_id: item.user_id, display_name_snapshot: item.display_name_snapshot, display_email_snapshot: item.display_email_snapshot, display_type_snapshot: item.display_type_snapshot, sort_order: index };
-            })()
-          : participant.kind === "external_person"
-            ? (() => {
-                const item = participant as Extract<ParticipantDraft, { kind: "external_person" }>;
-                return { participant_kind: "external_person", external_person_id: item.external_person_id, display_name_snapshot: item.display_name_snapshot, display_email_snapshot: item.display_email_snapshot, display_type_snapshot: item.display_type_snapshot, sort_order: index };
-              })()
-            : (() => {
-                const item = participant as Extract<ParticipantDraft, { kind: "historical_identity" }>;
-                return { participant_kind: "historical_identity", historical_identity_id: item.historical_identity_id, display_name_snapshot: item.display_name_snapshot, display_email_snapshot: item.display_email_snapshot, display_type_snapshot: item.display_type_snapshot, sort_order: index };
-              })()
-      )
+      participants: participants.map((participant, index) => ({
+        participant_kind: "live_user" as const,
+        user_id: participant.user_id,
+        display_name_snapshot: participant.display_name_snapshot,
+        display_email_snapshot: participant.display_email_snapshot,
+        display_type_snapshot: participant.display_type_snapshot,
+        sort_order: index
+      }))
     });
     resetCreate(form);
   }
@@ -557,7 +518,7 @@ export function UrenverantwoordingPage() {
             <tbody>
               <tr className="work-hours-create-row">
                 <td><label className="sr-only" htmlFor="hours-create-date">Datum</label><input form="work-hours-create-form" id="hours-create-date" name="work_date" type="date" defaultValue={formatAmsterdamDateInput()} aria-invalid={Boolean(createErrors.work_date)} aria-describedby={createErrors.work_date ? "hours-create-date-error" : undefined} onChange={(event) => { if (event.target.value && event.target.value <= formatAmsterdamDateInput()) clearCreateError("work_date"); }} />{createErrors.work_date && <span id="hours-create-date-error" className="field-error">{createErrors.work_date}</span>}</td>
-                <td className="work-hours-create-participant-cell"><ParticipantSelectionControls id="hours-create-participants" className="work-hours-participant-selector work-hours-desktop-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} open={desktopParticipantDisclosureOpen} onOpenChange={(open) => { setDesktopParticipantDisclosureOpen(open); if (open) setMobileParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-create-participants-error" : undefined} />{createErrors.participants && <span id="hours-create-participants-error" className="field-error">{createErrors.participants}</span>}</td>
+                <td className="work-hours-create-participant-cell"><ParticipantSelectionControls id="hours-create-participants" className="work-hours-participant-selector work-hours-desktop-participant-selector" participants={participants} eligibleUsers={eligibleUsers} onToggle={toggleCreateParticipant} open={desktopParticipantDisclosureOpen} onOpenChange={(open) => { setDesktopParticipantDisclosureOpen(open); if (open) setMobileParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-create-participants-error" : undefined} />{createErrors.participants && <span id="hours-create-participants-error" className="field-error">{createErrors.participants}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-project" aria-label="Project voor nieuwe registratie" value={newGroupProjectId} aria-invalid={Boolean(createErrors.project_id)} aria-describedby={createErrors.project_id ? "hours-create-project-error" : undefined} onChange={(event) => { setNewGroupProjectId(event.target.value); if (event.target.value) clearCreateError("project_id"); }}><option value="">Kies project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>{createErrors.project_id && <span id="hours-create-project-error" className="field-error">{createErrors.project_id}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-post" aria-label="Post voor nieuwe registratie" value={newGroupPostId} aria-invalid={Boolean(createErrors.post_id)} aria-describedby={createErrors.post_id ? "hours-create-post-error" : undefined} onChange={(event) => { setNewGroupPostId(event.target.value); if (event.target.value) clearCreateError("post_id"); }}><option value="">Kies post</option>{newGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select>{createErrors.post_id && <span id="hours-create-post-error" className="field-error">{createErrors.post_id}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-duration" aria-label="Duur in uren" name="duration_half_hours" defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-create-duration-error" : undefined} onChange={() => clearCreateError("duration_half_hours")}>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select>{createErrors.duration_half_hours && <span id="hours-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}</td>
@@ -598,7 +559,7 @@ export function UrenverantwoordingPage() {
             <label>Duur<select id="hours-mobile-create-duration" name="duration_half_hours" defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-mobile-create-duration-error" : undefined} onChange={() => clearCreateError("duration_half_hours")}>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select></label>
             {createErrors.duration_half_hours && <span id="hours-mobile-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}
             <label>Beschrijving<input name="description" aria-label="Beschrijving nieuwe registratie mobiel" /></label>
-            <ParticipantSelectionControls id="hours-mobile-create-participants" className="work-hours-participant-selector work-hours-mobile-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} open={mobileParticipantDisclosureOpen} onOpenChange={(open) => { setMobileParticipantDisclosureOpen(open); if (open) setDesktopParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-mobile-create-participants-error" : undefined} />
+            <ParticipantSelectionControls id="hours-mobile-create-participants" className="work-hours-participant-selector work-hours-mobile-participant-selector" participants={participants} eligibleUsers={eligibleUsers} onToggle={toggleCreateParticipant} open={mobileParticipantDisclosureOpen} onOpenChange={(open) => { setMobileParticipantDisclosureOpen(open); if (open) setDesktopParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-mobile-create-participants-error" : undefined} />
             {createErrors.participants && <span id="hours-mobile-create-participants-error" className="field-error">{createErrors.participants}</span>}
             <div className="section-actions"><button type="submit" disabled={createGroupMutation.isPending}>Registratie mobiel opslaan</button><button type="button" onClick={() => resetCreate(mobileCreateFormRef.current)}>Mobiele registratie resetten</button></div>
           </form>
@@ -630,26 +591,14 @@ export function UrenverantwoordingPage() {
             <label><span>Project</span><select value={editingGroupProjectId} onChange={(event) => setEditingGroupProjectId(event.target.value)}><option value="">Kies een project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
             <label><span>Post</span><select value={editingGroupPostId} disabled={!editingGroupProjectId || editingGroupPostOptions.length === 0} onChange={(event) => setEditingGroupPostId(event.target.value)}><option value="">Kies een post</option>{editingGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>
             <label><span>WindWilly-persoon toevoegen</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} disabled={!eligibleUsers.length}><option value="">Kies een actieve gebruiker</option>{eligibleUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.username}</option>)}</select></label>
-            <label><span>Externe persoon toevoegen</span><select value={selectedExternalPersonId} onChange={(event) => setSelectedExternalPersonId(event.target.value)} disabled={!activeExternalPeople.length}><option value="">Kies een actieve externe persoon</option>{activeExternalPeople.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
             <label><span>Duur</span><select name="duration_half_hours" aria-label="Duur" value={editDurationHalfHours} aria-invalid={!editDurationHalfHours || undefined} onChange={(event) => { setEditDurationHalfHours(event.target.value); setErrorMessage(null); }}><option value="" disabled>{editingGroup.duration_half_hours > 16 ? `Historische duur: ${formatDurationHours(editingGroup.duration_half_hours)} uur — kies een nieuwe duur` : "Kies een duur"}</option>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select>{editingGroup.duration_half_hours > 16 && <small>De historische duur blijft ongewijzigd totdat je bewust een geldige nieuwe duur kiest.</small>}</label>
             <label className="span-2"><span>Beschrijving</span><textarea name="description" rows={3} defaultValue={editingGroup.description} /></label>
             <div className="span-2">
               <strong>Deelnemers</strong>
               <div className="section-actions">
                 <button type="button" onClick={() => addUserParticipant("edit")} disabled={!eligibleUsers.length}>Actieve WindWilly-persoon toevoegen</button>
-                <button type="button" onClick={() => addExternalParticipant("edit")} disabled={!activeExternalPeople.length}>Actieve externe toevoegen</button>
                 <button type="button" onClick={() => setEditingGroup(null)}>Annuleren</button>
               </div>
-              {inactiveHistoricalExternalPeople.length > 0 && (
-                <div className="muted">
-                  <p>Inactieve of historische externe personen zijn alleen leesbaar:</p>
-                  <ul>
-                    {inactiveHistoricalExternalPeople.map((person) => (
-                      <li key={person.id}>{person.display_name} · {person.deleted_at ? "historisch" : "inactief"} · niet selecteerbaar</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
               {historicalIdentities.length > 0 && (
                 <div className="muted">
                   <p>Historische identiteiten zijn alleen leesbaar:</p>

@@ -675,6 +675,15 @@ const mockApi = vi.hoisted(() => ({
       developed_by: "Energiek Daarle",
       changelog: [
         {
+          iteration: "108",
+          date: "2026-08-13",
+          title: "Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
+          highlights: [
+            "Externe personen zijn niet meer te kiezen voor een nieuwe urenregistratie.",
+            "Bestaande registraties met externe deelnemers blijven zichtbaar en kunnen zonder deelnemerswijziging worden bijgewerkt."
+          ]
+        },
+        {
           iteration: "107",
           date: "2026-08-13",
           title: "Urenregistratie toont een rustiger overzicht",
@@ -1276,10 +1285,11 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
       expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
     });
-    expect(screen.getByText(/CSV export staat direct bij de paginering onder de lijst/i)).toBeInTheDocument();
+    expect(screen.getByText(/Externe personen zijn niet meer te kiezen voor een nieuwe urenregistratie/i)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
       expect(headings).toEqual([
+       "Iteratie 108 - Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
        "Iteratie 107 - Urenregistratie toont een rustiger overzicht",
        "Iteratie 106 - Urenregistratie benut ruimte beter",
        "Iteratie 105 - Urenregistratie is directer en overzichtelijker",

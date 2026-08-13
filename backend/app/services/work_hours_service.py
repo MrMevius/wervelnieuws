@@ -64,6 +64,7 @@ from app.services.audit_service import AuditService
 
 SORT_KEYS = {"work_date", "name_person", "type_person", "project", "post", "duration_half_hours", "created_at", "updated_at"}
 AMSTERDAM_TZ = ZoneInfo("Europe/Amsterdam")
+EXTERNAL_PERSON_NEW_REGISTRATION_DETAIL = "Externe personen kunnen niet aan nieuwe urenregistraties worden toegevoegd."
 
 
 def _now() -> datetime:
@@ -598,6 +599,8 @@ class WorkHoursService:
         self._validate_work_date(payload.work_date)
         project, post = self._validate_project_post(payload.project_id, payload.post_id)
         self._validate_participants(payload.participants, context="groep")
+        if any(participant.participant_kind == "external_person" for participant in payload.participants):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=EXTERNAL_PERSON_NEW_REGISTRATION_DETAIL)
         participants = [self._participant_entity(p, current) for p in payload.participants]
         group = WorkHourGroup(
             work_date=payload.work_date,
@@ -647,22 +650,35 @@ class WorkHoursService:
     ) -> list[tuple[WorkHourParticipantUpdateRequest, WorkHourGroupParticipant | None]]:
         if not payloads:
             raise HTTPException(status_code=422, detail="groep: voeg minimaal één deelnemer toe")
-        seen_ids: set[str] = set()
+        existing_by_identity = {
+            self._identity_key(
+                participant.participant_kind,
+                participant.user_id,
+                participant.external_person_id,
+                participant.historical_identity_id,
+            ): participant
+            for participant in existing.values()
+        }
         validated: list[tuple[WorkHourParticipantUpdateRequest, WorkHourGroupParticipant | None]] = []
         for index, payload in enumerate(payloads):
             context = f"participants[{index}]"
-            current_participant = existing.get(payload.id) if payload.id else None
-            if payload.id and current_participant is None:
+            participant_by_id = existing.get(payload.id) if payload.id else None
+            if payload.id and participant_by_id is None:
                 raise HTTPException(status_code=422, detail=f"{context}.id: deelnemer hoort niet bij deze groep")
-            if payload.id and payload.id in seen_ids:
-                raise HTTPException(status_code=422, detail=f"{context}.id: dubbele deelnemer")
-            if payload.id:
-                seen_ids.add(payload.id)
 
-            if current_participant is not None and payload.participant_kind is None and self._participant_reference_count(payload) == 0:
-                validated.append((payload, current_participant))
+            if participant_by_id is not None and payload.participant_kind is None and self._participant_reference_count(payload) == 0:
+                validated.append((payload, participant_by_id))
                 continue
             self._validate_participant_identity(payload, context=context)
+            identity_key = self._identity_key(
+                payload.participant_kind or "",
+                payload.user_id,
+                payload.external_person_id,
+                payload.historical_identity_id,
+            )
+            current_participant = existing_by_identity.get(identity_key)
+            if payload.participant_kind == "external_person" and current_participant is None:
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=EXTERNAL_PERSON_NEW_REGISTRATION_DETAIL)
             if payload.display_name_snapshot is None or payload.display_type_snapshot is None:
                 raise HTTPException(status_code=422, detail=f"{context}: display snapshot ontbreekt")
 
@@ -732,8 +748,8 @@ class WorkHoursService:
             added_participants: list[WorkHourGroupParticipant] = []
             removed_participants: list[WorkHourGroupParticipant] = []
             for participant_payload, validated_entity in validated_participants:
-                if participant_payload.id:
-                    participant = existing[participant_payload.id]
+                if validated_entity is not None and validated_entity.id in existing:
+                    participant = validated_entity
                     if participant_payload.participant_kind is not None:
                         participant.participant_kind = participant_payload.participant_kind
                         participant.user_id = participant_payload.user_id
@@ -755,7 +771,12 @@ class WorkHoursService:
                     self._set_active_identity_key(participant)
                     group.participants.append(participant)
                     added_participants.append(participant)
-            removed_ids = set(existing) - {item.id for item in payload.participants if item.id}
+            retained_ids = {
+                participant.id
+                for _, participant in validated_participants
+                if participant is not None and participant.id in existing
+            }
+            removed_ids = set(existing) - retained_ids
             for removed_id in removed_ids:
                 participant = existing[removed_id]
                 participant.deleted_at = _now()

@@ -364,11 +364,10 @@ describe("UrenverantwoordingPage compact central management", () => {
     await openParticipantDisclosure(participantSelector);
     await userEvent.click(within(participantSelector).getByRole("checkbox", { name: "Admin" }));
     await userEvent.click(within(participantSelector).getByRole("checkbox", { name: "Piet" }));
-    await userEvent.click(within(participantSelector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i }));
     await userEvent.click(screen.getByRole("button", { name: "Registratie opslaan" }));
     await waitFor(() => expect(api.createWorkHourGroup.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
       project_id: "p1", post_id: "post1", description: "Werkbezoek",
-      participants: [expect.objectContaining({ user_id: "u2" }), expect.objectContaining({ external_person_id: "ep1" })]
+      participants: [expect.objectContaining({ user_id: "u2" })]
     })));
     expect(screen.queryByRole("dialog", { name: /nieuwe registratie/i })).not.toBeInTheDocument();
   });
@@ -398,7 +397,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(admin).toBeChecked();
   });
 
-  it("separates selectable participant groups, toggles selections, and keeps the half-hour payload", async () => {
+  it("shows only selectable WindWilly people and keeps the half-hour payload", async () => {
     renderPage();
     const desktopProject = await screen.findByLabelText("Project voor nieuwe registratie");
     await waitForSelectOption(desktopProject, "Project A");
@@ -407,14 +406,11 @@ describe("UrenverantwoordingPage compact central management", () => {
     const participantSelector = screen.getAllByRole("region", { name: "Deelnemers kiezen" })[0];
     await openParticipantDisclosure(participantSelector);
     expect(within(participantSelector).getByRole("group", { name: "WindWilly-personen" })).toBeInTheDocument();
-    expect(within(participantSelector).getByRole("group", { name: "Externe personen" })).toBeInTheDocument();
+    expect(within(participantSelector).queryByRole("group", { name: "Externe personen" })).not.toBeInTheDocument();
     await userEvent.click(within(participantSelector).getByRole("checkbox", { name: "Admin" }));
     await userEvent.click(within(participantSelector).getByRole("checkbox", { name: "Piet" }));
-    const external = within(participantSelector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i });
-    await userEvent.click(external);
     expect(within(participantSelector).getByRole("checkbox", { name: "Piet" })).toBeChecked();
-    await userEvent.click(external);
-    expect(within(participantSelector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i })).not.toBeChecked();
+    expect(within(participantSelector).queryByRole("checkbox", { name: /Externe Anna/i })).not.toBeInTheDocument();
     const duration = screen.getByLabelText("Duur in uren");
     expect(within(duration).getByRole("option", { name: "0.5 uur" })).toBeInTheDocument();
     expect(within(duration).getByRole("option", { name: "1 uur" })).toBeInTheDocument();
@@ -422,9 +418,10 @@ describe("UrenverantwoordingPage compact central management", () => {
     await userEvent.selectOptions(duration, "3");
     await userEvent.click(screen.getByRole("button", { name: "Registratie opslaan" }));
     await waitFor(() => expect(api.createWorkHourGroup).toHaveBeenCalledWith(expect.objectContaining({ duration_half_hours: 3, participants: [expect.objectContaining({ user_id: "u2" })] }), expect.any(Object)));
+    expect(api.createWorkHourGroup.mock.calls[0]?.[0].participants.every((participant: { participant_kind: string }) => participant.participant_kind === "live_user")).toBe(true);
   });
 
-  it("filters explicitly non-selectable users and external people while retaining selected display", async () => {
+  it("filters explicitly non-selectable users and never exposes external people in create pickers", async () => {
     api.listWorkHoursMeta.mockResolvedValueOnce({
       projects: [{ id: "p1", name: "Project A", is_active: true, is_archived: false }],
       posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }],
@@ -446,8 +443,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     await waitFor(() => expect(within(selector).getByRole("checkbox", { name: "Piet" })).toBeInTheDocument());
     expect(within(selector).queryByRole("checkbox", { name: "Admin" })).not.toBeInTheDocument();
     expect(within(selector).getByRole("checkbox", { name: "Piet" })).toBeInTheDocument();
-    expect(within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i })).toBeInTheDocument();
-    expect(within(selector).queryByRole("checkbox", { name: /Historische externe/i })).not.toBeInTheDocument();
+    expect(within(selector).queryByRole("checkbox", { name: /Externe Anna|Historische externe/i })).not.toBeInTheDocument();
   });
 
   it("links the mobile participant error to its focusable region and clears it after checkbox selection", async () => {
@@ -494,9 +490,9 @@ describe("UrenverantwoordingPage compact central management", () => {
       expect(trigger).toHaveAttribute("aria-expanded", "true");
       expect(within(selector).getByRole("dialog", { name: "Deelnemers kiezen" })).toBeInTheDocument();
       expect(within(selector).getByRole("group", { name: "WindWilly-personen" })).toBeInTheDocument();
-      expect(within(selector).getByRole("group", { name: "Externe personen" })).toBeInTheDocument();
-       expect(within(selector).getByRole("checkbox", { name: "Piet" })).toBeInTheDocument();
-      expect(within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i })).toBeInTheDocument();
+      expect(within(selector).getByRole("checkbox", { name: "Piet" })).toBeInTheDocument();
+      expect(within(selector).queryByRole("group", { name: "Externe personen" })).not.toBeInTheDocument();
+      expect(within(selector).queryByRole("checkbox", { name: /Externe Anna/i })).not.toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: /externe persoon.*aanmaken/i })).not.toBeInTheDocument();
   });
@@ -511,7 +507,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(within(internalGroup).getByRole("checkbox", { name: "Admin" })).toBeInTheDocument();
     expect(within(internalGroup).getByRole("checkbox", { name: "Piet" })).toBeInTheDocument();
     expect(within(internalGroup).queryByText("WindWilly-persoon")).not.toBeInTheDocument();
-    expect(within(selector).getByRole("checkbox", { name: "Externe Anna Externe persoon" })).toBeInTheDocument();
+    expect(within(selector).queryByRole("checkbox", { name: /Externe Anna/i })).not.toBeInTheDocument();
   });
 
   it("uses exact compact trigger labels without detached counts on desktop and mobile", async () => {
@@ -612,7 +608,7 @@ describe("UrenverantwoordingPage compact central management", () => {
 
     await user.click(trigger);
     const piet = within(selector).getByRole("checkbox", { name: "Piet" });
-    const lastCheckbox = within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i });
+    const lastCheckbox = within(selector).getByRole("checkbox", { name: "Piet" });
     await waitFor(() => expect(within(selector).getByRole("checkbox", { name: "Admin" })).toHaveFocus());
     await user.keyboard("{Shift>}{Tab}{/Shift}");
     expect(lastCheckbox).toHaveFocus();
@@ -659,19 +655,14 @@ describe("UrenverantwoordingPage compact central management", () => {
     const selector = mobile.getByRole("region", { name: "Deelnemers kiezen" });
     await openParticipantDisclosure(selector);
     expect(within(selector).getByRole("group", { name: "WindWilly-personen" })).toBeInTheDocument();
-    expect(within(selector).getByRole("group", { name: "Externe personen" })).toBeInTheDocument();
+    expect(within(selector).queryByRole("group", { name: "Externe personen" })).not.toBeInTheDocument();
     const admin = await within(selector).findByRole("checkbox", { name: "Admin" });
     expect(admin).toBeChecked();
     await userEvent.click(admin);
     const piet = within(selector).getByRole("checkbox", { name: "Piet" });
     await userEvent.click(piet);
     expect(piet).toBeChecked();
-    const anna = within(selector).getByRole("checkbox", { name: /Externe Anna Externe persoon/i });
-    await userEvent.click(anna);
-    expect(piet).toBeChecked();
-    expect(anna).toBeChecked();
-    await userEvent.click(anna);
-    expect(anna).not.toBeChecked();
+    expect(within(selector).queryByRole("checkbox", { name: /Externe Anna/i })).not.toBeInTheDocument();
     const project = mobile.getByLabelText("Project voor nieuwe registratie mobiel");
     await waitForSelectOption(project, "Project A");
     await userEvent.selectOptions(project, "p1");
@@ -682,7 +673,6 @@ describe("UrenverantwoordingPage compact central management", () => {
     await userEvent.click(mobile.getByRole("button", { name: "Mobiele registratie resetten" }));
     expect(admin).toBeChecked();
     expect(piet).not.toBeChecked();
-    expect(anna).not.toBeChecked();
   });
 
   it("renders static table headers and never sends former filter parameters", async () => {
