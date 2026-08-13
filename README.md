@@ -31,7 +31,7 @@ scheduled publication, multi-channel publishing, retries, notifications, and aud
 - `frontend/` React SPA for editorial dashboard
 - `worker/` scheduler loop for publication and retries
 - `docs/` architecture and operations notes
-  - `docs/urenregistratie.md` explains inline hour entry, central project/global post management, filters, CSV, record-level restore, and operational database/storage rollback
+  - `docs/urenregistratie.md` explains inline hour entry, central project/global post management, CSV, record-level restore, and operational database/storage rollback
 - `opsx/changes/` active change specifications
 
 ## Quick start (Docker)

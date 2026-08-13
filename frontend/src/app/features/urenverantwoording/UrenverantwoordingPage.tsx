@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CSSProperties, FormEvent, KeyboardEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentUser,
   listWorkHoursMeta,
@@ -176,19 +176,6 @@ function ParticipantSelectionControls({
   );
 }
 
-function ColumnFilter({ label, active, search, setSearch, onReset, children, searchable = true }: { label: string; active: boolean; search: string; setSearch: (value: string) => void; onReset: () => void; children: ReactNode; searchable?: boolean }) {
-  return (
-    <details className="work-hours-column-filter">
-      <summary aria-label={`Filter ${label}`} title={`Filter ${label}`}>{label}<span aria-hidden="true"> ▾</span>{active && <span className="filter-active-dot" aria-label="filter actief">●</span>}</summary>
-      <div className="work-hours-filter-menu">
-        {searchable && <label><span>Zoek {label.toLowerCase()}</span><input value={search} onChange={(event) => setSearch(event.target.value)} /></label>}
-        <div className="work-hours-filter-options">{children}</div>
-        <button type="button" onClick={onReset}>Filter {label.toLowerCase()} wissen</button>
-      </div>
-    </details>
-  );
-}
-
 function downloadBlob(blob: Blob, fileName: string) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -206,16 +193,10 @@ export function UrenverantwoordingPage() {
   const metaQuery = useQuery({ queryKey: ["work-hours-meta"], queryFn: listWorkHoursMeta });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<(typeof PAGE_SIZES)[number]>(25);
-  const [projectId, setProjectId] = useState("");
-  const [postId, setPostId] = useState("");
   const [newGroupProjectId, setNewGroupProjectId] = useState("");
   const [newGroupPostId, setNewGroupPostId] = useState("");
   const [editingGroupProjectId, setEditingGroupProjectId] = useState("");
   const [editingGroupPostId, setEditingGroupPostId] = useState("");
-  const [query, setQuery] = useState("");
-  const [workDateFilter, setWorkDateFilter] = useState("");
-  const [participantKind, setParticipantKind] = useState<"" | "live_user" | "external_person" | "historical_identity">("");
-  const [participantQuery, setParticipantQuery] = useState("");
   const [editingGroup, setEditingGroup] = useState<WorkHourGroup | null>(null);
   const [editDurationHalfHours, setEditDurationHalfHours] = useState("");
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<WorkHourGroup | null>(null);
@@ -229,29 +210,14 @@ export function UrenverantwoordingPage() {
   const [editParticipants, setEditParticipants] = useState<ParticipantEditDraft[]>([]);
   const [selectedExternalPersonId, setSelectedExternalPersonId] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
-  const [filterSearches, setFilterSearches] = useState({ project: "", post: "", person: "", type: "" });
-
-  const sharedFilters = useMemo(
-    () => ({
-      project_id: projectId || undefined,
-      post_id: postId || undefined,
-      work_date: workDateFilter || undefined,
-      participant_kind: participantKind || undefined,
-      participant_query: participantQuery || undefined,
-      query: query || undefined,
-       sort_key: "work_date" as const,
-       sort_direction: "desc" as const
-    }),
-    [projectId, postId, workDateFilter, participantKind, participantQuery, query]
-  );
-
   const listQueryParams = useMemo(
     () => ({
-      ...sharedFilters,
+      sort_key: "work_date" as const,
+      sort_direction: "desc" as const,
       page,
       page_size: pageSize
     }),
-    [sharedFilters, page, pageSize]
+    [page, pageSize]
   );
 
 
@@ -263,20 +229,11 @@ export function UrenverantwoordingPage() {
   const projectOptions = useMemo(() => (metaQuery.data?.projects ?? []).map((project) => ({ ...project, name: project.name ?? project.display_name ?? "", description: project.description ?? "", row_version: project.row_version ?? 1 })), [metaQuery.data?.projects]);
   const normalizedPosts = useMemo(() => (metaQuery.data?.posts ?? []).map((post) => ({ ...post, name: post.name ?? post.display_name ?? "", description: post.description ?? "", row_version: post.row_version ?? 1 })), [metaQuery.data?.posts]);
   const postOptions = normalizedPosts;
-  const filterProjectOptions = useMemo(() => {
-    const combined = [...projectOptions, ...(metaQuery.data?.filter_projects ?? []).map((item) => ({ ...item, name: item.name ?? item.display_name ?? "" }))];
-    return Array.from(new Map(combined.map((item) => [item.id, item])).values());
-  }, [projectOptions, metaQuery.data?.filter_projects]);
-  const filterPostOptions = useMemo(() => {
-    const combined = [...postOptions, ...(metaQuery.data?.filter_posts ?? []).map((item) => ({ ...item, name: item.name ?? item.display_name ?? "" }))];
-    return Array.from(new Map(combined.map((item) => [item.id, item])).values());
-  }, [postOptions, metaQuery.data?.filter_posts]);
   const externalPeople = useMemo(() => (metaQuery.data?.external_people ?? []).map((person) => ({ ...person, email: person.email ?? null, note: person.note ?? "", is_active: person.is_active ?? person.selectable ?? true, row_version: person.row_version ?? 1 })), [metaQuery.data?.external_people]);
   const activeExternalPeople = useMemo(() => externalPeople.filter((person) => person.selectable !== false && person.is_active && !person.deleted_at), [externalPeople]);
   const inactiveHistoricalExternalPeople = useMemo(() => externalPeople.filter((person) => !person.is_active || person.deleted_at), [externalPeople]);
   const historicalIdentities = useMemo(() => (metaQuery.data?.historical_identities ?? []).map((identity) => ({ ...identity, snapshot_display_label: identity.snapshot_display_label ?? identity.display_name ?? "Historische identiteit", snapshot_name: identity.snapshot_name ?? identity.display_name ?? "" })), [metaQuery.data?.historical_identities]);
   const eligibleUsers = useMemo(() => (metaQuery.data?.eligible_users ?? []).filter((user) => user.selectable !== false).map((user) => ({ ...user, username: user.username ?? user.display_name ?? "Gebruiker", full_name: user.full_name ?? user.display_name ?? null, email: user.email ?? null })), [metaQuery.data?.eligible_users]);
-  const filterParticipantNames = useMemo(() => Array.from(new Set([...(metaQuery.data?.filter_participants ?? []), ...eligibleUsers.map((item) => item.full_name || item.username), ...activeExternalPeople.map((item) => item.display_name)])), [metaQuery.data?.filter_participants, eligibleUsers, activeExternalPeople]);
   const currentUser = currentUserQuery.data;
   const isAdmin = Boolean(currentUser?.is_admin);
   const totalPages = Math.max(1, Math.ceil((groupsQuery.data?.total ?? 0) / pageSize));
@@ -570,7 +527,7 @@ export function UrenverantwoordingPage() {
 
 
   async function onExportCsv() {
-    const blob = await downloadWorkHoursCsv(sharedFilters);
+    const blob = await downloadWorkHoursCsv({ sort_key: "work_date", sort_direction: "desc" });
     downloadBlob(blob, "urenverantwoording.csv");
   }
 
@@ -583,20 +540,18 @@ export function UrenverantwoordingPage() {
         {errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}
 
         <section className="panel">
-        <div className="work-hours-overview-heading"><button type="button" onClick={() => { setProjectId(""); setPostId(""); setWorkDateFilter(""); setParticipantKind(""); setParticipantQuery(""); setQuery(""); setPage(1); }}>Alle filters wissen</button></div>
-        <div className="work-hours-toolbar"><button type="button" onClick={onExportCsv}>CSV export</button></div>
         <div className="table-wrap">
           <form ref={desktopCreateFormRef} id="work-hours-create-form" onSubmit={onCreateGroup} />
           <table>
             <thead>
               <tr>
-                <th><ColumnFilter label="Datum" active={Boolean(workDateFilter)} search="" setSearch={() => undefined} searchable={false} onReset={() => { setWorkDateFilter(""); setPage(1); }}><input aria-label="Kies filterdatum" type="date" value={workDateFilter} onChange={(event) => { setWorkDateFilter(event.target.value); setPage(1); }} />{(metaQuery.data?.filter_dates ?? []).map((value) => <button type="button" key={value} onClick={() => { setWorkDateFilter(value); setPage(1); }}>{formatAmsterdamDisplayDate(value)}</button>)}</ColumnFilter></th>
-                <th><ColumnFilter label="Persoon" active={Boolean(participantQuery || participantKind)} search={filterSearches.person} setSearch={(value) => setFilterSearches((current) => ({ ...current, person: value }))} onReset={() => { setParticipantQuery(""); setParticipantKind(""); setPage(1); }}>{filterParticipantNames.filter((name) => name.toLowerCase().includes(filterSearches.person.toLowerCase())).map((name) => <button type="button" key={name} aria-pressed={participantQuery === name} onClick={() => { setParticipantQuery(name); setPage(1); }}>{name}</button>)}</ColumnFilter></th>
-                <th><ColumnFilter label="Project" active={Boolean(projectId)} search={filterSearches.project} setSearch={(value) => setFilterSearches((current) => ({ ...current, project: value }))} onReset={() => { setProjectId(""); setPage(1); }}>{filterProjectOptions.filter((item) => item.name.toLowerCase().includes(filterSearches.project.toLowerCase())).map((item) => <button type="button" key={item.id} aria-pressed={projectId === item.id} onClick={() => { setProjectId(item.id); setPage(1); }}>{item.name}{item.selectable === false ? " · historisch" : ""}</button>)}</ColumnFilter></th>
-                <th><ColumnFilter label="Post" active={Boolean(postId)} search={filterSearches.post} setSearch={(value) => setFilterSearches((current) => ({ ...current, post: value }))} onReset={() => { setPostId(""); setPage(1); }}>{filterPostOptions.filter((item) => item.name.toLowerCase().includes(filterSearches.post.toLowerCase())).map((item) => <button type="button" key={item.id} aria-pressed={postId === item.id} onClick={() => { setPostId(item.id); setPage(1); }}>{item.name}{item.selectable === false ? " · historisch" : ""}</button>)}</ColumnFilter></th>
+                <th>Datum</th>
+                <th>Persoon</th>
+                <th>Project</th>
+                <th>Post</th>
                 <th>Uren</th>
-                <th><ColumnFilter label="Zoeken" active={Boolean(query)} search={query} setSearch={(value) => { setQuery(value); setPage(1); }} onReset={() => { setQuery(""); setPage(1); }}><span className="muted">Zoekt in beschrijving, project en post.</span></ColumnFilter></th>
-                <th><ColumnFilter label="Type" active={Boolean(participantKind)} search={filterSearches.type} setSearch={(value) => setFilterSearches((current) => ({ ...current, type: value }))} onReset={() => { setParticipantKind(""); setPage(1); }}>{[["live_user", "WindWilly-gebruiker"], ["external_person", "Extern"], ["historical_identity", "Historisch"]].filter(([, label]) => label.toLowerCase().includes(filterSearches.type.toLowerCase())).map(([value, label]) => <button type="button" key={value} aria-pressed={participantKind === value} onClick={() => { setParticipantKind(value as typeof participantKind); setPage(1); }}>{label}</button>)}</ColumnFilter></th>
+                <th>Beschrijving</th>
+                <th>Type</th>
               </tr>
             </thead>
             <tbody>
@@ -659,6 +614,7 @@ export function UrenverantwoordingPage() {
           ))}
         </div>
         <footer className="work-hours-pagination" aria-label="Paginering urenregistraties">
+          <button type="button" onClick={onExportCsv}>CSV export</button>
           <label>Per pagina <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
           <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Vorige</button>
           <span aria-live="polite">Pagina {groupsQuery.data?.page ?? page} van {totalPages}</span>
@@ -735,7 +691,7 @@ export function UrenverantwoordingPage() {
           <dl>
             {(groupsQuery.data?.project_totals ?? []).map((project) => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatPersonHours(project.person_hours)} persoon-uren</dd></div>)}
           </dl>
-        ) : <p>Geen projecttotalen voor deze filters.</p>}
+        ) : <p>Geen projecttotalen.</p>}
       </section>
       </div>
     </section>

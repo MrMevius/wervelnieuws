@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "107",
+                "date": "2026-08-13",
+                "title": "Urenregistratie toont een rustiger overzicht",
+                "highlights": [
+                    "De urenlijst heeft nu vaste kolomkoppen en toont de nieuwste werkdatum eerst, zonder filtermenu's.",
+                    "CSV export staat direct bij de paginering onder de lijst en de invoerrij op desktop leest rustiger door gelijk hoge velden.",
+                ],
+            },
+            {
                 "iteration": "106",
                 "date": "2026-08-13",
                 "title": "Urenregistratie benut ruimte beter",

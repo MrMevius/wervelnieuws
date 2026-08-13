@@ -226,7 +226,7 @@ describe("UrenverantwoordingPage compact central management", () => {
 
     const layout = document.querySelector(".work-hours-page-layout");
     const content = document.querySelector(".work-hours-page-content");
-    const listPanel = screen.getByRole("button", { name: "Alle filters wissen" }).closest<HTMLElement>(".panel");
+    const listPanel = document.querySelector<HTMLElement>(".work-hours-page-content .panel");
 
     expect(layout?.children).toHaveLength(2);
     expect(layout?.firstElementChild).toBe(content);
@@ -247,7 +247,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(content?.contains(totals)).toBe(false);
   });
 
-  it("keeps the default date-descending request while hiding sort controls and using one responsive pagination footer", async () => {
+  it("keeps the default date-descending request and one responsive pagination footer", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Urenregistratie" });
 
@@ -259,7 +259,10 @@ describe("UrenverantwoordingPage compact central management", () => {
     const mobileCards = document.querySelector(".work-hours-mobile-cards")!;
     const pagination = screen.getByRole("contentinfo", { name: "Paginering urenregistraties" });
     expect(screen.getByRole("region", { name: "Projecttotalen" }).parentElement).toHaveClass("work-hours-page-layout");
-    expect(screen.getByRole("button", { name: "CSV export" }).closest(".uren-module-page")).toBeInTheDocument();
+    expect(within(pagination).getByRole("button", { name: "CSV export" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "CSV export" })).toHaveLength(1);
+    const paginationText = pagination.textContent ?? "";
+    expect(paginationText.indexOf("CSV export")).toBeLessThan(paginationText.indexOf("Per pagina"));
     expect(table.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(mobileCards.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByRole("contentinfo", { name: "Paginering urenregistraties" })).toHaveLength(1);
@@ -288,7 +291,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(next).toBeEnabled();
 
     await userEvent.click(next);
-    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 25 })));
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith({ page: 2, page_size: 25, sort_key: "work_date", sort_direction: "desc" }));
     expect(within(pagination).getByText("Pagina 2 van 3")).toBeInTheDocument();
     expect(previous).toBeEnabled();
 
@@ -301,7 +304,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(within(pagination).getByText("Pagina 1 van 2")).toBeInTheDocument();
 
     await userEvent.click(next);
-    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 50 })));
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith({ page: 2, page_size: 50, sort_key: "work_date", sort_direction: "desc" }));
     expect(within(pagination).getByText("Pagina 2 van 2")).toBeInTheDocument();
     expect(next).toBeDisabled();
   });
@@ -311,7 +314,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     renderPage();
     const totals = screen.getByRole("region", { name: "Projecttotalen" });
     expect(within(totals).getByRole("status")).toHaveTextContent("Projecttotalen laden…");
-    expect(within(totals).queryByText("Geen projecttotalen voor deze filters.")).not.toBeInTheDocument();
+    expect(within(totals).queryByText("Geen projecttotalen.")).not.toBeInTheDocument();
   });
 
   it("shows an error state instead of the empty project-total state when the request fails", async () => {
@@ -319,26 +322,25 @@ describe("UrenverantwoordingPage compact central management", () => {
     renderPage();
     const totals = await screen.findByRole("region", { name: "Projecttotalen" });
     expect(await within(totals).findByRole("alert")).toHaveTextContent("Projecttotalen konden niet worden geladen.");
-    expect(within(totals).queryByText("Geen projecttotalen voor deze filters.")).not.toBeInTheDocument();
+    expect(within(totals).queryByText("Geen projecttotalen.")).not.toBeInTheDocument();
   });
 
   it("shows an accessible empty project-total state after a successful empty response", async () => {
     renderPage();
     const totals = screen.getByRole("region", { name: "Projecttotalen" });
-    expect(await within(totals).findByText("Geen projecttotalen voor deze filters.")).toBeInTheDocument();
+    expect(await within(totals).findByText("Geen projecttotalen.")).toBeInTheDocument();
   });
 
   it("treats missing optional project totals as empty after an otherwise successful response", async () => {
     api.listWorkHourGroups.mockResolvedValueOnce({ ...emptyList, project_totals: undefined });
     renderPage();
     const totals = screen.getByRole("region", { name: "Projecttotalen" });
-    expect(await within(totals).findByText("Geen projecttotalen voor deze filters.")).toBeInTheDocument();
+    expect(await within(totals).findByText("Geen projecttotalen.")).toBeInTheDocument();
   });
 
-  it("uses the visibility-filtered project contracts for registration and project filters", async () => {
+  it("uses the registration project contract without rendering filter controls", async () => {
     api.listWorkHoursMeta.mockResolvedValueOnce({
       projects: [{ id: "p-visible", name: "Beschikbaar project", is_active: true, is_archived: false }],
-      filter_projects: [{ id: "p-visible", name: "Beschikbaar project", selectable: true }],
       posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }],
       external_people: [], historical_identities: [], eligible_users: [], is_admin: true
     });
@@ -348,10 +350,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     await waitForSelectOption(registrationProject, "Beschikbaar project");
     expect(within(registrationProject).queryByRole("option", { name: "Verborgen urenproject" })).not.toBeInTheDocument();
 
-    const projectFilter = (await screen.findByLabelText("Filter Project")).closest("details")!;
-    await userEvent.click(within(projectFilter).getByLabelText("Filter Project"));
-    expect(within(projectFilter).getByRole("button", { name: "Beschikbaar project" })).toBeInTheDocument();
-    expect(within(projectFilter).queryByRole("button", { name: /Verborgen urenproject/ })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/Filter /)).not.toBeInTheDocument();
   });
 
   it("creates a group with multiple participants without a create modal", async () => {
@@ -686,16 +685,13 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(anna).not.toBeChecked();
   });
 
-  it("searches/selects/resets header filters and resets paging to one", async () => {
+  it("renders static table headers and never sends former filter parameters", async () => {
     renderPage();
-    const projectFilter = (await screen.findByLabelText("Filter Project")).closest("details")!;
-    await userEvent.click(within(projectFilter).getByLabelText("Filter Project"));
-    await userEvent.type(within(projectFilter).getByLabelText("Zoek project"), "Project");
-    await userEvent.click(within(projectFilter).getByRole("button", { name: "Project A" }));
-    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ project_id: "p1", page: 1 })));
-    await userEvent.click(within(projectFilter).getByRole("button", { name: "Filter project wissen" }));
-    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.not.objectContaining({ project_id: "p1" })));
-    expect(screen.getByRole("button", { name: "Alle filters wissen" })).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Urenregistratie" });
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith({ page: 1, page_size: 25, sort_key: "work_date", sort_direction: "desc" }));
+    expect(screen.queryByLabelText(/Filter /)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Alle filters wissen" })).not.toBeInTheDocument();
+    expect(screen.queryByText("filter actief")).not.toBeInTheDocument();
   });
 
   it("keeps valid inline values and links Dutch feedback to invalid fields", async () => {
@@ -728,33 +724,6 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(post).toHaveAttribute("aria-describedby", "hours-create-post-error");
     await userEvent.selectOptions(post, "post1");
     expect(post).not.toHaveAttribute("aria-describedby");
-  });
-
-  it("offers historical filter facets without hours administration panels", async () => {
-    api.listWorkHoursMeta.mockResolvedValue({
-      projects: [{ id: "p1", name: "Project A", is_active: true, is_archived: false }],
-      posts: [{ id: "post1", name: "Post A", is_active: true, is_archived: false }], external_people: [], historical_identities: [], eligible_users: [], is_admin: true,
-      filter_projects: [{ id: "p-old", name: "Historisch project", selectable: false }],
-      filter_posts: [{ id: "post-old", name: "Historische post", selectable: false }], filter_participants: ["Oude deelnemer"], filter_dates: ["2025-12-31"]
-    });
-    renderPage();
-    const projectFilter = (await screen.findByLabelText("Filter Project")).closest("details")!;
-    await userEvent.click(within(projectFilter).getByLabelText("Filter Project"));
-    await userEvent.click(within(projectFilter).getByRole("button", { name: "Historisch project · historisch" }));
-    const postFilter = screen.getByLabelText("Filter Post").closest("details")!;
-    await userEvent.click(within(postFilter).getByLabelText("Filter Post"));
-    await userEvent.click(within(postFilter).getByRole("button", { name: "Historische post · historisch" }));
-    const personFilter = screen.getByLabelText("Filter Persoon").closest("details")!;
-    await userEvent.click(within(personFilter).getByLabelText("Filter Persoon"));
-    await userEvent.click(within(personFilter).getByRole("button", { name: "Oude deelnemer" }));
-    const dateFilter = screen.getByLabelText("Filter Datum").closest("details")!;
-    await userEvent.click(within(dateFilter).getByLabelText("Filter Datum"));
-    await userEvent.click(within(dateFilter).getByRole("button", { name: "31-12-2025" }));
-    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ project_id: "p-old", post_id: "post-old", participant_query: "Oude deelnemer", work_date: "2025-12-31" })));
-    expect(screen.queryByRole("heading", { name: "Urenbeheer" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Historie en identiteiten" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Audit" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Verwijderde registraties")).not.toBeInTheDocument();
   });
 
   it("does not expose hours JSON backup or import controls", async () => {
@@ -799,15 +768,12 @@ describe("UrenverantwoordingPage compact central management", () => {
     await waitFor(() => expect(api.updateWorkHourGroup).toHaveBeenCalledWith("g-existing", expect.objectContaining({ duration_half_hours: 16 })));
   });
 
-  it("keeps list and CSV on the identical canonical filter contract", async () => {
+  it("exports the complete date-descending set without former filter parameters", async () => {
     api.downloadWorkHoursCsv.mockResolvedValue(new Blob(["csv"]));
     renderPage();
-    const typeFilter = (await screen.findByLabelText("Filter Type")).closest("details")!;
-    await userEvent.click(within(typeFilter).getByLabelText("Filter Type"));
-    await userEvent.click(within(typeFilter).getByRole("button", { name: "Extern" }));
-    await userEvent.click(screen.getByRole("button", { name: "CSV export" }));
-    await waitFor(() => expect(api.downloadWorkHoursCsv).toHaveBeenCalledWith(expect.objectContaining({ participant_kind: "external_person", sort_key: "work_date", sort_direction: "desc" })));
-    expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ participant_kind: "external_person" }));
+    const pagination = await screen.findByRole("contentinfo", { name: "Paginering urenregistraties" });
+    await userEvent.click(within(pagination).getByRole("button", { name: "CSV export" }));
+    await waitFor(() => expect(api.downloadWorkHoursCsv).toHaveBeenCalledWith({ sort_key: "work_date", sort_direction: "desc" }));
   });
 
   it("contains no project or post masterdata controls on the hours page", async () => {

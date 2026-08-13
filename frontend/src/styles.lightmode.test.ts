@@ -16,8 +16,12 @@ describe("light-mode control tokens", () => {
     expect(css).toMatch(/\.channel-tab\.active \{[\s\S]*?background: var\(--nav-active-bg\);[\s\S]*?color: var\(--nav-active-fg\);/);
   });
 
-  it("keeps hours totals static before the shell's narrow breakpoint and pagination right-aligned on mobile", () => {
+  it("keeps hours totals static before the shell's narrow breakpoint and pagination left-aligned on mobile", () => {
     expect(css).toMatch(/@media \(max-width: 920px\) \{[\s\S]*?\.work-hours-page-layout \{ grid-template-columns: minmax\(0, 1fr\); \}[\s\S]*?\.work-hours-project-totals \{ order: -1; position: static;/);
-    expect(css).toMatch(/@media \(max-width: 560px\) \{[\s\S]*?\.uren-module-page \.table-wrap \{ display: none; \}[\s\S]*?\.work-hours-pagination \{ justify-content: flex-end; \}/);
+    expect(css).toMatch(/\.work-hours-create-row input, \.work-hours-create-row select \{[\s\S]*?box-sizing: border-box;[\s\S]*?height: 34px;/);
+    expect(css).toMatch(/@media \(min-width: 921px\) \{\s*\.work-hours-create-row \.work-hours-participant-trigger \{[^}]*min-height: 34px;[^}]*height: 34px;/);
+    expect(css).not.toMatch(/@media \(max-width: 920px\) \{[\s\S]*?\.work-hours-create-row \.work-hours-participant-trigger \{[^}]*(?:min-)?height: 34px;/);
+    expect(css).not.toMatch(/\.work-hours-create-row \.work-hours-participant-trigger \{[^}]*(?:min-)?height: 30px;/);
+    expect(css).toMatch(/@media \(max-width: 560px\) \{[\s\S]*?\.uren-module-page \.table-wrap \{ display: none; \}[\s\S]*?\.work-hours-pagination \{ justify-content: flex-start; \}/);
   });
 });

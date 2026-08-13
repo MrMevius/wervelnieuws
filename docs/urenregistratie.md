@@ -1,12 +1,13 @@
 # Urenregistratie beheren
 
-## Registreren en filteren
+## Registreren en overzicht houden
 
 - Open **Urenregistratie** en gebruik de permanent zichtbare bovenste tabelrij.
 - Kies datum, project, globale post, duur en omschrijving. Datums die de app toont gebruiken `dd-mm-jjjj`; de datumkiezer blijft de eigen native browserbediening. Kies de duur in stappen van een half uur, van 0,5 tot en met 8 uur. Open **Deelnemer(s) ▾**; zodra je personen kiest wordt dit **n deelnemer(s) ▾**. Deze ene knop bevat de teller; er is geen los label of losse teller en er verschijnen geen gekozen namen of typen wanneer de kiezer gesloten is. De zwevende kiezer toont alle selecteerbare **WindWilly-personen** en **Externe personen** direct als keuzevakjes; alleen daar blijven aangevinkte namen zichtbaar. Onder de kop **WindWilly-personen** staan interne personen alleen met hun naam; externe opties behouden hun eigen typeaanduiding. Sluit hem met Escape, een tik/klik buiten de kiezer of de trigger; je keuze blijft behouden.
-- Gebruik de filters in de kolomkoppen om waarden te zoeken, te selecteren of per kolom te wissen. **Alle filters wissen** herstelt het actieve ongefilterde overzicht.
-- Rechtsboven naast de urenlijst staan de totale persoon-uren per project, voor alle deelnemers. Op ruime schermen blijven deze projecttotalen zichtbaar tijdens scrollen; op smalle schermen staan ze statisch boven de urenbediening. De totalen gebruiken dezelfde filters als de lijst, omvatten alle passende actieve registraties en zijn niet beperkt tot de zichtbare pagina. CSV exporteert eveneens alle treffers.
-- De lijst staat altijd met de nieuwste werkdatum eerst. Er is geen handmatige sorteer- of volgordekeuze. Kies **Per pagina** en gebruik vorige/volgende direct onder de tabel.
+- De kolomkoppen zijn vaste labels: er zijn geen kolomfilters of knop **Alle filters wissen**.
+- Rechtsboven naast de urenlijst staan de totale persoon-uren per project, voor alle deelnemers. Op ruime schermen blijven deze projecttotalen zichtbaar tijdens scrollen; op smalle schermen staan ze statisch boven de urenbediening. De totalen omvatten alle actieve registraties en zijn niet beperkt tot de zichtbare pagina. CSV exporteert eveneens de volledige set.
+- De lijst staat altijd met de nieuwste werkdatum eerst. Er is geen handmatige sorteer- of volgordekeuze. Gebruik **CSV export** en kies **Per pagina** direct onder de tabel; vorige en volgende staan daar ook.
+- Op desktop hebben datum, project, post, duur, omschrijving en de deelnemerskiezer in de bovenste invoerrij dezelfde hoogte. De deelnemerskiezer blijft op dezelfde manier met muis en toetsenbord bruikbaar.
 
 ## Centrale masterdata
 

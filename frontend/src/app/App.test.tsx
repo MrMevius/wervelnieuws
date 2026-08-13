@@ -672,9 +672,18 @@ const mockApi = vi.hoisted(() => ({
   getAboutContent: vi.fn().mockResolvedValue({
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
-    developed_by: "Energiek Daarle",
-     changelog: [
-       {
+      developed_by: "Energiek Daarle",
+      changelog: [
+        {
+          iteration: "107",
+          date: "2026-08-13",
+          title: "Urenregistratie toont een rustiger overzicht",
+          highlights: [
+            "De urenlijst heeft nu vaste kolomkoppen en toont de nieuwste werkdatum eerst, zonder filtermenu's.",
+            "CSV export staat direct bij de paginering onder de lijst en de invoerrij op desktop leest rustiger door gelijk hoge velden."
+          ]
+        },
+        {
          iteration: "106",
          date: "2026-08-13",
          title: "Urenregistratie benut ruimte beter",
@@ -1267,10 +1276,11 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
       expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
     });
-    expect(screen.getByText(/De urenlijst staat standaard op nieuwste datum eerst; de compacte paginering staat direct onder de tabel/i)).toBeInTheDocument();
+    expect(screen.getByText(/CSV export staat direct bij de paginering onder de lijst/i)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
       expect(headings).toEqual([
+       "Iteratie 107 - Urenregistratie toont een rustiger overzicht",
        "Iteratie 106 - Urenregistratie benut ruimte beter",
        "Iteratie 105 - Urenregistratie is directer en overzichtelijker",
        "Iteratie 104 - Urenregistratie toont totalen per project",
