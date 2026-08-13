@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "106",
+                "date": "2026-08-13",
+                "title": "Urenregistratie benut ruimte beter",
+                "highlights": [
+                    "Projecttotalen staan naast de urenlijst en blijven op ruime schermen zichtbaar tijdens scrollen.",
+                    "De urenlijst staat standaard op nieuwste datum eerst; de compacte paginering staat direct onder de tabel.",
+                ],
+            },
+            {
                 "iteration": "105",
                 "date": "2026-08-12",
                 "title": "Urenregistratie is directer en overzichtelijker",

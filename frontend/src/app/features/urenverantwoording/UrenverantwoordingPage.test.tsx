@@ -220,7 +220,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(screen.queryByText("Persoon-uren")).not.toBeInTheDocument();
   });
 
-  it("keeps the operational list panel inside the hours content grid column", async () => {
+  it("keeps desktop content first for the full-width table column and marks totals as its sibling", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Urenregistratie" });
 
@@ -229,9 +229,81 @@ describe("UrenverantwoordingPage compact central management", () => {
     const listPanel = screen.getByRole("button", { name: "Alle filters wissen" }).closest<HTMLElement>(".panel");
 
     expect(layout?.children).toHaveLength(2);
-    expect(layout?.firstElementChild).toHaveClass("work-hours-project-totals");
-    expect(layout?.lastElementChild).toBe(content);
+    expect(layout?.firstElementChild).toBe(content);
+    expect(layout?.lastElementChild).toHaveClass("work-hours-project-totals");
     expect(content).toContainElement(listPanel);
+  });
+
+  it("keeps project totals structurally separate from the hours content for mobile-first responsive ordering", async () => {
+    renderPage();
+    const totals = await screen.findByRole("region", { name: "Projecttotalen" });
+    const content = document.querySelector<HTMLElement>(".work-hours-page-content");
+    const layout = document.querySelector<HTMLElement>(".work-hours-page-layout");
+
+    expect(layout).toContainElement(content);
+    expect(layout).toContainElement(totals);
+    expect(content?.parentElement).toBe(layout);
+    expect(totals.parentElement).toBe(layout);
+    expect(content?.contains(totals)).toBe(false);
+  });
+
+  it("keeps the default date-descending request while hiding sort controls and using one responsive pagination footer", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Urenregistratie" });
+
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenCalledWith(expect.objectContaining({ sort_key: "work_date", sort_direction: "desc" })));
+    expect(screen.queryByText("Sorteer")).not.toBeInTheDocument();
+    expect(screen.queryByText("Volgorde")).not.toBeInTheDocument();
+
+    const table = document.querySelector(".uren-module-page table")!;
+    const mobileCards = document.querySelector(".work-hours-mobile-cards")!;
+    const pagination = screen.getByRole("contentinfo", { name: "Paginering urenregistraties" });
+    expect(screen.getByRole("region", { name: "Projecttotalen" }).parentElement).toHaveClass("work-hours-page-layout");
+    expect(screen.getByRole("button", { name: "CSV export" }).closest(".uren-module-page")).toBeInTheDocument();
+    expect(table.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(mobileCards.compareDocumentPosition(pagination) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByRole("contentinfo", { name: "Paginering urenregistraties" })).toHaveLength(1);
+    expect(within(pagination).getByLabelText("Per pagina")).toHaveValue("25");
+    expect(within(pagination).getByRole("button", { name: "Vorige" })).toBeDisabled();
+    expect(within(pagination).getByText("Pagina 1 van 1")).toBeInTheDocument();
+    expect(within(pagination).getByRole("button", { name: "Volgende" })).toBeDisabled();
+  });
+
+  it("resets page on page-size changes and requests next and previous pages with accurate status and disabled states", async () => {
+    api.listWorkHourGroups.mockImplementation(async ({ page, page_size }) => ({
+      ...emptyList,
+      page,
+      page_size,
+      total: 75
+    }));
+    renderPage();
+    const pagination = await screen.findByRole("contentinfo", { name: "Paginering urenregistraties" });
+    const pageSize = within(pagination).getByLabelText("Per pagina");
+    const previous = within(pagination).getByRole("button", { name: "Vorige" });
+    const next = within(pagination).getByRole("button", { name: "Volgende" });
+
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 25 })));
+    expect(within(pagination).getByText("Pagina 1 van 3")).toBeInTheDocument();
+    expect(previous).toBeDisabled();
+    expect(next).toBeEnabled();
+
+    await userEvent.click(next);
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 25 })));
+    expect(within(pagination).getByText("Pagina 2 van 3")).toBeInTheDocument();
+    expect(previous).toBeEnabled();
+
+    await userEvent.click(previous);
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 25 })));
+    expect(previous).toBeDisabled();
+
+    await userEvent.selectOptions(pageSize, "50");
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, page_size: 50 })));
+    expect(within(pagination).getByText("Pagina 1 van 2")).toBeInTheDocument();
+
+    await userEvent.click(next);
+    await waitFor(() => expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, page_size: 50 })));
+    expect(within(pagination).getByText("Pagina 2 van 2")).toBeInTheDocument();
+    expect(next).toBeDisabled();
   });
 
   it("shows a loading state instead of the empty project-total state while the request is pending", () => {

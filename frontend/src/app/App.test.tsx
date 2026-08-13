@@ -673,8 +673,17 @@ const mockApi = vi.hoisted(() => ({
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
     developed_by: "Energiek Daarle",
-    changelog: [
-      {
+     changelog: [
+       {
+         iteration: "106",
+         date: "2026-08-13",
+         title: "Urenregistratie benut ruimte beter",
+         highlights: [
+           "Projecttotalen staan naast de urenlijst en blijven op ruime schermen zichtbaar tijdens scrollen.",
+           "De urenlijst staat standaard op nieuwste datum eerst; de compacte paginering staat direct onder de tabel."
+         ]
+       },
+       {
         iteration: "105",
         date: "2026-08-12",
         title: "Urenregistratie is directer en overzichtelijker",
@@ -1258,10 +1267,11 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
       expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
     });
-    expect(screen.getByText(/Open Deelnemer\(s\) om deelnemers direct in één zwevende kiezer te kiezen; na selectie toont dezelfde knop het aantal/i)).toBeInTheDocument();
+    expect(screen.getByText(/De urenlijst staat standaard op nieuwste datum eerst; de compacte paginering staat direct onder de tabel/i)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
       expect(headings).toEqual([
+       "Iteratie 106 - Urenregistratie benut ruimte beter",
        "Iteratie 105 - Urenregistratie is directer en overzichtelijker",
        "Iteratie 104 - Urenregistratie toont totalen per project",
       "Iteratie 103 - Urenhistorie staat overzichtelijk bij Admin",

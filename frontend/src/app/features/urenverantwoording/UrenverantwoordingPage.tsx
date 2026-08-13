@@ -12,8 +12,7 @@ import {
   restoreWorkExternalPerson,
   downloadWorkHoursCsv,
   type WorkHourGroup,
-  type WorkHourParticipant,
-  type WorkHourSortKey
+  type WorkHourParticipant
 } from "../../../lib/api/client";
 import { formatAmsterdamDateInput, formatAmsterdamDisplayDate } from "../../../lib/datetime";
 import { AccessibleModal } from "./AccessibleModal";
@@ -217,8 +216,6 @@ export function UrenverantwoordingPage() {
   const [workDateFilter, setWorkDateFilter] = useState("");
   const [participantKind, setParticipantKind] = useState<"" | "live_user" | "external_person" | "historical_identity">("");
   const [participantQuery, setParticipantQuery] = useState("");
-  const [sortKey, setSortKey] = useState<WorkHourSortKey>("work_date");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [editingGroup, setEditingGroup] = useState<WorkHourGroup | null>(null);
   const [editDurationHalfHours, setEditDurationHalfHours] = useState("");
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<WorkHourGroup | null>(null);
@@ -242,10 +239,10 @@ export function UrenverantwoordingPage() {
       participant_kind: participantKind || undefined,
       participant_query: participantQuery || undefined,
       query: query || undefined,
-      sort_key: sortKey,
-      sort_direction: sortDirection
+       sort_key: "work_date" as const,
+       sort_direction: "desc" as const
     }),
-    [projectId, postId, workDateFilter, participantKind, participantQuery, query, sortKey, sortDirection]
+    [projectId, postId, workDateFilter, participantKind, participantQuery, query]
   );
 
   const listQueryParams = useMemo(
@@ -581,30 +578,13 @@ export function UrenverantwoordingPage() {
     <section className="main-dashboard uren-module-page">
       <h1 className="work-hours-page-title">Urenregistratie</h1>
       <div className="work-hours-page-layout">
-          <section className="work-hours-project-totals" aria-labelledby="work-hours-project-totals-title">
-          <h2 id="work-hours-project-totals-title">Projecttotalen</h2>
-          {groupsQuery.isPending ? (
-            <p role="status">Projecttotalen laden…</p>
-          ) : groupsQuery.isError ? (
-            <p role="alert">Projecttotalen konden niet worden geladen.</p>
-          ) : (groupsQuery.data?.project_totals ?? []).length > 0 ? (
-            <dl>
-              {(groupsQuery.data?.project_totals ?? []).map((project) => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatPersonHours(project.person_hours)} persoon-uren</dd></div>)}
-            </dl>
-          ) : <p>Geen projecttotalen voor deze filters.</p>}
-          </section>
       <div className="work-hours-page-content">
         {statusMessage && <p className="notice success" role="status" aria-live="polite">{statusMessage}</p>}
         {errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}
 
         <section className="panel">
         <div className="work-hours-overview-heading"><button type="button" onClick={() => { setProjectId(""); setPostId(""); setWorkDateFilter(""); setParticipantKind(""); setParticipantQuery(""); setQuery(""); setPage(1); }}>Alle filters wissen</button></div>
-        <div className="work-hours-toolbar"><label>Sorteer <select value={sortKey} onChange={(event) => { setSortKey(event.target.value as WorkHourSortKey); setPage(1); }}><option value="work_date">Datum</option><option value="name_person">Naam</option><option value="type_person">Type</option><option value="project">Project</option><option value="post">Post</option><option value="duration_half_hours">Uren</option></select></label><label>Volgorde <select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as "asc" | "desc"); setPage(1); }}><option value="desc">Aflopend</option><option value="asc">Oplopend</option></select></label><label>Per pagina <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button type="button" onClick={onExportCsv}>CSV export</button></div>
-        <div className="section-actions">
-          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Vorige</button>
-          <span>Pagina {groupsQuery.data?.page ?? page} van {totalPages}</span>
-          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Volgende</button>
-        </div>
+        <div className="work-hours-toolbar"><button type="button" onClick={onExportCsv}>CSV export</button></div>
         <div className="table-wrap">
           <form ref={desktopCreateFormRef} id="work-hours-create-form" onSubmit={onCreateGroup} />
           <table>
@@ -678,6 +658,12 @@ export function UrenverantwoordingPage() {
             </article>
           ))}
         </div>
+        <footer className="work-hours-pagination" aria-label="Paginering urenregistraties">
+          <label>Per pagina <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
+          <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Vorige</button>
+          <span aria-live="polite">Pagina {groupsQuery.data?.page ?? page} van {totalPages}</span>
+          <button type="button" onClick={() => setPage((current) => Math.min(totalPages, current + 1))} disabled={page >= totalPages}>Volgende</button>
+        </footer>
         </section>
 
       {editingGroup && (
@@ -739,6 +725,18 @@ export function UrenverantwoordingPage() {
         </AccessibleModal>
       )}
       </div>
+      <section className="work-hours-project-totals" aria-labelledby="work-hours-project-totals-title">
+        <h2 id="work-hours-project-totals-title">Projecttotalen</h2>
+        {groupsQuery.isPending ? (
+          <p role="status">Projecttotalen laden…</p>
+        ) : groupsQuery.isError ? (
+          <p role="alert">Projecttotalen konden niet worden geladen.</p>
+        ) : (groupsQuery.data?.project_totals ?? []).length > 0 ? (
+          <dl>
+            {(groupsQuery.data?.project_totals ?? []).map((project) => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatPersonHours(project.person_hours)} persoon-uren</dd></div>)}
+          </dl>
+        ) : <p>Geen projecttotalen voor deze filters.</p>}
+      </section>
       </div>
     </section>
   );

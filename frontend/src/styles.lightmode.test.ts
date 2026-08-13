@@ -15,4 +15,9 @@ describe("light-mode control tokens", () => {
     expect(css).toMatch(/\.board-attachment-action \{[\s\S]*?background: var\(--control-surface-muted\);[\s\S]*?color: var\(--control-text\);/);
     expect(css).toMatch(/\.channel-tab\.active \{[\s\S]*?background: var\(--nav-active-bg\);[\s\S]*?color: var\(--nav-active-fg\);/);
   });
+
+  it("keeps hours totals static before the shell's narrow breakpoint and pagination right-aligned on mobile", () => {
+    expect(css).toMatch(/@media \(max-width: 920px\) \{[\s\S]*?\.work-hours-page-layout \{ grid-template-columns: minmax\(0, 1fr\); \}[\s\S]*?\.work-hours-project-totals \{ order: -1; position: static;/);
+    expect(css).toMatch(/@media \(max-width: 560px\) \{[\s\S]*?\.uren-module-page \.table-wrap \{ display: none; \}[\s\S]*?\.work-hours-pagination \{ justify-content: flex-end; \}/);
+  });
 });
