@@ -157,13 +157,13 @@ Use the reproducible release, runtime lifecycle, observation and rollback proced
 ## Release-readiness checklist
 
 - `/mnt/wervelwind/database/config/.env` values verified (secrets, endpoints, channel credentials).
-- Preflight the release source before any migration: `docker build --no-cache --target test -f backend/Dockerfile -t wervelnieuws-backend-test:preflight .` followed by `docker run --rm --entrypoint sh wervelnieuws-backend-test:preflight -lc 'python scripts/release_schema_preflight.py'`. It must report `Release schema preflight passed: 20260811_0030`; it validates one expected Alembic head and upgrades only a temporary SQLite database before checking both project-visibility columns.
-- Record the source commit and dirty-state manifest (or clean state), SHA-256 digests of `backend/Dockerfile` and rendered `docker compose config`, UTC build time, and the IDs/digests of the runtime and test images. Only images built in that same recorded source run are release-valid.
-- Build separate artifacts from that source: `docker build --no-cache --target runtime -f backend/Dockerfile -t wervelnieuws-backend-runtime:preflight .` and the test-target command above. The runtime target intentionally excludes `pytest` and all dev dependencies.
-- Run isolated backend tests from the fresh test image; do not install dependencies in a runtime container:
-  `docker run --rm wervelnieuws-backend-test:preflight sh -lc 'pytest -q tests/test_release_schema_preflight.py tests/test_project_visibility_migration.py tests/test_audio_migration_revision.py tests/test_admin_api.py tests/test_boards_api.py tests/test_meta_and_me.py'`. The test target includes the repository documentation read by the selected documentation regression test; its migration tests do not require a Git checkout.
+- Run repository tests from the clean source checkout, never from a runtime image: `cd backend && .venv/bin/pytest -q tests/test_release_schema_preflight.py tests/test_project_visibility_migration.py tests/test_docker_image_isolation.py tests/test_boards_api.py`.
+- Build release images only from a full immutable Git commit SHA, not from a developer worktree: `cd backend && .venv/bin/python scripts/build_isolated_release_artifact.py <full-commit-sha>`. The script rejects movable refs, exports the commit with `git archive` to a temporary context, builds the backend, worker and frontend runtime targets there, and reports commit, UTC build time and image IDs. A dirty worktree is therefore never a build input.
+- `.dockerignore` excludes `.env`, local data/database/storage/config directories, virtual environments, dependency caches, tests, development metadata and generated output before Docker receives the context. Runtime images only copy their explicit production inputs; no test stage is available.
+- After a build, assert each runtime filesystem is clean without starting it: `cd backend && .venv/bin/python scripts/verify_docker_image_isolation.py wervelnieuws-backend:<commit> wervelnieuws-worker:<commit> wervelnieuws-frontend:<commit>`. This blocks artifacts containing excluded local state, tests, caches or development metadata.
+- Record the immutable commit/ref, clean/dirty source state before selecting the ref, SHA-256 digests of `.dockerignore`, Dockerfiles and `docker-compose.yml`, UTC build time and image IDs/digests. Only images built by the isolated-ref workflow are release-valid.
 - Inspect canonical Compose only (do not start services for this preflight): `docker compose config` and `docker compose config --images`. The `migrate` service must retain `alembic upgrade head` and the canonical backend runtime Dockerfile/build context.
-- After a verified database and storage backup, stop writers, apply `alembic upgrade head`, and smoke-check an authenticated project route. On failure, keep the release stopped and restore the database plus matching release artifact from that backup; do not downgrade or edit historical migrations in production.
+- After a verified database and storage backup, stop writers, apply `cd backend && .venv/bin/alembic upgrade head`, and smoke-check an authenticated project route. On failure, keep the release stopped and restore the database plus matching release artifact from that backup; do not downgrade or edit historical migrations in production.
 - Frontend tests green: `cd frontend && npm test`.
 - Frontend production build green: `cd frontend && npm run build`.
 - Docker images build cleanly: `docker compose build backend frontend worker`.
@@ -174,7 +174,7 @@ Use the reproducible release, runtime lifecycle, observation and rollback proced
 - GitHub Actions workflow: `.github/workflows/ci.yml`
 - Triggers on push and pull requests.
 - Runs:
-  - backend test suite (`pytest`)
+  - backend test suite (`cd backend && .venv/bin/pytest`)
   - frontend tests (`npm test`)
   - frontend production build (`npm run build`)
 - Additional PR-only Docker workflow: `.github/workflows/docker-smoke.yml`

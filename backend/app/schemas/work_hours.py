@@ -228,7 +228,7 @@ class WorkHourGroupBase(BaseModel):
     project_id: str
     post_id: str
     description: str = ""
-    duration_half_hours: int = Field(ge=1, le=48)
+    duration_half_hours: int = Field(ge=1, le=16)
     participants: list[WorkHourParticipantCreateRequest] = Field(default_factory=list)
 
     @field_validator("description", mode="before")
@@ -248,7 +248,7 @@ class WorkHourGroupUpdateRequest(BaseModel):
     project_id: str | None = None
     post_id: str | None = None
     description: str | None = None
-    duration_half_hours: int | None = Field(default=None, ge=1, le=48)
+    duration_half_hours: int | None = Field(default=None, ge=1, le=16)
     participants: list[WorkHourParticipantUpdateRequest] | None = None
     expected_row_version: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
@@ -289,6 +289,12 @@ class WorkHourTotalsResponse(BaseModel):
     total_person_hours: float
 
 
+class WorkHourProjectTotalResponse(BaseModel):
+    project_id: str
+    project_name: str
+    person_hours: float
+
+
 class WorkHourListResponse(BaseModel):
     items: list[WorkHourGroupResponse]
     total: int
@@ -298,6 +304,7 @@ class WorkHourListResponse(BaseModel):
     sort_direction: str
     page_sizes: list[int] = Field(default_factory=lambda: [25, 50, 100])
     totals: WorkHourTotalsResponse
+    project_totals: list[WorkHourProjectTotalResponse] = Field(default_factory=list)
 
 
 class WorkHourAdminListResponse(WorkHourListResponse):

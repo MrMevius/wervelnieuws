@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { CSSProperties, FormEvent, KeyboardEvent, ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   getCurrentUser,
   listWorkHoursMeta,
@@ -7,25 +7,27 @@ import {
   createWorkHourGroup,
   updateWorkHourGroup,
   deleteWorkHourGroup,
-  createWorkExternalPerson,
   updateWorkExternalPerson,
   archiveWorkExternalPerson,
   restoreWorkExternalPerson,
   downloadWorkHoursCsv,
   type WorkHourGroup,
   type WorkHourParticipant,
-  type WorkHourExternalPerson,
   type WorkHourSortKey
 } from "../../../lib/api/client";
-import { formatAmsterdamDateInput, formatAmsterdamDateTime, formatAmsterdamDisplayDate } from "../../../lib/datetime";
+import { formatAmsterdamDateInput, formatAmsterdamDisplayDate } from "../../../lib/datetime";
 import { AccessibleModal } from "./AccessibleModal";
 
 const PAGE_SIZES = [25, 50, 100] as const;
-const DURATION_HALF_HOUR_OPTIONS = Array.from({ length: 48 }, (_, index) => index + 1);
+const DURATION_HALF_HOUR_OPTIONS = Array.from({ length: 16 }, (_, index) => index + 1);
 
 function formatDurationHours(durationHalfHours: number): string {
   const hours = durationHalfHours / 2;
   return Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+}
+
+function formatPersonHours(personHours: number): string {
+  return formatDurationHours(personHours * 2);
 }
 
 type ParticipantDraft =
@@ -34,18 +36,6 @@ type ParticipantDraft =
   | { kind: "historical_identity"; historical_identity_id: string; display_name_snapshot: string; display_email_snapshot: string; display_type_snapshot: string };
 
 type ParticipantEditDraft = (ParticipantDraft & { id?: string }) | { id: string; kind: "preserved"; display_name_snapshot: string; display_email_snapshot: string; display_type_snapshot: string };
-type DuplicateCandidate = Pick<WorkHourExternalPerson, "id" | "display_name" | "email" | "is_active" | "deleted_at"> & {
-  status_label?: string;
-  selectable?: boolean;
-  guidance?: string | null;
-};
-
-type ExternalPersonDraft = {
-  display_name: string;
-  email: string | null;
-  note: string;
-};
-
 type SelectableParticipantDraft = Extract<ParticipantDraft, { kind: "live_user" | "external_person" }>;
 
 function ParticipantSelectionControls({
@@ -55,7 +45,8 @@ function ParticipantSelectionControls({
   eligibleUsers,
   externalPeople,
   onToggle,
-  selectedLabel,
+  open,
+  onOpenChange,
   invalid = false,
   describedBy
 }: {
@@ -65,33 +56,123 @@ function ParticipantSelectionControls({
   eligibleUsers: Array<{ id: string; username: string; full_name: string | null; email: string | null }>;
   externalPeople: Array<{ id: string; display_name: string; email: string | null }>;
   onToggle: (draft: SelectableParticipantDraft) => void;
-  selectedLabel: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   invalid?: boolean;
   describedBy?: string;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const selectedCount = participants.length;
+  const [pickerStyle, setPickerStyle] = useState<CSSProperties>();
+  const [placement, setPlacement] = useState<"top" | "bottom" | "mobile">("bottom");
+
+  const focusableControls = () => Array.from(pickerRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])') ?? []);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const positionPicker = () => {
+      const trigger = triggerRef.current;
+      const picker = pickerRef.current;
+      if (!trigger || !picker) return;
+      if (window.matchMedia?.("(max-width: 560px)").matches) {
+        setPlacement("mobile");
+        setPickerStyle(undefined);
+        return;
+      }
+      const margin = 12;
+      const gap = 8;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const triggerBounds = trigger.getBoundingClientRect();
+      const width = Math.min(620, Math.max(0, viewportWidth - margin * 2));
+      const height = Math.min(picker.offsetHeight || 360, Math.max(0, viewportHeight - margin * 2));
+      const below = viewportHeight - triggerBounds.bottom - gap;
+      const above = triggerBounds.top - gap;
+      const flipsAbove = below < Math.min(height, 280) && above > below;
+      const top = flipsAbove ? triggerBounds.top - gap - height : triggerBounds.bottom + gap;
+      setPlacement(flipsAbove ? "top" : "bottom");
+      setPickerStyle({
+        width: `${width}px`,
+        maxHeight: `${Math.max(0, viewportHeight - margin * 2)}px`,
+        left: `${Math.max(margin, Math.min(triggerBounds.left, viewportWidth - width - margin))}px`,
+        top: `${Math.max(margin, Math.min(top, viewportHeight - height - margin))}px`
+      });
+    };
+    const frame = requestAnimationFrame(positionPicker);
+    window.addEventListener("resize", positionPicker);
+    window.addEventListener("scroll", positionPicker, true);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", positionPicker);
+      window.removeEventListener("scroll", positionPicker, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    requestAnimationFrame(() => pickerRef.current?.querySelector<HTMLInputElement>('input[type="checkbox"]')?.focus());
+  }, [open]);
+
+  function closePicker(returnFocus = true) {
+    if (returnFocus) triggerRef.current?.focus();
+    onOpenChange(false);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closePicker();
+      return;
+    }
+    if (event.key === "Tab") {
+      const controls = focusableControls();
+      if (!controls.length) {
+        event.preventDefault();
+        pickerRef.current?.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && (document.activeElement === first || !pickerRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (document.activeElement === last || !pickerRef.current?.contains(document.activeElement))) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+  }
+
   return (
     <section id={id} className={className} aria-label="Deelnemers kiezen" tabIndex={-1} aria-invalid={invalid || undefined} aria-describedby={describedBy}>
-      <p className="work-hours-participant-selector-help">Vink deelnemers aan of uit. Gekozen deelnemers worden één keer opgeslagen.</p>
-      <details>
-        <summary>WindWilly-personen</summary>
-        <div className="work-hours-participant-options">
-          {eligibleUsers.map((user) => {
-            const selected = participants.some((participant) => participant.kind === "live_user" && participant.user_id === user.id);
-            const name = user.full_name || user.username;
-            return <label key={user.id}><input type="checkbox" checked={selected} onChange={() => onToggle({ kind: "live_user", user_id: user.id, display_name_snapshot: name, display_email_snapshot: user.email || "", display_type_snapshot: "WindWilly-gebruiker" })} />{name}<span>WindWilly-persoon</span></label>;
-          })}
+      <button ref={triggerRef} type="button" className="work-hours-participant-trigger" aria-expanded={open} aria-controls={`${id}-picker`} aria-haspopup="dialog" onClick={() => open ? closePicker(false) : onOpenChange(true)}>
+        {selectedCount > 0 ? `${selectedCount} deelnemer(s) ▾` : "Deelnemer(s) ▾"}
+      </button>
+      {open && <div className="work-hours-participant-picker-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) closePicker(); }}>
+        <div ref={pickerRef} id={`${id}-picker`} className="work-hours-participant-picker" role="dialog" aria-modal="false" aria-label="Deelnemers kiezen" data-placement={placement} style={pickerStyle} tabIndex={-1} onKeyDown={handleKeyDown}>
+          <p className="work-hours-participant-selector-help">Vink deelnemers aan of uit. Gekozen deelnemers worden één keer opgeslagen.</p>
+          <fieldset className="work-hours-participant-group">
+            <legend>WindWilly-personen</legend>
+            <div className="work-hours-participant-options">
+              {eligibleUsers.map((user) => {
+                const selected = participants.some((participant) => participant.kind === "live_user" && participant.user_id === user.id);
+                const name = user.full_name || user.username;
+                return <label key={user.id}><input type="checkbox" checked={selected} onChange={() => onToggle({ kind: "live_user", user_id: user.id, display_name_snapshot: name, display_email_snapshot: user.email || "", display_type_snapshot: "WindWilly-gebruiker" })} />{name}</label>;
+              })}
+            </div>
+          </fieldset>
+          <fieldset className="work-hours-participant-group">
+            <legend>Externe personen</legend>
+            <div className="work-hours-participant-options">
+              {externalPeople.map((person) => {
+                const selected = participants.some((participant) => participant.kind === "external_person" && participant.external_person_id === person.id);
+                return <label key={person.id}><input type="checkbox" checked={selected} onChange={() => onToggle({ kind: "external_person", external_person_id: person.id, display_name_snapshot: person.display_name, display_email_snapshot: person.email || "", display_type_snapshot: "Extern" })} />{person.display_name}<span>Externe persoon</span></label>;
+              })}
+            </div>
+          </fieldset>
         </div>
-      </details>
-      <details>
-        <summary>Externe personen</summary>
-        <div className="work-hours-participant-options">
-          {externalPeople.map((person) => {
-            const selected = participants.some((participant) => participant.kind === "external_person" && participant.external_person_id === person.id);
-            return <label key={person.id}><input type="checkbox" checked={selected} onChange={() => onToggle({ kind: "external_person", external_person_id: person.id, display_name_snapshot: person.display_name, display_email_snapshot: person.email || "", display_type_snapshot: "Extern" })} />{person.display_name}<span>Externe persoon</span></label>;
-          })}
-        </div>
-      </details>
-      <ul className="work-hours-selected-participants" aria-label={selectedLabel}>{participants.map((participant, index) => <li key={`${participant.kind}-${index}`}>{participant.display_name_snapshot} <span>{participant.display_type_snapshot}</span></li>)}</ul>
+      </div>}
     </section>
   );
 }
@@ -139,20 +220,17 @@ export function UrenverantwoordingPage() {
   const [sortKey, setSortKey] = useState<WorkHourSortKey>("work_date");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [editingGroup, setEditingGroup] = useState<WorkHourGroup | null>(null);
-  const [showParticipantEditor, setShowParticipantEditor] = useState(false);
+  const [editDurationHalfHours, setEditDurationHalfHours] = useState("");
   const [deleteGroupTarget, setDeleteGroupTarget] = useState<WorkHourGroup | null>(null);
-  const [forceCreateConfirm, setForceCreateConfirm] = useState(false);
   const [createErrors, setCreateErrors] = useState<Record<string, string>>({});
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [participants, setParticipants] = useState<ParticipantDraft[]>([]);
+  const [desktopParticipantDisclosureOpen, setDesktopParticipantDisclosureOpen] = useState(false);
+  const [mobileParticipantDisclosureOpen, setMobileParticipantDisclosureOpen] = useState(false);
   const createParticipantsInitialized = useRef(false);
   const [editParticipants, setEditParticipants] = useState<ParticipantEditDraft[]>([]);
-  const [duplicateCandidates, setDuplicateCandidates] = useState<DuplicateCandidate[]>([]);
-  const [duplicateConflictCode, setDuplicateConflictCode] = useState("");
-  const [pendingExternalPerson, setPendingExternalPerson] = useState<ExternalPersonDraft | null>(null);
   const [selectedExternalPersonId, setSelectedExternalPersonId] = useState("");
-  const [selectedExternalPersonCandidate, setSelectedExternalPersonCandidate] = useState<DuplicateCandidate | null>(null);
   const [selectedUserId, setSelectedUserId] = useState("");
   const [filterSearches, setFilterSearches] = useState({ project: "", post: "", person: "", type: "" });
 
@@ -250,33 +328,6 @@ export function UrenverantwoordingPage() {
     }
   }, [editingGroupPostId, editingGroupPostOptions]);
 
-  function parseApiDetail(error: unknown): { detail?: { code?: string; message?: string; candidates?: DuplicateCandidate[] } } | null {
-    if (!(error instanceof Error)) return null;
-    try {
-      return JSON.parse(error.message) as { detail?: { code?: string; message?: string; candidates?: DuplicateCandidate[] } };
-    } catch {
-      return null;
-    }
-  }
-
-  function selectExistingCandidate(candidate: DuplicateCandidate) {
-    if (candidate.selectable === false) return;
-    setSelectedExternalPersonId(candidate.id);
-    setSelectedExternalPersonCandidate(candidate);
-    setParticipants((current) => current.some((item) => item.kind === "external_person" && item.external_person_id === candidate.id) ? current : [...current, { kind: "external_person", external_person_id: candidate.id, display_name_snapshot: candidate.display_name, display_email_snapshot: candidate.email || "", display_type_snapshot: "Extern" }]);
-    clearCreateError("participants");
-    setStatusMessage(`Bestaande persoon gekozen: ${candidate.display_name}.`);
-    setErrorMessage(null);
-  }
-
-  async function createPendingExternalPerson(force = false) {
-    if (!pendingExternalPerson) return;
-    await personMutation.mutateAsync({ ...pendingExternalPerson, force_create: force });
-    setDuplicateCandidates([]);
-    setDuplicateConflictCode("");
-    setPendingExternalPerson(null);
-  }
-
   const createGroupMutation = useMutation({
     mutationFn: createWorkHourGroup,
     onSuccess: async () => {
@@ -317,21 +368,6 @@ export function UrenverantwoordingPage() {
     });
   }, [errorMessage]);
 
-  const personMutation = useMutation({
-    mutationFn: createWorkExternalPerson,
-    onSuccess: async (created) => {
-      setStatusMessage("Externe persoon opgeslagen.");
-      setSelectedExternalPersonId(created.id);
-       setSelectedExternalPersonCandidate({ ...created, is_active: created.is_active ?? true, deleted_at: created.deleted_at ?? null });
-      setDuplicateCandidates([]);
-      setDuplicateConflictCode("");
-      setPendingExternalPerson(null);
-      setParticipants((current) => current.some((item) => item.kind === "external_person" && item.external_person_id === created.id) ? current : [...current, { kind: "external_person", external_person_id: created.id, display_name_snapshot: created.display_name, display_email_snapshot: created.email || "", display_type_snapshot: "Extern" }]);
-      clearCreateError("participants");
-      await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
-    }
-  });
-
   function addUserParticipant(_target?: "create" | "edit") {
     const user = eligibleUsers.find((item) => item.id === selectedUserId);
     if (!user) return;
@@ -340,9 +376,6 @@ export function UrenverantwoordingPage() {
   }
 
   function resolveSelectedExternalPerson() {
-    if (selectedExternalPersonCandidate) {
-      return selectedExternalPersonCandidate.selectable === false ? undefined : selectedExternalPersonCandidate;
-    }
     if (!selectedExternalPersonId) return undefined;
     return activeExternalPeople.find((person) => person.id === selectedExternalPersonId);
   }
@@ -406,6 +439,9 @@ export function UrenverantwoordingPage() {
 
   function startEditingGroup(group: WorkHourGroup) {
     setEditingGroup(group);
+    // Historical values above the current limit must never be substituted in a
+    // submitted payload. The user must explicitly choose a permitted value.
+    setEditDurationHalfHours(group.duration_half_hours <= 16 ? String(group.duration_half_hours) : "");
     setEditParticipants(group.participants.map(participantDraftFromGroup));
     setStatusMessage(null);
     setErrorMessage(null);
@@ -428,7 +464,6 @@ export function UrenverantwoordingPage() {
     form?.reset();
     desktopCreateFormRef.current?.reset();
     mobileCreateFormRef.current?.reset();
-    document.querySelectorAll<HTMLFormElement>(".work-hours-quick-add, .work-hours-mobile-quick-add").forEach((quickAddForm) => quickAddForm.reset());
     setNewGroupProjectId("");
     setNewGroupPostId("");
     setSelectedUserId("");
@@ -436,11 +471,6 @@ export function UrenverantwoordingPage() {
     setParticipants(currentUserParticipant() ? [currentUserParticipant()!] : []);
     setCreateErrors({});
     setErrorMessage(null);
-    setShowParticipantEditor(false);
-    setDuplicateCandidates([]);
-    setDuplicateConflictCode("");
-    setPendingExternalPerson(null);
-    setSelectedExternalPersonCandidate(null);
   }
 
 
@@ -453,18 +483,21 @@ export function UrenverantwoordingPage() {
     const post = newGroupPostId;
     const description = String(data.get("description") ?? "");
     const durationHalfHours = Number(data.get("duration_half_hours") ?? 2);
-    if (!workDate || workDate > formatAmsterdamDateInput() || !project || !post || !newGroupPostOptions.some((item) => item.id === post) || !Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 48 || participants.length === 0) {
+    if (!workDate || workDate > formatAmsterdamDateInput() || !project || !post || !newGroupPostOptions.some((item) => item.id === post) || !Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 16 || participants.length === 0) {
       const errors = {
         ...(!workDate || workDate > formatAmsterdamDateInput() ? { work_date: "Kies een geldige datum die niet in de toekomst ligt." } : {}),
         ...(!project ? { project_id: "Kies een project." } : {}),
         ...(!post || !newGroupPostOptions.some((item) => item.id === post) ? { post_id: "Kies een post." } : {}),
-        ...(!Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 48 ? { duration_half_hours: "Kies 0,5 tot en met 24 uur." } : {}),
+        ...(!Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 16 ? { duration_half_hours: "Kies 0,5 tot en met 8 uur." } : {}),
         ...(participants.length === 0 ? { participants: "Kies minimaal één deelnemer." } : {})
       };
       setCreateErrors(errors);
       setErrorMessage("Controleer de gemarkeerde velden.");
       const mobileCreate = form.classList.contains("work-hours-mobile-create");
-      if (!mobileCreate && errors.participants) setShowParticipantEditor(true);
+      if (errors.participants) {
+        if (mobileCreate) setMobileParticipantDisclosureOpen(true);
+        else setDesktopParticipantDisclosureOpen(true);
+      }
       const prefix = mobileCreate ? "hours-mobile-create" : "hours-create";
       const fieldIds: Record<string, string> = {
         work_date: `${prefix}-date`,
@@ -511,6 +544,11 @@ export function UrenverantwoordingPage() {
       setErrorMessage("Kies eerst een post binnen het geselecteerde project.");
       return;
     }
+    const durationHalfHours = Number(editDurationHalfHours);
+    if (!Number.isInteger(durationHalfHours) || durationHalfHours < 1 || durationHalfHours > 16) {
+      setErrorMessage("Kies een nieuwe duur van 0,5 tot en met 8 uur voordat je opslaat.");
+      return;
+    }
     await updateGroupMutation.mutateAsync({
       groupId: editingGroup.id,
       payload: {
@@ -518,7 +556,7 @@ export function UrenverantwoordingPage() {
         project_id: editingGroupProjectId,
         post_id: editingGroupPostId,
         description: String(data.get("description") ?? editingGroup.description),
-        duration_half_hours: Number(data.get("duration_half_hours") ?? editingGroup.duration_half_hours),
+        duration_half_hours: durationHalfHours,
         expected_row_version: editingGroup.row_version,
         participants: editParticipants.map((participant, index) =>
           participant.kind === "live_user"
@@ -534,36 +572,6 @@ export function UrenverantwoordingPage() {
   }
 
 
-  async function onQuickAddExternalPerson(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const payload = {
-      display_name: String(data.get("display_name") ?? ""),
-      email: String(data.get("email") ?? "") || null,
-      note: String(data.get("note") ?? ""),
-      force_create: false
-    };
-    setPendingExternalPerson(payload);
-    try {
-      await personMutation.mutateAsync(payload);
-      setDuplicateCandidates([]);
-      setPendingExternalPerson(null);
-      setErrorMessage(null);
-      form.reset();
-    } catch (error) {
-      const parsed = parseApiDetail(error);
-      const candidates = parsed?.detail?.candidates ?? [];
-      if (candidates.length > 0) {
-        setDuplicateCandidates(candidates);
-        setDuplicateConflictCode(parsed?.detail?.code ?? "");
-        setErrorMessage(parsed?.detail?.message ?? "Mogelijke dubbele externe persoon");
-        return;
-      }
-      setErrorMessage(error instanceof Error ? error.message : "Opslaan mislukt");
-    }
-  }
-
   async function onExportCsv() {
     const blob = await downloadWorkHoursCsv(sharedFilters);
     downloadBlob(blob, "urenverantwoording.csv");
@@ -571,19 +579,26 @@ export function UrenverantwoordingPage() {
 
   return (
     <section className="main-dashboard uren-module-page">
-      <header className="panel">
-        <p className="eyebrow">Urenverantwoording</p>
-        <h1>Urenregistratie</h1>
-        <p>Registreer groepen compact inline; projecten en globale posten beheer je centraal in Admin.</p>
+      <h1 className="work-hours-page-title">Urenregistratie</h1>
+      <div className="work-hours-page-layout">
+          <section className="work-hours-project-totals" aria-labelledby="work-hours-project-totals-title">
+          <h2 id="work-hours-project-totals-title">Projecttotalen</h2>
+          {groupsQuery.isPending ? (
+            <p role="status">Projecttotalen laden…</p>
+          ) : groupsQuery.isError ? (
+            <p role="alert">Projecttotalen konden niet worden geladen.</p>
+          ) : (groupsQuery.data?.project_totals ?? []).length > 0 ? (
+            <dl>
+              {(groupsQuery.data?.project_totals ?? []).map((project) => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatPersonHours(project.person_hours)} persoon-uren</dd></div>)}
+            </dl>
+          ) : <p>Geen projecttotalen voor deze filters.</p>}
+          </section>
+      <div className="work-hours-page-content">
         {statusMessage && <p className="notice success" role="status" aria-live="polite">{statusMessage}</p>}
         {errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}
-      </header>
 
-      <section className="panel">
-        <div className="work-hours-overview-heading"><h2>Overzicht en registreren</h2><button type="button" onClick={() => { setProjectId(""); setPostId(""); setWorkDateFilter(""); setParticipantKind(""); setParticipantQuery(""); setQuery(""); setPage(1); }}>Alle filters wissen</button></div>
-        <dl className="work-hours-totals" aria-label="Totalen over gefilterde registraties">
-          <div><dt>Groepen</dt><dd>{groupsQuery.data?.totals.total_groups ?? 0}</dd></div><div><dt>Personen</dt><dd>{groupsQuery.data?.totals.total_people ?? 0}</dd></div><div><dt>Groepsuren</dt><dd>{groupsQuery.data?.totals.total_duration_hours ?? 0}</dd></div><div><dt>Persoon-uren</dt><dd>{groupsQuery.data?.totals.total_person_hours ?? 0}</dd></div>
-        </dl>
+        <section className="panel">
+        <div className="work-hours-overview-heading"><button type="button" onClick={() => { setProjectId(""); setPostId(""); setWorkDateFilter(""); setParticipantKind(""); setParticipantQuery(""); setQuery(""); setPage(1); }}>Alle filters wissen</button></div>
         <div className="work-hours-toolbar"><label>Sorteer <select value={sortKey} onChange={(event) => { setSortKey(event.target.value as WorkHourSortKey); setPage(1); }}><option value="work_date">Datum</option><option value="name_person">Naam</option><option value="type_person">Type</option><option value="project">Project</option><option value="post">Post</option><option value="duration_half_hours">Uren</option></select></label><label>Volgorde <select value={sortDirection} onChange={(event) => { setSortDirection(event.target.value as "asc" | "desc"); setPage(1); }}><option value="desc">Aflopend</option><option value="asc">Oplopend</option></select></label><label>Per pagina <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as 25 | 50 | 100); setPage(1); }}>{PAGE_SIZES.map((value) => <option key={value} value={value}>{value}</option>)}</select></label><button type="button" onClick={onExportCsv}>CSV export</button></div>
         <div className="section-actions">
           <button type="button" onClick={() => setPage((current) => Math.max(1, current - 1))} disabled={page <= 1}>Vorige</button>
@@ -607,14 +622,13 @@ export function UrenverantwoordingPage() {
             <tbody>
               <tr className="work-hours-create-row">
                 <td><label className="sr-only" htmlFor="hours-create-date">Datum</label><input form="work-hours-create-form" id="hours-create-date" name="work_date" type="date" defaultValue={formatAmsterdamDateInput()} aria-invalid={Boolean(createErrors.work_date)} aria-describedby={createErrors.work_date ? "hours-create-date-error" : undefined} onChange={(event) => { if (event.target.value && event.target.value <= formatAmsterdamDateInput()) clearCreateError("work_date"); }} />{createErrors.work_date && <span id="hours-create-date-error" className="field-error">{createErrors.work_date}</span>}</td>
-                <td><button type="button" aria-expanded={showParticipantEditor} aria-controls="hours-create-participants" aria-invalid={Boolean(createErrors.participants)} aria-describedby={createErrors.participants ? "hours-create-participants-error" : undefined} onClick={() => setShowParticipantEditor((current) => !current)}>{participants.length} deelnemer(s)</button>{createErrors.participants && <span id="hours-create-participants-error" className="field-error">{createErrors.participants}</span>}</td>
+                <td className="work-hours-create-participant-cell"><ParticipantSelectionControls id="hours-create-participants" className="work-hours-participant-selector work-hours-desktop-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} open={desktopParticipantDisclosureOpen} onOpenChange={(open) => { setDesktopParticipantDisclosureOpen(open); if (open) setMobileParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-create-participants-error" : undefined} />{createErrors.participants && <span id="hours-create-participants-error" className="field-error">{createErrors.participants}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-project" aria-label="Project voor nieuwe registratie" value={newGroupProjectId} aria-invalid={Boolean(createErrors.project_id)} aria-describedby={createErrors.project_id ? "hours-create-project-error" : undefined} onChange={(event) => { setNewGroupProjectId(event.target.value); if (event.target.value) clearCreateError("project_id"); }}><option value="">Kies project</option>{projectOptions.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}</select>{createErrors.project_id && <span id="hours-create-project-error" className="field-error">{createErrors.project_id}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-post" aria-label="Post voor nieuwe registratie" value={newGroupPostId} aria-invalid={Boolean(createErrors.post_id)} aria-describedby={createErrors.post_id ? "hours-create-post-error" : undefined} onChange={(event) => { setNewGroupPostId(event.target.value); if (event.target.value) clearCreateError("post_id"); }}><option value="">Kies post</option>{newGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select>{createErrors.post_id && <span id="hours-create-post-error" className="field-error">{createErrors.post_id}</span>}</td>
                 <td><select form="work-hours-create-form" id="hours-create-duration" aria-label="Duur in uren" name="duration_half_hours" defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-create-duration-error" : undefined} onChange={() => clearCreateError("duration_half_hours")}>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select>{createErrors.duration_half_hours && <span id="hours-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}</td>
                 <td><input form="work-hours-create-form" aria-label="Beschrijving nieuwe registratie" name="description" placeholder="Beschrijving" /></td>
                 <td className="work-hours-row-actions"><button form="work-hours-create-form" type="submit" aria-label="Registratie opslaan" title="Opslaan" disabled={createGroupMutation.isPending}>✓</button><button type="button" aria-label="Nieuwe registratie resetten" title="Reset" onClick={() => resetCreate(desktopCreateFormRef.current)}>↺</button></td>
               </tr>
-              {showParticipantEditor && <tr className="work-hours-create-participants-row"><td colSpan={7}><ParticipantSelectionControls id="hours-create-participants" className="work-hours-participant-selector work-hours-desktop-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} selectedLabel="Gekozen deelnemers" /><form className="work-hours-quick-add" onSubmit={onQuickAddExternalPerson}><strong>Externe persoon snel toevoegen</strong><input name="display_name" aria-label="Naam externe persoon" placeholder="Naam" required /><input name="email" type="email" aria-label="E-mail externe persoon" placeholder="E-mail (optioneel)" /><input name="note" aria-label="Notitie externe persoon" placeholder="Notitie" /><button type="submit">Aanmaken en toevoegen</button></form>{duplicateCandidates.length > 0 && <div className="notice warning"><p>Mogelijke dubbele persoon.</p>{duplicateCandidates.map((candidate) => <button type="button" key={candidate.id} disabled={candidate.selectable === false} onClick={() => selectExistingCandidate(candidate)}>Gebruik {candidate.display_name} · {candidate.status_label ?? (candidate.is_active ? "actief" : "inactief")}{candidate.guidance ? ` · ${candidate.guidance}` : ""}</button>)}{duplicateConflictCode !== "external_person_exact_duplicate" && <button type="button" onClick={() => setForceCreateConfirm(true)}>Toch nieuw aanmaken</button>}</div>}</td></tr>}
               {(groupsQuery.data?.items ?? []).map((group) => (
                 <tr key={group.id} className="work-hours-data-row">
                   <td>{formatAmsterdamDisplayDate(group.work_date)}</td>
@@ -649,16 +663,9 @@ export function UrenverantwoordingPage() {
             <label>Duur<select id="hours-mobile-create-duration" name="duration_half_hours" defaultValue={2} aria-invalid={Boolean(createErrors.duration_half_hours)} aria-describedby={createErrors.duration_half_hours ? "hours-mobile-create-duration-error" : undefined} onChange={() => clearCreateError("duration_half_hours")}>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select></label>
             {createErrors.duration_half_hours && <span id="hours-mobile-create-duration-error" className="field-error">{createErrors.duration_half_hours}</span>}
             <label>Beschrijving<input name="description" aria-label="Beschrijving nieuwe registratie mobiel" /></label>
-            <ParticipantSelectionControls id="hours-mobile-create-participants" className="work-hours-participant-selector work-hours-mobile-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} selectedLabel="Gekozen deelnemers mobiel" invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-mobile-create-participants-error" : undefined} />
+            <ParticipantSelectionControls id="hours-mobile-create-participants" className="work-hours-participant-selector work-hours-mobile-participant-selector" participants={participants} eligibleUsers={eligibleUsers} externalPeople={activeExternalPeople} onToggle={toggleCreateParticipant} open={mobileParticipantDisclosureOpen} onOpenChange={(open) => { setMobileParticipantDisclosureOpen(open); if (open) setDesktopParticipantDisclosureOpen(false); }} invalid={Boolean(createErrors.participants)} describedBy={createErrors.participants ? "hours-mobile-create-participants-error" : undefined} />
             {createErrors.participants && <span id="hours-mobile-create-participants-error" className="field-error">{createErrors.participants}</span>}
             <div className="section-actions"><button type="submit" disabled={createGroupMutation.isPending}>Registratie mobiel opslaan</button><button type="button" onClick={() => resetCreate(mobileCreateFormRef.current)}>Mobiele registratie resetten</button></div>
-          </form>
-          <form className="work-hours-mobile-quick-add" onSubmit={onQuickAddExternalPerson}>
-            <strong>Externe persoon snel toevoegen</strong>
-            <label>Naam<input name="display_name" aria-label="Naam externe persoon mobiel" required /></label>
-            <label>E-mail<input name="email" type="email" aria-label="E-mail externe persoon mobiel" /></label>
-            <label>Notitie<input name="note" aria-label="Notitie externe persoon mobiel" /></label>
-            <button type="submit">Externe persoon mobiel aanmaken en toevoegen</button>
           </form>
         </section>
         <div className="work-hours-mobile-cards" aria-label="Urenregistraties">
@@ -671,7 +678,7 @@ export function UrenverantwoordingPage() {
             </article>
           ))}
         </div>
-      </section>
+        </section>
 
       {editingGroup && (
         <AccessibleModal title="Registratie bewerken" onClose={() => setEditingGroup(null)} committing={updateGroupMutation.isPending}>
@@ -682,7 +689,7 @@ export function UrenverantwoordingPage() {
             <label><span>Post</span><select value={editingGroupPostId} disabled={!editingGroupProjectId || editingGroupPostOptions.length === 0} onChange={(event) => setEditingGroupPostId(event.target.value)}><option value="">Kies een post</option>{editingGroupPostOptions.map((post) => <option key={post.id} value={post.id}>{post.name}</option>)}</select></label>
             <label><span>WindWilly-persoon toevoegen</span><select value={selectedUserId} onChange={(event) => setSelectedUserId(event.target.value)} disabled={!eligibleUsers.length}><option value="">Kies een actieve gebruiker</option>{eligibleUsers.map((user) => <option key={user.id} value={user.id}>{user.full_name || user.username}</option>)}</select></label>
             <label><span>Externe persoon toevoegen</span><select value={selectedExternalPersonId} onChange={(event) => setSelectedExternalPersonId(event.target.value)} disabled={!activeExternalPeople.length}><option value="">Kies een actieve externe persoon</option>{activeExternalPeople.map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label>
-            <label><span>Duur (half uur)</span><input type="number" name="duration_half_hours" min={1} defaultValue={editingGroup.duration_half_hours} /></label>
+            <label><span>Duur</span><select name="duration_half_hours" aria-label="Duur" value={editDurationHalfHours} aria-invalid={!editDurationHalfHours || undefined} onChange={(event) => { setEditDurationHalfHours(event.target.value); setErrorMessage(null); }}><option value="" disabled>{editingGroup.duration_half_hours > 16 ? `Historische duur: ${formatDurationHours(editingGroup.duration_half_hours)} uur — kies een nieuwe duur` : "Kies een duur"}</option>{DURATION_HALF_HOUR_OPTIONS.map((value) => <option key={value} value={value}>{formatDurationHours(value)} uur</option>)}</select>{editingGroup.duration_half_hours > 16 && <small>De historische duur blijft ongewijzigd totdat je bewust een geldige nieuwe duur kiest.</small>}</label>
             <label className="span-2"><span>Beschrijving</span><textarea name="description" rows={3} defaultValue={editingGroup.description} /></label>
             <div className="span-2">
               <strong>Deelnemers</strong>
@@ -720,7 +727,7 @@ export function UrenverantwoordingPage() {
                 ))}
               </ul>
             </div>
-            <div className="section-actions span-2"><button type="submit" disabled={updateGroupMutation.isPending}>Wijzigingen opslaan</button></div>
+            <div className="section-actions span-2"><button type="submit" disabled={updateGroupMutation.isPending || !editDurationHalfHours}>Wijzigingen opslaan</button></div>
           </form>
         </AccessibleModal>
       )}
@@ -731,14 +738,8 @@ export function UrenverantwoordingPage() {
           <div className="section-actions"><button type="button" disabled={deleteGroupMutation.isPending} onClick={() => deleteGroupMutation.mutate(deleteGroupTarget)}>Bevestig verwijderen</button><button type="button" disabled={deleteGroupMutation.isPending} onClick={() => setDeleteGroupTarget(null)}>Annuleren</button></div>
         </AccessibleModal>
       )}
-
-      {forceCreateConfirm && pendingExternalPerson && (
-        <AccessibleModal title="Nieuwe persoon toch aanmaken" onClose={() => setForceCreateConfirm(false)} committing={personMutation.isPending}>
-          <p>De naam lijkt op een bestaande persoon. Bevestig alleen wanneer dit echt een andere persoon is.</p>
-          <div className="section-actions"><button type="button" disabled={personMutation.isPending} onClick={() => void createPendingExternalPerson(true).then(() => setForceCreateConfirm(false))}>Bewust nieuw aanmaken</button><button type="button" disabled={personMutation.isPending} onClick={() => setForceCreateConfirm(false)}>Annuleren</button></div>
-        </AccessibleModal>
-      )}
-
+      </div>
+      </div>
     </section>
   );
 }

@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: runtime
     env_file:
       - .env
     ports:
@@ -15,6 +16,7 @@ services:
     build:
       context: .
       dockerfile: worker/Dockerfile
+      target: runtime
     env_file:
       - .env
     restart: unless-stopped
@@ -28,6 +30,7 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      target: runtime
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8001/api}
     ports:
@@ -40,6 +43,7 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      target: runtime
     env_file:
       - .env
     command: ["alembic", "upgrade", "head"]

@@ -1120,6 +1120,12 @@ export type WorkHourTotals = {
   total_person_hours: number;
 };
 
+export type WorkHourProjectTotal = {
+  project_id: string;
+  project_name: string;
+  person_hours: number;
+};
+
 export type WorkHourSortKey = "work_date" | "name_person" | "type_person" | "project" | "post" | "duration_half_hours" | "created_at" | "updated_at";
 
 export type WorkHourList = {
@@ -1131,6 +1137,8 @@ export type WorkHourList = {
   sort_direction: string;
   page_sizes: number[];
   totals: WorkHourTotals;
+  /** Optional during a rolling backend deployment. */
+  project_totals?: WorkHourProjectTotal[];
 };
 
 export type WorkHourQueryParams = {

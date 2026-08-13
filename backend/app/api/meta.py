@@ -29,6 +29,24 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "105",
+                "date": "2026-08-12",
+                "title": "Urenregistratie is directer en overzichtelijker",
+                "highlights": [
+                    "Projecttotalen blijven op ruime schermen zichtbaar terwijl je door registraties scrolt.",
+                    "Open Deelnemer(s) om deelnemers direct in één zwevende kiezer te kiezen; na selectie toont dezelfde knop het aantal en externe personen voeg je veilig toe via Admin.",
+                    "Datums tonen overal dezelfde dag-maand-jaarweergave en uren kies je tussen een half en acht uur.",
+                ],
+            },
+            {
+                "iteration": "104",
+                "date": "2026-08-12",
+                "title": "Urenregistratie toont totalen per project",
+                "highlights": [
+                    "Bovenaan Urenregistratie zie je nu per project de totale persoon-uren van alle deelnemers, ook wanneer er meerdere pagina's met registraties zijn.",
+                ],
+            },
+            {
                 "iteration": "103",
                 "date": "2026-08-12",
                 "title": "Urenhistorie staat overzichtelijk bij Admin",
@@ -78,7 +96,7 @@ def _default_about() -> AboutResponse:
                 "date": "2026-08-10",
                 "title": "Projecten zijn per module in te stellen",
                 "highlights": [
-                    "Beheerders kiezen nu per project of het beschikbaar is in Vergaderborden, Urenverantwoording of beide.",
+                    "Beheerders kiezen nu per project of het beschikbaar is in Vergaderborden, Urenregistratie of beide.",
                     "Beschrijvingen bij urenposten hebben meer ruimte voor langere, overzichtelijke teksten.",
                 ],
             },
@@ -831,7 +849,7 @@ def _default_about() -> AboutResponse:
                 "date": "2026-03-24",
                 "title": "Nieuwe Trello-placeholder in de WindWilly-suite",
                 "highlights": [
-                    "In de hoofdnavigatie staat nu een extra Trello-tab naast Urenverantwoording.",
+                    "In de hoofdnavigatie staat nu een extra Trello-tab naast Urenregistratie.",
                     "De nieuwe Trello-pagina is als duidelijke placeholder toegevoegd voor een komende interne projectboardmodule.",
                     "De pagina heeft nu alvast een herkenbare board-achtergrond, zodat de toekomstige richting direct zichtbaar is.",
                 ],

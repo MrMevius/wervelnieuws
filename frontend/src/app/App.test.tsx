@@ -332,7 +332,8 @@ const mockApi = vi.hoisted(() => ({
     sort_key: "work_date",
     sort_direction: "desc",
     page_sizes: [25, 50, 100],
-    totals: { total_groups: 0, total_people: 0, total_duration_hours: 0, total_person_hours: 0 }
+    totals: { total_groups: 0, total_people: 0, total_duration_hours: 0, total_person_hours: 0 },
+    project_totals: []
   }),
   listWorkHoursAudit: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 }),
   listWorkHoursAdminHistory: vi.fn().mockResolvedValue({ items: [], total: 0, page: 1, page_size: 25 }),
@@ -674,6 +675,24 @@ const mockApi = vi.hoisted(() => ({
     developed_by: "Energiek Daarle",
     changelog: [
       {
+        iteration: "105",
+        date: "2026-08-12",
+        title: "Urenregistratie is directer en overzichtelijker",
+        highlights: [
+          "Projecttotalen blijven op ruime schermen zichtbaar terwijl je door registraties scrolt.",
+          "Open Deelnemer(s) om deelnemers direct in één zwevende kiezer te kiezen; na selectie toont dezelfde knop het aantal en externe personen voeg je veilig toe via Admin.",
+          "Datums tonen overal dezelfde dag-maand-jaarweergave en uren kies je tussen een half en acht uur."
+        ]
+      },
+      {
+        iteration: "104",
+        date: "2026-08-12",
+        title: "Urenregistratie toont totalen per project",
+        highlights: [
+          "Bovenaan Urenregistratie zie je nu per project de totale persoon-uren van alle deelnemers, ook wanneer er meerdere pagina's met registraties zijn."
+        ]
+      },
+      {
         iteration: "103",
         date: "2026-08-12",
         title: "Urenhistorie staat overzichtelijk bij Admin",
@@ -930,7 +949,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "WindWilly" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "Urenverantwoording" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Urenregistratie" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
@@ -1180,7 +1199,7 @@ describe("App", () => {
     renderApp();
     await loginIntoApp();
 
-    fireEvent.click(screen.getByRole("link", { name: "Urenverantwoording" }));
+    fireEvent.click(screen.getByRole("link", { name: "Urenregistratie" }));
 
     expect(screen.queryByRole("link", { name: "Main" })).not.toBeInTheDocument();
 
@@ -1239,9 +1258,12 @@ describe("App", () => {
       expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
       expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
     });
+    expect(screen.getByText(/Open Deelnemer\(s\) om deelnemers direct in één zwevende kiezer te kiezen; na selectie toont dezelfde knop het aantal/i)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
-    expect(headings).toEqual([
+      expect(headings).toEqual([
+       "Iteratie 105 - Urenregistratie is directer en overzichtelijker",
+       "Iteratie 104 - Urenregistratie toont totalen per project",
       "Iteratie 103 - Urenhistorie staat overzichtelijk bij Admin",
       "Iteratie 102 - Wervelnieuws start betrouwbaarder na onderhoud",
       "Iteratie 101 - Urenregistratie kiest deelnemers en duur duidelijker",

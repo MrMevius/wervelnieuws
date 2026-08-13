@@ -606,6 +606,8 @@ def test_work_hours_list_uses_server_side_pagination(client):
     headers = _login(client)
     project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Pagina", "description": ""}).json()
     post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": project["id"], "name": "Post Pagina", "description": ""}).json()
+    second_project = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Tweede", "description": ""}).json()
+    second_post = client.post("/api/urenverantwoording/posten", headers=headers, json={"project_id": second_project["id"], "name": "Post Tweede", "description": ""}).json()
     user_id = client.get("/api/auth/me", headers=headers).json()["id"]
     for index in range(26):
         client.post(
@@ -623,6 +625,41 @@ def test_work_hours_list_uses_server_side_pagination(client):
             },
         )
 
+    client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={
+            "work_date": "2026-07-28",
+            "project_id": second_project["id"],
+            "post_id": second_post["id"],
+            "description": "Andere projectrij",
+            "duration_half_hours": 3,
+            "participants": [
+                {"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}
+            ],
+        },
+    )
+
+    deleted_group = client.post(
+        "/api/urenverantwoording/groepen",
+        headers=headers,
+        json={
+            "work_date": "2026-07-28",
+            "project_id": project["id"],
+            "post_id": post["id"],
+            "description": "Verwijderde rij",
+            "duration_half_hours": 4,
+            "participants": [
+                {"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}
+            ],
+        },
+    ).json()
+    deleted = client.delete(
+        f"/api/urenverantwoording/groepen/{deleted_group['id']}?expected_row_version={deleted_group['row_version']}",
+        headers=headers,
+    )
+    assert deleted.status_code == 200
+
     statements: list[str] = []
 
     def capture_sql(_conn, _cursor, statement, _parameters, _context, _executemany):
@@ -638,9 +675,18 @@ def test_work_hours_list_uses_server_side_pagination(client):
     payload = response.json()
     assert payload["page"] == 2
     assert payload["page_size"] == 25
-    assert payload["total"] == 26
-    assert len(payload["items"]) == 1
+    assert payload["total"] == 27
+    assert len(payload["items"]) == 2
+    expected_project_totals = [
+        {"project_id": project["id"], "project_name": "Project Pagina", "person_hours": 26.0},
+        {"project_id": second_project["id"], "project_name": "Project Tweede", "person_hours": 1.5},
+    ]
+    assert payload["project_totals"] == expected_project_totals
     assert any("LIMIT" in statement.upper() and "OFFSET" in statement.upper() for statement in statements)
+
+    deleted_view = client.get("/api/urenverantwoording/groepen?include_deleted=true&deleted_only=true", headers=headers)
+    assert deleted_view.status_code == 200
+    assert deleted_view.json()["project_totals"] == expected_project_totals
 
 
 def test_work_hours_participant_filter_paginates_after_unique_grouping(client):
@@ -682,6 +728,71 @@ def test_work_hours_participant_filter_paginates_after_unique_grouping(client):
     assert len(page_two.json()["items"]) == 1
     assert page_one.json()["items"][0]["id"] == created_groups[0]["id"]
     assert page_two.json()["items"][0]["id"] == created_groups[-1]["id"]
+    expected_project_totals = [{"project_id": project["id"], "project_name": "Project Filter", "person_hours": 78.0}]
+    assert page_one.json()["project_totals"] == expected_project_totals
+    assert page_two.json()["project_totals"] == expected_project_totals
+
+
+def test_work_hours_project_totals_follow_every_list_filter_and_return_empty_results(client):
+    headers = _login(client)
+    user_id = client.get("/api/auth/me", headers=headers).json()["id"]
+    alpha = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Totalen Alpha", "description": ""}).json()
+    beta = client.post("/api/urenverantwoording/projecten", headers=headers, json={"name": "Project Totalen Beta", "description": ""}).json()
+    post_one = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Post Totalen Een", "description": ""}).json()
+    post_two = client.post("/api/urenverantwoording/posten", headers=headers, json={"name": "Post Totalen Twee", "description": ""}).json()
+    anna = client.post(
+        "/api/urenverantwoording/externe-personen",
+        headers=headers,
+        json={"display_name": "Totalen Anna", "email": "totalen-anna@example.com", "note": ""},
+    ).json()
+
+    def create_group(*, work_date: str, project_id: str, post_id: str, description: str, duration_half_hours: int, participants: list[dict]) -> dict:
+        response = client.post(
+            "/api/urenverantwoording/groepen",
+            headers=headers,
+            json={
+                "work_date": work_date,
+                "project_id": project_id,
+                "post_id": post_id,
+                "description": description,
+                "duration_half_hours": duration_half_hours,
+                "participants": participants,
+            },
+        )
+        assert response.status_code == 201
+        return response.json()
+
+    admin = {"participant_kind": "live_user", "user_id": user_id, "display_name_snapshot": "Admin", "display_email_snapshot": "admin@example.com", "display_type_snapshot": "WindWilly-gebruiker", "sort_order": 0}
+    anna_participant = {"participant_kind": "external_person", "external_person_id": anna["id"], "display_name_snapshot": "Totalen Anna", "display_email_snapshot": "totalen-anna@example.com", "display_type_snapshot": "Extern", "sort_order": 1}
+    create_group(work_date="2026-08-01", project_id=alpha["id"], post_id=post_one["id"], description="Speld Alpha", duration_half_hours=4, participants=[admin, anna_participant])
+    create_group(work_date="2026-08-02", project_id=alpha["id"], post_id=post_two["id"], description="Speld Beta", duration_half_hours=2, participants=[admin])
+    create_group(work_date="2026-08-01", project_id=beta["id"], post_id=post_one["id"], description="Andere speld", duration_half_hours=6, participants=[anna_participant])
+    deleted = create_group(work_date="2026-08-01", project_id=alpha["id"], post_id=post_one["id"], description="Verwijderde speld", duration_half_hours=8, participants=[admin])
+    assert client.delete(f"/api/urenverantwoording/groepen/{deleted['id']}?expected_row_version={deleted['row_version']}", headers=headers).status_code == 200
+
+    alpha_total = [{"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 5.0}]
+    first_post_totals = [
+        {"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 4.0},
+        {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 3.0},
+    ]
+    cases = {
+        "work_date=2026-08-01": first_post_totals,
+        f"project_id={alpha['id']}": alpha_total,
+        f"post_id={post_one['id']}": first_post_totals,
+        "query=Speld": [
+            {"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 5.0},
+            {"project_id": beta["id"], "project_name": "Project Totalen Beta", "person_hours": 3.0},
+        ],
+        "participant_query=Totalen%20Anna": first_post_totals,
+        f"work_date=2026-08-01&project_id={alpha['id']}&post_id={post_one['id']}&participant_query=Totalen%20Anna&query=Speld": [
+            {"project_id": alpha["id"], "project_name": "Project Totalen Alpha", "person_hours": 4.0}
+        ],
+        "query=geen-overeenkomst": [],
+    }
+    for query, expected in cases.items():
+        response = client.get(f"/api/urenverantwoording/groepen?{query}", headers=headers)
+        assert response.status_code == 200
+        assert response.json()["project_totals"] == expected
 
 
 def test_work_hours_sort_contract_accepts_person_and_type_and_rejects_extras(client):
@@ -1044,16 +1155,7 @@ def test_work_hours_duplicate_external_candidate_payload_is_role_safe(client):
         headers=editor_headers,
         json={"display_name": "Dubbele Kandidaat", "email": "privaat@example.com", "note": "Nieuwe notitie"},
     )
-    assert user_duplicate.status_code == 409
-    user_candidates = user_duplicate.json()["detail"]["candidates"]
-    active_candidate = next(candidate for candidate in user_candidates if candidate["id"] == active["id"])
-    assert "email" not in active_candidate
-    assert "note" not in active_candidate
-    assert active_candidate["display_name"] == "Dubbele Kandidaat"
-    archived_candidate = next(candidate for candidate in user_candidates if candidate["id"] == archived["id"])
-    assert archived_candidate["selectable"] is False
-    assert archived_candidate["status_label"] == "historisch"
-    assert archived_candidate["guidance"]
+    assert user_duplicate.status_code == 403
 
 
 def test_work_hours_export_rejects_invalid_sort_key(client):
@@ -1295,6 +1397,36 @@ def test_portable_work_hours_checks_reject_invalid_duration_identity_cardinality
     finally:
         db.rollback()
         db.close()
+
+
+def test_duration_bounds_apply_to_create_and_update_while_historical_values_remain_readable(client):
+    headers = _login(client)
+    me, project, post, _, _ = _create_validation_group(client, headers)
+    participant = {"participant_kind": "live_user", "user_id": me["id"], "display_name_snapshot": "Admin", "display_type_snapshot": "WindWilly-gebruiker"}
+    for duration in (0, 17, 1.5):
+        response = client.post("/api/urenverantwoording/groepen", headers=headers, json={"work_date": "2026-08-04", "project_id": project["id"], "post_id": post["id"], "duration_half_hours": duration, "participants": [participant]})
+        assert response.status_code == 422
+    valid = client.post("/api/urenverantwoording/groepen", headers=headers, json={"work_date": "2026-08-04", "project_id": project["id"], "post_id": post["id"], "duration_half_hours": 16, "participants": [participant]}).json()
+    assert valid["duration_half_hours"] == 16
+    assert client.patch(f"/api/urenverantwoording/groepen/{valid['id']}", headers=headers, json={"duration_half_hours": 17, "expected_row_version": valid["row_version"]}).status_code == 422
+
+    db_generator = client.app.dependency_overrides[get_db]()
+    db = next(db_generator)
+    try:
+        historical = db.get(WorkHourGroup, valid["id"])
+        historical.duration_half_hours = 20
+        db.commit()
+    finally:
+        db.close()
+        db_generator.close()
+    listed = client.get("/api/urenverantwoording/groepen", headers=headers).json()["items"]
+    assert next(item for item in listed if item["id"] == valid["id"])["duration_half_hours"] == 20
+
+
+def test_external_person_creation_requires_admin(client):
+    editor_headers = _login(client, username="editor", password="editor12345")
+    response = client.post("/api/urenverantwoording/externe-personen", headers=editor_headers, json={"display_name": "Niet toegestaan", "email": "niet@example.com", "note": ""})
+    assert response.status_code == 403
 
 
 def test_non_admin_deleted_history_and_relink_endpoints_return_403_without_metadata_leak(client):

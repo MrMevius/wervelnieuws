@@ -3,10 +3,9 @@ FROM python:3.11-slim AS base
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
 
 COPY backend /app/backend
-COPY README.md /app/README.md
-COPY docs /app/docs
 
 FROM base AS ffmpeg-base
 ARG APP_UID=1000
@@ -18,14 +17,8 @@ RUN apt-get update \
     && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin app \
     && install -d -o app -g app -m 0700 /tmp/wervelnieuws-topic-audio
 
-FROM ffmpeg-base AS test
-RUN pip install --no-cache-dir -e "/app/backend[dev]"
-
-WORKDIR /app/backend
-CMD ["pytest"]
-
 FROM ffmpeg-base AS runtime
-RUN pip install --no-cache-dir -e /app/backend
+RUN pip install --no-cache-dir --no-compile -e /app/backend
 
 WORKDIR /app/backend
 USER app:app

@@ -1,0 +1,53 @@
+# Build only application inputs. Runtime configuration and durable state are
+# supplied by Compose bind mounts, never by a Docker build context.
+.git/
+.github/
+.opencode/
+opsx/
+
+# Secrets and local runtime state.
+.env
+.env.*
+data/
+**/data/
+storage/
+**/storage/
+database/
+**/database/
+config/
+**/config/
+*.db
+*.sqlite
+*.sqlite3
+
+# Virtual environments, dependency caches, test output and editor artefacts.
+.venv/
+**/.venv/
+node_modules/
+**/node_modules/
+dist/
+build/
+coverage/
+.pytest_cache/
+**/.pytest_cache/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.mypy_cache/
+.ruff_cache/
+.cache/
+.tmp/
+tmp/
+.DS_Store
+.idea/
+.vscode/
+
+# Tests and development-only inputs never form part of a release image.
+tests/
+**/tests/
+**/*.test.*
+**/*.spec.*
+README.md
+docs/
+docker-compose.yml

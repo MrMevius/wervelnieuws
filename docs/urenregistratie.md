@@ -2,16 +2,17 @@
 
 ## Registreren en filteren
 
-- Open **Urenverantwoording** en gebruik de permanent zichtbare bovenste tabelrij.
-- Kies datum, project, globale post, duur en omschrijving. Kies de duur in stappen van een half uur. Open de aparte keuzelijsten **WindWilly-personen** en **Externe personen** en vink deelnemers aan of uit; de gekozen deelnemers blijven eronder zichtbaar. Via **deelnemer(s)** kan ook direct een externe persoon worden aangemaakt.
+- Open **Urenregistratie** en gebruik de permanent zichtbare bovenste tabelrij.
+- Kies datum, project, globale post, duur en omschrijving. Datums die de app toont gebruiken `dd-mm-jjjj`; de datumkiezer blijft de eigen native browserbediening. Kies de duur in stappen van een half uur, van 0,5 tot en met 8 uur. Open **Deelnemer(s) ▾**; zodra je personen kiest wordt dit **n deelnemer(s) ▾**. Deze ene knop bevat de teller; er is geen los label of losse teller en er verschijnen geen gekozen namen of typen wanneer de kiezer gesloten is. De zwevende kiezer toont alle selecteerbare **WindWilly-personen** en **Externe personen** direct als keuzevakjes; alleen daar blijven aangevinkte namen zichtbaar. Onder de kop **WindWilly-personen** staan interne personen alleen met hun naam; externe opties behouden hun eigen typeaanduiding. Sluit hem met Escape, een tik/klik buiten de kiezer of de trigger; je keuze blijft behouden.
 - Gebruik de filters in de kolomkoppen om waarden te zoeken, te selecteren of per kolom te wissen. **Alle filters wissen** herstelt het actieve ongefilterde overzicht.
-- De totalen en CSV-export gebruiken altijd precies dezelfde filters; CSV exporteert alle treffers en niet alleen de zichtbare pagina.
+- Rechtsboven staan de totale persoon-uren per project, voor alle deelnemers. Op ruime schermen blijven deze projecttotalen zichtbaar tijdens scrollen; op smalle schermen staan ze boven de bediening. De totalen gebruiken dezelfde filters als de lijst, omvatten alle passende actieve registraties en zijn niet beperkt tot de zichtbare pagina. CSV exporteert eveneens alle treffers.
 
 ## Centrale masterdata
 
 - Beheer algemene projecten uitsluitend via **Admin > Projecten**. Alleen actieve, niet-gearchiveerde projecten zijn voor nieuwe uren selecteerbaar; historische registraties blijven zichtbaar.
 - Beheer urenposten/categorieën onder **Admin > Projecten > Globale urenposten / categorieën**. Een actieve post is bij ieder selecteerbaar project beschikbaar.
 - Alleen admins kunnen projecten en posten aanmaken, wijzigen, archiveren of herstellen.
+- Alleen admins kunnen externe personen aanmaken via **Admin > Urenhistorie en identiteiten > Externe persoon aanmaken**. Daar zijn naam, optioneel e-mailadres en een optionele notitie beschikbaar; bestaande actieve externe personen blijven bij urenregistratie selecteerbaar.
 
 ## Historie en audit
 

@@ -126,7 +126,7 @@ git diff --check
 - De bestaande desktop- en mobiele create-oppervlakken blijven beide ondersteund en krijgen functioneel equivalente deelnemer- en duurbediening.
 
 ## Current status
-Rescue repair round 2 complete; all requested automated verification passed. Manual responsive/200%-zoom and real-browser accessibility checks remain pending because they were not performed and the repository has no browser/a11y tooling.
+Newest approved adjustment implemented; automated verification passed. Manual responsive/200%-zoom and real-browser accessibility checks remain pending because they were not performed and the repository has no browser/a11y tooling.
 
 ## What changed
 - Added separate accessible `WindWilly-personen` and `Externe personen` disclosure controls with checkbox multi-selection, backed by the existing canonical participant state. Only existing eligible users and active external persons are listed; selected people remain visibly summarized.
@@ -144,6 +144,9 @@ Rescue repair round 2 complete; all requested automated verification passed. Man
 - Rescue repair round 2: successful checkbox additions, external quick-add and selectable duplicate-candidate resolution immediately clear stale participant validation feedback.
 - Rescue repair round 2: the focusable mobile participant region now receives `aria-invalid` and `aria-describedby` while participant validation feedback is present.
 - Added targeted regressions for non-selectable option filtering with retained selected display, all three validation-clear paths, and mobile participant error focus/ARIA wiring.
+- Replaced the native create-row participant disclosure on both desktop and mobile with a compact `Deelnemer(s) ▾` button that exposes the selected count only when non-zero. It opens one direct floating checkbox picker containing both participant groups, retaining the canonical selection and create payload.
+- Added dialog semantics, expanded/controls state, checkbox initial focus and normal native checkbox keyboard operation; Escape and outside pointer/tap close the picker without changing selection and return focus to its trigger. The viewport-fixed, scrollable picker remains within viewport bounds; opening one surface closes the other.
+- Updated focused regressions for trigger/count, direct picker structure, Space keyboard selection, Escape/outside close, focus return, persisted selection and existing payload behavior.
 
 ## How to verify
 - `cd frontend && npm test -- --run src/app/features/urenverantwoording/UrenverantwoordingPage.test.tsx src/app/App.test.tsx`
@@ -182,8 +185,13 @@ Rescue repair round 2 complete; all requested automated verification passed. Man
 - PASS (rescue round 2 backend API) — from `backend/`, with a temporary `STORAGE_ROOT`, `.venv/bin/pytest tests/test_work_hours_api.py` → 81 passed; existing pytest-asyncio/passlib/Jose deprecation warnings only, and the temporary root was removed.
 - PASS (rescue round 2 diff) — `git diff --check` → no whitespace errors. The complete dirty-worktree diff/status and the affected frontend diff were inspected; unrelated files were not edited in this round.
 - No manual browser evidence is claimed for rescue round 2.
+- PASS (newest adjustment, focused) — `cd frontend && npm test -- --run src/app/features/urenverantwoording/UrenverantwoordingPage.test.tsx` → 1 file passed, 32 tests passed.
+- PASS (newest adjustment, frontend build) — `cd frontend && npm run build` → TypeScript/Vite build passed; only the existing informational >500 kB chunk warning remained.
+- PASS (newest adjustment, backend API) — from `backend/`, with a temporary `STORAGE_ROOT`, `.venv/bin/pytest tests/test_work_hours_api.py` → 84 passed; existing pytest-asyncio/passlib/Jose deprecation warnings only, and the temporary root was removed.
+- Pending manual check remains unchanged: desktop/tablet/320 CSS px at 200% zoom, real-browser visible-focus and floating-picker placement/scrolling verification.
+- Superseded bookkeeping note (2026-08-13): the latest floating-picker implementation summary and evidence belong to `opsx/changes/2026-08-12-urenregistratie-vervolg-ux-en-externe-personenbeheer.md`; they are recorded there as the active scope. This older spec remains otherwise unchanged.
 
 ---
-Status: rescue repair round 2 complete; automated verification passed, manual responsive/real-browser accessibility verification pending
+Status: newest approved adjustment implemented; automated verification passed, manual responsive/real-browser accessibility verification pending
 Owner: —
 Date: 2026-08-12

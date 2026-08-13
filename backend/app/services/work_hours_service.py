@@ -547,6 +547,7 @@ class WorkHoursService:
             total_duration_hours=duration_half_hours / 2,
             total_person_hours=person_hours,
         )
+        project_totals = self.repo.aggregate_project_totals(filters)
         response_type = WorkHourAdminListResponse if current and current.is_admin else WorkHourListResponse
         return response_type(
             items=items,
@@ -556,6 +557,7 @@ class WorkHoursService:
             sort_key=query.sort_key,
             sort_direction=query.sort_direction,
             totals=totals,
+            project_totals=project_totals,
         )
 
     def _build_totals(self, groups: list[WorkHourGroup]) -> WorkHourTotalsResponse:
@@ -858,6 +860,7 @@ class WorkHoursService:
         return self._group_to_admin_response(group) if current.is_admin else self._group_to_response(group)
 
     def create_external_person(self, current: User, payload: WorkExternalPersonCreateRequest) -> WorkExternalPersonResponse:
+        self._ensure_admin(current)
         normalized_name = _normalize(payload.display_name)
         normalized_email = _normalize(payload.email)
         candidates = [

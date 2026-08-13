@@ -327,6 +327,36 @@ class WorkHoursRepository:
         ).one()
         return int(count_value or 0), int(people_value or 0), int(duration_value or 0), float(person_half_hours or 0) / 2
 
+    def aggregate_project_totals(self, filters: dict[str, object]) -> list[dict[str, object]]:
+        """Return person-hours per project from the complete active, deduplicated list basis."""
+        active_filters = {**filters, "include_deleted": False, "deleted_only": False}
+        group_ids = self._apply_group_filters(select(WorkHourGroup.id), active_filters).distinct().subquery()
+        participant_counts = (
+            select(
+                WorkHourGroupParticipant.group_id.label("group_id"),
+                func.count(WorkHourGroupParticipant.id).label("participant_count"),
+            )
+            .where(WorkHourGroupParticipant.deleted_at.is_(None))
+            .group_by(WorkHourGroupParticipant.group_id)
+            .subquery()
+        )
+        rows = self.db.execute(
+            select(
+                WorkHourGroup.project_id.label("project_id"),
+                Project.name.label("project_name"),
+                func.coalesce(func.sum(WorkHourGroup.duration_half_hours * participant_counts.c.participant_count), 0).label("person_half_hours"),
+            )
+            .join(group_ids, group_ids.c.id == WorkHourGroup.id)
+            .join(Project, Project.id == WorkHourGroup.project_id)
+            .outerjoin(participant_counts, participant_counts.c.group_id == WorkHourGroup.id)
+            .group_by(WorkHourGroup.project_id, Project.name)
+            .order_by(Project.name.asc(), WorkHourGroup.project_id.asc())
+        ).mappings().all()
+        return [
+            {"project_id": row["project_id"], "project_name": row["project_name"], "person_hours": float(row["person_half_hours"] or 0) / 2}
+            for row in rows
+        ]
+
     def compare_and_bump(self, model, row_id: str, expected_row_version: int) -> int | None:
         result = self.db.execute(
             update(model)

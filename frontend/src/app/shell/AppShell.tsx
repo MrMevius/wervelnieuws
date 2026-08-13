@@ -640,7 +640,7 @@ export function App() {
               ))}
             </nav>
           </div>
-          <NavLink to={WERVEL_PATHS.urenverantwoording}>Urenverantwoording</NavLink>
+          <NavLink to={WERVEL_PATHS.urenverantwoording}>Urenregistratie</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
         </nav>
         <div className="user-menu-wrap">
@@ -5397,7 +5397,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           required
         />
         <label className="admin-checkbox-field"><input type="checkbox" aria-label="Nieuw project zichtbaar in Vergaderborden" checked={newProjectVisibility.is_visible_in_boards} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_boards: event.target.checked }))} />Vergaderborden</label>
-        <label className="admin-checkbox-field"><input type="checkbox" aria-label="Nieuw project zichtbaar in Urenverantwoording" checked={newProjectVisibility.is_visible_in_work_hours} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_work_hours: event.target.checked }))} />Urenverantwoording</label>
+        <label className="admin-checkbox-field"><input type="checkbox" aria-label="Nieuw project zichtbaar in Urenregistratie" checked={newProjectVisibility.is_visible_in_work_hours} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_work_hours: event.target.checked }))} />Urenregistratie</label>
         <button
           type="submit"
           disabled={createProjectMutation.isPending || newProjectName.trim().length < 2}
@@ -5430,7 +5430,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                   <td>
                     <div>{project.is_active ? "actief" : "inactief"}</div>
                     <label className="admin-checkbox-field"><input type="checkbox" aria-label={`Zichtbaar in Vergaderborden voor ${project.name}`} checked={project.is_visible_in_boards} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_boards: event.target.checked } })} disabled={updateProjectMutation.isPending} />Vergaderborden</label>
-                    <label className="admin-checkbox-field"><input type="checkbox" aria-label={`Zichtbaar in Urenverantwoording voor ${project.name}`} checked={project.is_visible_in_work_hours} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_work_hours: event.target.checked } })} disabled={updateProjectMutation.isPending} />Urenverantwoording</label>
+                    <label className="admin-checkbox-field"><input type="checkbox" aria-label={`Zichtbaar in Urenregistratie voor ${project.name}`} checked={project.is_visible_in_work_hours} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_work_hours: event.target.checked } })} disabled={updateProjectMutation.isPending} />Urenregistratie</label>
                   </td>
                   <td>
                     <div className="admin-account-actions">

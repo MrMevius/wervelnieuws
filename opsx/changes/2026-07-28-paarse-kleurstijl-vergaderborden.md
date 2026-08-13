@@ -100,30 +100,34 @@ Deze change introduceert een duidelijk contrastrijke paarse stijl voor de vergad
 Partial
 
 ## What changed
-Frontend styling is omgezet naar semantische paarse tokens voor vergaderbordkolommen, board-chrome, modals, overlays en interactieve states. De algemene interface gebruikt nu dezelfde paarse accentlaag voor navigatie, hero/chrome, focusstates en geselecteerde states. De About/changelog en default content bevatten een nieuwe gebruikersgerichte update over de paarse stijl. Gerichte frontendtests en build zijn geslaagd.
+Frontend styling is omgezet naar semantische paarse tokens voor vergaderbordkolommen, board-chrome, modals, overlays en interactieve states. De algemene interface gebruikt nu dezelfde paarse accentlaag voor navigatie, hero/chrome, focusstates en geselecteerde states. De About/changelog bevat een nieuwe gebruikersgerichte update over de paarse stijl. Gerichte frontendtests en build zijn geslaagd.
 
 ## How to verify
-- `cd backend && ./.venv/bin/pytest tests/test_meta_and_me.py -q`
-- `cd frontend && npm test -- --run`
-- `cd frontend && npm run build`
-- Handmatige visuele check van vergaderborden en interface in light/dark mode op contrast, geselecteerde states en focusstates.
+- `cd frontend && npm test -- --run` → PASS.
+- `cd frontend && npm run build` → PASS.
+- `cd backend && pytest tests/test_meta_and_me.py -q` → lokaal geblokkeerd door ontbrekende `fastapi` in de host-omgeving.
+- Handmatige visuele/a11y-check van vergaderborden en interface in light/dark mode op contrast, geselecteerde states en focusstates: nog niet aantoonbaar uitgevoerd.
 
 ## Follow-ups
 - Voer een aparte visuele WCAG-/a11y-review uit; er is geen losse contrast- of accessibility-tooling gebruikt in deze change.
 - Controleer en migreer/actualiseer bestaande opgeslagen About-content indien die nog oude tekst bevat.
-- Isoleer en behandel ongerelateerde audiowijzigingen apart; die zaten al in de worktree en zijn niet door deze change aangepast.
+- Isoleer en behandel ongerelateerde pre-existing audiowijzigingen apart; die zaten al in de worktree en zijn niet door deze change aangepast.
 
 ## Verification evidence
-`cd backend && ./.venv/bin/pytest tests/test_meta_and_me.py -q` ✅ 24 passed.
-
 `cd frontend && npm test -- --run` ✅ 3 test files, 129 tests passed.
 
 `cd frontend && npm run build` ✅ build geslaagd.
 
-Review findings / warnings:
-- Geen aparte contrast/a11y-tool gebruikt; verificatie bleef beperkt tot de bestaande tests en handmatige visuele controle.
-- Bestaande opgeslagen About-content kan nog oude content bevatten en is mogelijk niet volledig meegepakt.
-- Ongerelateerde audiowijzigingen zaten al in de worktree en zijn bewust niet aangepast door deze change.
+`cd backend && pytest tests/test_meta_and_me.py -q` ⚠️ lokaal geblokkeerd met `ModuleNotFoundError: No module named 'fastapi'`.
+
+Review verdict:
+- User accepted partial verification as sufficient for close-out.
+- No visual proof or separate a11y proof was captured.
+
+Punch-list:
+- Capture visual/a11y evidence for the purple theme pass.
+- Re-run backend verification in an environment with FastAPI installed.
+- Confirm unrelated pre-existing audio work remains out of scope.
 
 ---
 Status: partial
