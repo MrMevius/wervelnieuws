@@ -7,6 +7,12 @@ Wervelnieuws is a self-hosted communication platform for a local wind-energy pro
 
 The application is designed for a small editorial team. Generated content remains subject to human review before publication, and factual output must be grounded in uploaded source material or explicit topic notes.
 
+## Source availability
+
+This repository is publicly visible for transparency and reference purposes. Public visibility does not make the project open source and does not grant permission to copy, modify, redistribute, publish, sublicense or commercially use the source code.
+
+Unless separately agreed in writing, all rights are reserved.
+
 ## What it does
 
 The main workflow is:
@@ -45,7 +51,9 @@ Supported source formats include PDF, DOCX, XLSX, TXT and Markdown.
 - `SECURITY.md` — vulnerability reporting guidance
 - `AGENTS.md` — repository rules for AI-assisted development
 
-## Quick start for development
+## Development setup
+
+The following instructions are intended for maintainers and explicitly approved collaborators.
 
 ### Requirements
 
@@ -53,7 +61,7 @@ Install:
 
 - Git
 - Docker Desktop, or Docker Engine with Docker Compose v2
-- access to this GitHub repository
+- repository access appropriate to your role
 
 No production server, production data, VPN or production credentials are required for normal development.
 
@@ -116,7 +124,7 @@ The `-v` command deletes local development data.
 
 ## Development workflow
 
-For normal collaboration:
+For maintainers and approved collaborators:
 
 1. update your local `main` branch;
 2. create a short-lived feature or fix branch;
