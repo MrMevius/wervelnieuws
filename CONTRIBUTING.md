@@ -1,6 +1,6 @@
 # Contributing to Wervelnieuws
 
-This guide is intended for developers working on Wervelnieuws from their own workstation. Local development must not depend on production infrastructure, production data, or homelab access.
+This guide is intended for developers working on Wervelnieuws from their own workstation. Local development must not depend on production infrastructure, production data or production credentials.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Install:
 - Docker Desktop, or Docker Engine with Docker Compose v2
 - access to the private `MrMevius/wervelnieuws` repository
 
-No SSH or VPN access to the production environment is required for normal development.
+No production server, SSH or VPN access is required for normal development.
 
 ## First-time setup
 
@@ -91,7 +91,7 @@ git pull --ff-only
 git switch -c feature/short-description
 ```
 
-Do not use production infrastructure as a development environment. Do not commit `.env`, databases, uploaded data, generated assets, API keys, tokens, passwords, or other secrets.
+Do not use production infrastructure as a development environment. Do not commit `.env`, databases, uploaded data, generated assets, API keys, tokens, passwords or other secrets.
 
 Backend changes are reloaded automatically by Uvicorn. Frontend changes are reloaded by Vite. Restart the worker after changing worker behavior:
 
@@ -101,7 +101,7 @@ docker compose -f docker-compose.dev.yml restart worker
 
 ## Tests
 
-Run the backend tests from a local Python development environment as documented in `README.md`:
+Run backend tests:
 
 ```bash
 cd backend
@@ -116,9 +116,9 @@ npm test
 npm run build
 ```
 
-GitHub Actions also runs the repository CI on pushes and pull requests.
+GitHub Actions also runs the repository CI on pushes and Pull Requests.
 
-## Pull request workflow
+## Pull Request workflow
 
 Push the feature branch:
 
@@ -140,6 +140,6 @@ Before requesting review:
 
 ## Production boundary
 
-The normal development workflow deliberately stops at GitHub. Production deployment, production credentials, production data, and homelab access are separate concerns and are not required for contributors.
+The normal development workflow deliberately stops at GitHub. Production deployment, production credentials and production data are separate concerns and are not required for contributors.
 
-The production Compose workflow remains documented in `README.md` and `docs/docker-compose-operations.md`. Do not substitute `docker-compose.dev.yml` for the production deployment procedure.
+Production lifecycle, release, migration, backup and rollback procedures are maintained in [docs/docker-compose-operations.md](docs/docker-compose-operations.md) and [docs/release-readiness.md](docs/release-readiness.md). Do not substitute `docker-compose.dev.yml` for the production deployment procedure.
