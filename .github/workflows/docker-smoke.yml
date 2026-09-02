@@ -14,5 +14,8 @@ jobs:
       - name: Prepare environment file
         run: cp .env.example .env
 
+      - name: Validate development Compose configuration
+        run: docker compose -f docker-compose.dev.yml config >/dev/null
+
       - name: Build Docker services
         run: docker compose build backend frontend worker

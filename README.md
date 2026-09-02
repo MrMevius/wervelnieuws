@@ -34,7 +34,30 @@ scheduled publication, multi-channel publishing, retries, notifications, and aud
   - `docs/urenregistratie.md` explains inline hour entry, central project/global post management, CSV, record-level restore, and operational database/storage rollback
 - `opsx/changes/` active change specifications
 
-## Quick start (Docker)
+## Developer onboarding
+
+Collaborators should develop from their own workstation without production data, production credentials, SSH, VPN, or homelab access.
+
+For a clean Docker-based local environment:
+
+```bash
+git clone https://github.com/MrMevius/wervelnieuws.git
+cd wervelnieuws
+cp .env.example .env
+docker compose -f docker-compose.dev.yml up --build
+```
+
+On Windows PowerShell, use `Copy-Item .env.example .env` instead of `cp`.
+
+The development stack uses isolated Docker volumes, applies migrations, seeds a local development admin, enables backend/frontend reload, and binds the application only to localhost.
+
+- Frontend: `http://localhost:5173`
+- Backend API docs: `http://localhost:8001/docs`
+- Development login: `admin` / `admin12345`
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the complete development, testing, branch, Pull Request, reset, and secrets workflow.
+
+## Production/server quick start (Docker)
 
 1. Maak servermappen aan voor data en config:
 
@@ -179,6 +202,7 @@ Use the reproducible release, runtime lifecycle, observation and rollback proced
   - frontend production build (`npm run build`)
 - Additional PR-only Docker workflow: `.github/workflows/docker-smoke.yml`
   - prepares `.env` from `.env.example`
+  - validates `docker-compose.dev.yml`
   - runs `docker compose build backend frontend worker`
 
 ## API highlights
