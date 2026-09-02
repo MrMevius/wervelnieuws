@@ -42,6 +42,7 @@ Supported source formats include PDF, DOCX, XLSX, TXT and Markdown.
 - `docker-compose.yml` — production/server Compose definition
 - `docker-compose.dev.yml` — isolated local development environment
 - `CONTRIBUTING.md` — development and collaboration guide
+- `SECURITY.md` — vulnerability reporting guidance
 - `AGENTS.md` — repository rules for AI-assisted development
 
 ## Quick start for development
@@ -52,7 +53,7 @@ Install:
 
 - Git
 - Docker Desktop, or Docker Engine with Docker Compose v2
-- access to this private GitHub repository
+- access to this GitHub repository
 
 No production server, production data, VPN or production credentials are required for normal development.
 
@@ -162,7 +163,7 @@ GitHub Actions runs the main backend/frontend checks on pushes and Pull Requests
 
 Production deployment is deliberately separate from local development. Do not use production data or credentials for development and do not use `docker-compose.dev.yml` as the production deployment definition.
 
-Production lifecycle, migration, backup and rollback procedures are documented in [docs/docker-compose-operations.md](docs/docker-compose-operations.md). Release preflight requirements are documented separately in [docs/release-readiness.md](docs/release-readiness.md).
+Production lifecycle, migration, backup and rollback procedures are documented in [docs/docker-compose-operations.md](docs/docker-compose-operations.md). Operational database/storage rollback guidance is documented in [docs/urenregistratie.md](docs/urenregistratie.md). Release preflight requirements are documented separately in [docs/release-readiness.md](docs/release-readiness.md).
 
 ## Documentation
 
@@ -173,4 +174,5 @@ Production lifecycle, migration, backup and rollback procedures are documented i
 - [Hour registration](docs/urenregistratie.md)
 - [Changelog guidelines](docs/changelog-guidelines.md)
 - [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 - [AI-assisted repository rules](AGENTS.md)
