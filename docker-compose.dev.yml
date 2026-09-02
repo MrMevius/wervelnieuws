@@ -1,0 +1,93 @@
+name: wervelnieuws-dev
+
+services:
+  init:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    user: "0:0"
+    env_file:
+      - .env
+    command: ["sh", "-lc", "mkdir -p /data && chown -R 1000:1000 /data"]
+    volumes:
+      - dev-data:/data
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    env_file:
+      - .env
+    command: ["alembic", "upgrade", "head"]
+    volumes:
+      - dev-data:/data
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  seed:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    env_file:
+      - .env
+    command: ["python", "app/tasks/seed_admin.py"]
+    volumes:
+      - dev-data:/data
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: runtime
+    env_file:
+      - .env
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "127.0.0.1:8001:8000"
+    volumes:
+      - ./backend:/app/backend
+      - dev-data:/data
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+      target: runtime
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app/backend
+      - ./worker:/app/worker
+      - dev-data:/data
+    depends_on:
+      backend:
+        condition: service_started
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    environment:
+      VITE_API_BASE_URL: http://localhost:8001/api
+    command: ["sh", "-lc", "npm ci && npm run dev -- --host 0.0.0.0"]
+    ports:
+      - "127.0.0.1:5173:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  dev-data:
+  frontend-node-modules:
