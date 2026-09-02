@@ -171,7 +171,7 @@ GitHub Actions runs the main backend/frontend checks on pushes and Pull Requests
 
 Production deployment is deliberately separate from local development. Do not use production data or credentials for development and do not use `docker-compose.dev.yml` as the production deployment definition.
 
-Production lifecycle, migration, backup and rollback procedures are documented in [docs/docker-compose-operations.md](docs/docker-compose-operations.md). Operational database/storage rollback guidance is documented in [docs/urenregistratie.md](docs/urenregistratie.md). Release preflight requirements are documented separately in [docs/release-readiness.md](docs/release-readiness.md).
+Production lifecycle, migration, backup and rollback procedures are documented in [docs/docker-compose-operations.md](docs/docker-compose-operations.md). The operational database/storage rollback guidance is documented in [docs/urenregistratie.md](docs/urenregistratie.md). Release preflight requirements are documented separately in [docs/release-readiness.md](docs/release-readiness.md).
 
 ## Documentation
 
