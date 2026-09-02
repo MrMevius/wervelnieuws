@@ -4,6 +4,8 @@ This runbook separates schema releases from normal runtime lifecycle operations.
 
 > **Important:** never use a broad `docker compose up` for normal runtime start or recovery. It selects all Compose services, including `migrate`. Runtime lifecycle commands must name the three runtime services and must not cause a schema migration.
 
+Use [release-readiness.md](release-readiness.md) for the production release preflight and release-specific runtime checks.
+
 ## Preflight
 
 From the repository root, with the production `.env` and required bind-mount paths in place:
@@ -17,7 +19,7 @@ Confirm that `backend`, `frontend`, and `worker` have `restart: unless-stopped`,
 
 ## Controlled release and migration
 
-1. Build or select the verified immutable release artifact according to the [release-readiness checklist](../README.md#release-readiness-checklist).
+1. Complete the [release-readiness checklist](release-readiness.md#release-readiness-checklist).
 2. Create and verify a database **and** storage backup outside active storage.
 3. Stop the SQLite writers before changing the schema:
 
