@@ -1,0 +1,84 @@
+name: Auto Release PR
+
+on:
+  push:
+    branches:
+      - "release/**"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-release-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker-compose-build:
+    name: Docker compose build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare environment file
+        run: cp .env.example .env
+
+      - name: Validate development Compose configuration
+        run: docker compose -f docker-compose.dev.yml config >/dev/null
+
+      - name: Build Docker services
+        run: docker compose build backend frontend worker
+
+  create-pr:
+    name: Create PR and enable auto-merge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or find pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          PR_URL="$(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --head "$BRANCH" \
+              --base main \
+              --state open \
+              --json url \
+              --jq '.[0].url // ""'
+          )"
+
+          if [[ -z "$PR_URL" ]]; then
+            TITLE="release: ${BRANCH#release/}"
+            PR_URL="$(
+              gh pr create \
+                --repo "$GITHUB_REPOSITORY" \
+                --base main \
+                --head "$BRANCH" \
+                --title "$TITLE" \
+                --body "Automatically created from \`$BRANCH\`. CI must pass before this PR can merge."
+            )"
+            echo "Created: $PR_URL"
+          else
+            echo "Existing PR: $PR_URL"
+          fi
+
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Enable squash auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.pr.outputs.url }}
+        run: |
+          set -euo pipefail
+
+          if gh pr merge --auto --squash "$PR_URL"; then
+            exit 0
+          fi
+
+          echo "Auto-merge could not be armed; trying an immediate ruleset-protected merge."
+          gh pr merge --squash "$PR_URL"
