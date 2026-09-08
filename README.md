@@ -184,3 +184,5 @@ Production lifecycle, migration, backup and rollback procedures are documented i
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [AI-assisted repository rules](AGENTS.md)
+
+<!-- CI/CD end-to-end deployment test 2026-09-08 -->
