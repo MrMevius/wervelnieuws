@@ -12,7 +12,7 @@ from app.models.entities import (
     Recording,
     User,
 )
-from app.models.enums import BoardColumn
+from app.models.enums import BoardColumn, BoardUrgency
 
 
 class BoardRepository:
@@ -140,9 +140,40 @@ class BoardRepository:
             or 0
         )
 
-    def create_card(self, project_id: str, title: str, description: str, column: BoardColumn) -> BoardCard:
-        max_position = self.db.scalar(select(func.max(BoardCard.position)).where(BoardCard.project_id == project_id, BoardCard.column == column))
-        card = BoardCard(project_id=project_id, title=title.strip(), description=description.strip(), column=column, position=int(max_position or -1) + 1)
+    def list_trello_card_ids(self, trello_card_ids: list[str]) -> set[str]:
+        if not trello_card_ids:
+            return set()
+        return set(self.db.scalars(select(BoardCard.trello_card_id).where(BoardCard.trello_card_id.in_(trello_card_ids))).all())
+
+    def create_card(
+        self,
+        project_id: str,
+        title: str,
+        description: str,
+        column: BoardColumn,
+        urgency: BoardUrgency,
+        *,
+        trello_card_id: str | None = None,
+        is_archived: bool = False,
+    ) -> BoardCard:
+        max_position = self.db.scalar(
+            select(func.max(BoardCard.position)).where(
+                BoardCard.project_id == project_id,
+                BoardCard.column == column,
+                BoardCard.is_archived.is_(is_archived),
+                BoardCard.deleted_at.is_(None),
+            )
+        )
+        card = BoardCard(
+            project_id=project_id,
+            title=title.strip(),
+            description=description.strip(),
+            column=column,
+            urgency=urgency,
+            trello_card_id=trello_card_id,
+            is_archived=is_archived,
+            position=int(max_position or -1) + 1,
+        )
         self.db.add(card)
         self.db.flush()
         return card
@@ -175,6 +206,30 @@ class BoardRepository:
         self.db.refresh(card)
         return card
 
+    def soft_delete_project_cards(self, project_id: str, deleted_by_user_id: str) -> int:
+        """Move every non-deleted card of a board to the recycle bin in one transaction."""
+        cards = list(
+            self.db.scalars(
+                select(BoardCard).where(
+                    BoardCard.project_id == project_id,
+                    BoardCard.deleted_at.is_(None),
+                )
+            ).all()
+        )
+        if not cards:
+            return 0
+
+        deleted_at = datetime.now(UTC)
+        for card in cards:
+            card.deleted_at = deleted_at
+            card.deleted_by_user_id = deleted_by_user_id
+            # Trello IDs are unique. Releasing them here lets a deliberately
+            # cleared board be repopulated from the same export.
+            card.trello_card_id = None
+            self.db.add(card)
+        self.db.commit()
+        return len(cards)
+
     def restore_deleted_card(self, card: BoardCard) -> BoardCard:
         card.deleted_at = None
         card.deleted_by_user_id = None
@@ -192,6 +247,13 @@ class BoardRepository:
 
     def update_card_description(self, card: BoardCard, description: str) -> BoardCard:
         card.description = description.strip()
+        self.db.add(card)
+        self.db.commit()
+        self.db.refresh(card)
+        return card
+
+    def update_card_urgency(self, card: BoardCard, urgency: BoardUrgency) -> BoardCard:
+        card.urgency = urgency
         self.db.add(card)
         self.db.commit()
         self.db.refresh(card)
@@ -236,8 +298,22 @@ class BoardRepository:
             ).all()
         )
 
-    def create_update(self, card_id: str, author_user_id: str, message: str) -> CardUpdate:
-        row = CardUpdate(card_id=card_id, author_user_id=author_user_id, message=message.strip())
+    def create_update(
+        self,
+        card_id: str,
+        author_user_id: str,
+        message: str,
+        *,
+        created_at: datetime | None = None,
+        external_author_name: str | None = None,
+    ) -> CardUpdate:
+        row = CardUpdate(
+            card_id=card_id,
+            author_user_id=author_user_id,
+            external_author_name=external_author_name,
+            message=message.strip(),
+            created_at=created_at or datetime.now(UTC),
+        )
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)

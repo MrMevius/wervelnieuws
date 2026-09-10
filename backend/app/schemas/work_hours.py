@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 PAGE_SIZES = [25, 50, 100]
@@ -225,11 +225,19 @@ class WorkHourAdminParticipantResponse(WorkHourParticipantResponse):
 
 class WorkHourGroupBase(BaseModel):
     work_date: date
+    start_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     project_id: str
-    post_id: str
+    post_id: str | None = None
     description: str = ""
-    duration_half_hours: int = Field(ge=1, le=16)
+    duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
+    duration_half_hours: int | None = Field(default=None, ge=1, le=16)
     participants: list[WorkHourParticipantCreateRequest] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def require_one_duration(self):
+        if (self.duration_minutes is None) == (self.duration_half_hours is None):
+            raise ValueError("Geef precies één duur op, in minuten of via het oude halfurenveld.")
+        return self
 
     @field_validator("description", mode="before")
     @classmethod
@@ -245,24 +253,36 @@ class WorkHourGroupCreateRequest(WorkHourGroupBase):
 
 class WorkHourGroupUpdateRequest(BaseModel):
     work_date: date | None = None
+    start_time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     project_id: str | None = None
     post_id: str | None = None
     description: str | None = None
     duration_half_hours: int | None = Field(default=None, ge=1, le=16)
+    duration_minutes: int | None = Field(default=None, ge=1, le=1440, strict=True)
     participants: list[WorkHourParticipantUpdateRequest] | None = None
     expected_row_version: int | None = Field(default=None, ge=1)
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def unambiguous_duration(self):
+        if self.duration_minutes is not None and self.duration_half_hours is not None:
+            raise ValueError("Geef de duur maar één keer op.")
+        if "duration_minutes" in self.model_fields_set and self.duration_minutes is None:
+            raise ValueError("De duur mag niet leeg zijn.")
+        return self
 
 
 class WorkHourGroupResponse(BaseModel):
     id: str
     work_date: date
+    start_time: str | None = None
     project_id: str
     project_name: str
-    post_id: str
+    post_id: str | None
     post_name: str
     description: str
-    duration_half_hours: int
+    duration_minutes: int
+    duration_half_hours: int | None
     duration_hours: float
     person_count: int
     person_hours: float

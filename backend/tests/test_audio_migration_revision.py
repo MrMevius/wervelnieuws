@@ -7,11 +7,11 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
 
 from app.core.settings import get_settings
+from scripts.release_schema_preflight import EXPECTED_HEAD as RELEASE_HEAD
 
 
 PRE_AUDIO_REVISION = "20260616_0023"
 AUDIO_REVISION = "20260630_0024"
-RELEASE_HEAD = "20260811_0030"
 BACKEND_ROOT = Path(__file__).parents[1]
 BOARD_CARD_LIFECYCLE_SHA256 = "c57ff036bbcb3274961f20e88f4fe43d8fab42110edbcecb6870b51f8e7a8ef1"
 

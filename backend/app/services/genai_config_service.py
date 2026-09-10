@@ -16,6 +16,12 @@ from app.schemas.genai import (
 GENAI_CONFIG_SETTING_KEY = "genai_config_v1"
 DEFAULT_TEXT_MODELS = ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"]
 DEFAULT_IMAGE_MODELS = ["gpt-image-1"]
+DEFAULT_TRANSCRIPTION_MODELS = [
+    "gpt-transcribe",
+    "gpt-4o-mini-transcribe",
+    "gpt-4o-transcribe",
+    "whisper-1",
+]
 
 
 def default_genai_config() -> GenAIConfig:
@@ -31,7 +37,7 @@ def default_genai_config() -> GenAIConfig:
         newsletter_prompt="Schrijf informatief en overzichtelijk in nieuwsbriefstijl.",
         text_model=settings.openai_model_text,
         image_model=settings.openai_model_image,
-        whisper_model="whisper-1",
+        whisper_model="gpt-transcribe",
         whisper_language="nl",
         websearch_enabled=False,
         websearch_max_results=3,
@@ -90,8 +96,10 @@ class GenAIConfigService:
         config = self.get_effective_config()
         text_models = set(DEFAULT_TEXT_MODELS)
         image_models = set(DEFAULT_IMAGE_MODELS)
+        transcription_models = set(DEFAULT_TRANSCRIPTION_MODELS)
         text_models.add(config.text_model)
         image_models.add(config.image_model)
+        transcription_models.add(config.whisper_model)
 
         if config.openai_api_key:
             try:
@@ -105,12 +113,15 @@ class GenAIConfigService:
                         text_models.add(model_id)
                     if self._is_image_model(model_id):
                         image_models.add(model_id)
+                    if self._is_transcription_model(model_id):
+                        transcription_models.add(model_id)
             except Exception:
                 pass
 
         return GenAIModelOptionsResponse(
             text_models=sorted(text_models),
             image_models=sorted(image_models),
+            transcription_models=sorted(transcription_models),
         )
 
     def _is_text_model(self, model_id: str) -> bool:
@@ -122,3 +133,7 @@ class GenAIConfigService:
     def _is_image_model(self, model_id: str) -> bool:
         normalized = model_id.lower()
         return normalized.startswith("gpt-image") or normalized.startswith("dall-e")
+
+    def _is_transcription_model(self, model_id: str) -> bool:
+        normalized = model_id.lower()
+        return normalized == "whisper-1" or "transcribe" in normalized

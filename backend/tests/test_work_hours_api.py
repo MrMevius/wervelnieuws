@@ -65,7 +65,7 @@ def test_sqlite_foreign_key_pragma_rejects_direct_orphan_insert_and_rolls_back(t
         connection.commit()
         with pytest.raises(IntegrityError):
             with connection.begin():
-                connection.execute(text("INSERT INTO work_hour_groups (id, created_at, updated_at, work_date, project_id, post_id, description, duration_half_hours, row_version) VALUES ('orphan', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '2026-08-09', 'missing', 'missing', '', 1, 1)"))
+                connection.execute(text("INSERT INTO work_hour_groups (id, created_at, updated_at, work_date, project_id, post_id, description, duration_minutes, row_version) VALUES ('orphan', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, '2026-08-09', 'missing', 'missing', '', 30, 1)"))
         assert connection.scalar(text("SELECT count(*) FROM work_hour_groups")) == before
     with engine.connect() as connection:
         assert connection.scalar(text("PRAGMA foreign_keys")) == 1

@@ -1,11 +1,125 @@
+import asyncio
 import json
 from io import BytesIO
+from pathlib import Path
+from types import SimpleNamespace
+from zipfile import ZipFile
 
 
 def _login(client, username: str = "admin", password: str = "admin12345"):
     response = client.post("/api/auth/login", json={"username": username, "password": password})
     assert response.status_code == 200
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
+
+
+def test_live_board_dictation_is_transcribed_without_persisting_audio(client, monkeypatch):
+    headers = _login(client)
+    temporary_paths: list[Path] = []
+
+    def transcribe_audio(_self, file_path: str, *, model: str, language: str | None = None):
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # Blocking integration must run outside the API event loop.
+        else:
+            raise AssertionError("Transcription blocks the API event loop")
+        path = Path(file_path)
+        temporary_paths.append(path)
+        assert path.exists()
+        assert model
+        assert language == "nl"
+        return {"text": "Plan een overleg met de aannemer volgende week."}
+
+    monkeypatch.setattr("app.api.boards.OpenAIClient.transcribe_audio", transcribe_audio)
+    response = client.post(
+        "/api/boards/transcribe",
+        headers=headers,
+        files={"file": ("live-dictaat.webm", BytesIO(b"webm-audio"), "audio/webm")},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "Plan een overleg met de aannemer volgende week."}
+    assert temporary_paths and not temporary_paths[0].exists()
+
+
+def test_live_board_dictation_can_be_reviewed_without_changing_meaning(client, monkeypatch):
+    headers = _login(client)
+    prompts: list[str] = []
+
+    def generate_text(_self, prompt: str, **_kwargs):
+        prompts.append(prompt)
+        return "Plan een overleg met de aannemer volgende week.", []
+
+    monkeypatch.setattr(
+        "app.api.boards.GenAIConfigService.get_effective_config",
+        lambda _self: SimpleNamespace(
+            openai_api_key="test-key",
+            text_model="gpt-4o-mini",
+            image_model="gpt-image-1",
+        ),
+    )
+    monkeypatch.setattr("app.api.boards.OpenAIClient.generate_text", generate_text)
+    response = client.post(
+        "/api/boards/transcribe/review",
+        headers=headers,
+        json={"text": "plan een overleg met de aannemer volgende week"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "Plan een overleg met de aannemer volgende week."}
+    assert prompts and "Voeg geen informatie toe" in prompts[0]
+
+
+def test_live_board_text_review_can_rewrite_for_clarity(client, monkeypatch):
+    headers = _login(client)
+    prompts: list[str] = []
+
+    monkeypatch.setattr(
+        "app.api.boards.GenAIConfigService.get_effective_config",
+        lambda _self: SimpleNamespace(
+            openai_api_key="test-key",
+            text_model="gpt-4o-mini",
+            image_model="gpt-image-1",
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.boards.OpenAIClient.generate_text",
+        lambda _self, prompt, **_kwargs: (prompts.append(prompt) or ("Heldere tekst.", [])),
+    )
+    response = client.post(
+        "/api/boards/transcribe/review",
+        headers=headers,
+        json={"text": "losse notitie", "allow_content_changes": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"text": "Heldere tekst."}
+    assert prompts and "mag formuleringen, zinsvolgorde en alinea's verbeteren" in prompts[0]
+
+
+def test_live_board_can_suggest_a_concise_card_title(client, monkeypatch):
+    headers = _login(client)
+    monkeypatch.setattr(
+        "app.api.boards.GenAIConfigService.get_effective_config",
+        lambda _self: SimpleNamespace(
+            openai_api_key="test-key",
+            text_model="gpt-4.1-mini",
+            image_model="gpt-image-1",
+        ),
+    )
+    monkeypatch.setattr(
+        "app.api.boards.OpenAIClient.generate_text",
+        lambda *_args, **_kwargs: ('"Plan overleg met aannemer"', []),
+    )
+
+    response = client.post(
+        "/api/boards/title-suggestion",
+        headers=headers,
+        json={"description": "We moeten volgende week overleggen met de aannemer."},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Plan overleg met aannemer"}
 
 
 def test_board_project_card_update_and_recording_flow(client):
@@ -24,10 +138,15 @@ def test_board_project_card_update_and_recording_flow(client):
     create_card = client.post(
         f"/api/boards/projects/{project_id}/cards",
         headers=headers,
-        json={"title": "Actiepunt", "description": "Bel de aannemer", "column": "todo", "assignment_user_ids": [editor["id"]]},
+        json={"title": "Actiepunt", "description": "Bel de aannemer", "column": "todo", "urgency": "urgent", "assignment_user_ids": [editor["id"]]},
     )
     assert create_card.status_code == 200
+    assert create_card.json()["urgency"] == "urgent"
     card_id = create_card.json()["id"]
+
+    urgency = client.patch(f"/api/boards/cards/{card_id}/urgency", headers=headers, json={"urgency": "normal"})
+    assert urgency.status_code == 200
+    assert urgency.json()["urgency"] == "normal"
 
     move = client.patch(f"/api/boards/cards/{card_id}/move", headers=headers, json={"column": "doing", "position": 0})
     assert move.status_code == 200
@@ -62,6 +181,150 @@ def test_board_project_card_update_and_recording_flow(client):
 
     download = client.get(rec_payload["download_url"], headers=headers)
     assert download.status_code == 200
+
+
+def test_trello_import_skips_known_ids_and_exports_json_and_markdown(client):
+    headers = _login(client)
+    project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Trello migratie", "description": "", "invited_user_ids": []},
+    ).json()
+    payload = {
+        "lists": [
+            {"id": "todo-list", "name": "To Do", "closed": False},
+            {"id": "done-list", "name": "Done", "closed": True},
+        ],
+        "cards": [
+            {
+                "id": "trello-1",
+                "name": "Contract bespreken",
+                "desc": "Neem contact op met Lambert.",
+                "idList": "todo-list",
+                "pos": 1,
+                "labels": [],
+            },
+            {
+                "id": "trello-2",
+                "name": "Afgeronde actie",
+                "desc": "",
+                "idList": "done-list",
+                "pos": 2,
+                "labels": [{"color": "red", "name": ""}],
+            },
+            {"id": "trello-invalid", "name": "", "idList": "todo-list"},
+        ],
+        "checklists": [
+            {"idCard": "trello-1", "name": "Afspraken", "checkItems": [{"name": "Bel Lambert", "state": "complete", "pos": 1}]}
+        ],
+        "actions": [
+            {
+                "type": "commentCard",
+                "date": "2026-09-09T10:00:00Z",
+                "memberCreator": {"fullName": "Mark"},
+                "data": {"idCard": "trello-1", "text": "Graag deze week."},
+            }
+        ],
+    }
+    first = client.post(
+        f"/api/boards/projects/{project['id']}/import/trello",
+        headers=headers,
+        files={"file": ("trello.json", BytesIO(json.dumps(payload).encode()), "application/json")},
+    )
+    assert first.status_code == 200
+    assert [item["title"] for item in first.json()["imported"]] == ["Contract bespreken", "Afgeronde actie"]
+    assert first.json()["failed"][0]["reason"] == "Kaarttitel ontbreekt."
+
+    board = client.get(f"/api/boards/projects/{project['id']}", headers=headers).json()
+    assert board["cards"][0]["column"] == "todo"
+    assert "Trello-checklists" in board["cards"][0]["description"]
+    assert "Graag deze week." not in board["cards"][0]["description"]
+    assert board["archived_cards"][0]["urgency"] == "urgent"
+
+    detail = client.get(f"/api/boards/cards/{board['cards'][0]['id']}", headers=headers).json()
+    assert detail["updates"] == [
+        {
+            "id": detail["updates"][0]["id"],
+            "author_user_id": detail["updates"][0]["author_user_id"],
+            "author_username": "admin",
+            "author_display_name": "Mark",
+            "message": "Graag deze week.",
+            "image_url": None,
+            "edited_from_update_id": None,
+            "created_at": "2026-09-09T10:00:00",
+        }
+    ]
+
+    second = client.post(
+        f"/api/boards/projects/{project['id']}/import/trello",
+        headers=headers,
+        files={"file": ("trello.json", BytesIO(json.dumps(payload).encode()), "application/json")},
+    )
+    assert second.status_code == 200
+    assert len(second.json()["imported"]) == 0
+    assert len(second.json()["skipped"]) == 2
+
+    json_export = client.get(f"/api/boards/projects/{project['id']}/export.json", headers=headers)
+    assert json_export.status_code == 200
+    exported = json_export.json()
+    assert exported["format"] == "windwilly-vergaderbord/v1"
+    assert {card["trello_card_id"] for card in exported["cards"]} == {"trello-1", "trello-2"}
+
+    markdown_export = client.get(f"/api/boards/projects/{project['id']}/export-markdown.zip", headers=headers)
+    assert markdown_export.status_code == 200
+    with ZipFile(BytesIO(markdown_export.content)) as archive:
+        names = archive.namelist()
+        assert "README.md" in names
+        assert any(name.startswith("Te doen/") for name in names)
+        assert any(name.startswith("Archief/") for name in names)
+        card_markdown = archive.read(next(name for name in names if name.startswith("Te doen/"))).decode()
+        assert "Contract bespreken" in card_markdown
+        assert "Trello-checklists" in card_markdown
+        assert "Graag deze week." in card_markdown
+
+    cleared = client.delete(f"/api/boards/projects/{project['id']}/cards", headers=headers)
+    assert cleared.status_code == 200
+    assert cleared.json() == {"cleared": 2}
+
+    imported_again = client.post(
+        f"/api/boards/projects/{project['id']}/import/trello",
+        headers=headers,
+        files={"file": ("trello.json", BytesIO(json.dumps(payload).encode()), "application/json")},
+    )
+    assert imported_again.status_code == 200
+    assert [item["title"] for item in imported_again.json()["imported"]] == ["Contract bespreken", "Afgeronde actie"]
+
+
+def test_trello_import_can_limit_cards_to_selected_lists(client):
+    headers = _login(client)
+    project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Selectieve Trello-import", "description": "", "invited_user_ids": []},
+    ).json()
+    payload = {
+        "lists": [
+            {"id": "todo-list", "name": "To Do", "closed": False},
+            {"id": "doing-list", "name": "Bezig", "closed": False},
+        ],
+        "cards": [
+            {"id": "trello-todo", "name": "Niet meenemen", "idList": "todo-list", "pos": 1},
+            {"id": "trello-doing", "name": "Wel meenemen", "idList": "doing-list", "pos": 2},
+        ],
+    }
+
+    response = client.post(
+        f"/api/boards/projects/{project['id']}/import/trello",
+        headers=headers,
+        data={"selected_list_ids": json.dumps(["doing-list"])},
+        files={"file": ("trello.json", BytesIO(json.dumps(payload).encode()), "application/json")},
+    )
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()["imported"]] == ["Wel meenemen"]
+    assert response.json()["not_selected_count"] == 1
+    board = client.get(f"/api/boards/projects/{project['id']}", headers=headers).json()
+    assert [(card["title"], card["column"]) for card in board["cards"]] == [("Wel meenemen", "doing")]
 
 
 def test_board_project_list_composes_visibility_with_existing_access(client):
@@ -344,6 +607,45 @@ def test_board_card_soft_delete_and_admin_recycle_bin_restore(client):
     assert [card["id"] for card in board_after_restore.json()["cards"]] == [card_id]
 
 
+def test_board_clear_moves_active_and_archived_cards_to_recycle_bin(client):
+    headers = _login(client)
+    project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Leegmaakbord", "description": "", "invited_user_ids": []},
+    ).json()
+    project_id = project["id"]
+
+    active = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Actieve kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    ).json()
+    archived = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Archiefkaart", "description": "", "column": "done", "assignment_user_ids": []},
+    ).json()
+    assert client.patch(f"/api/boards/cards/{archived['id']}/archive", headers=headers).status_code == 200
+
+    cleared = client.delete(f"/api/boards/projects/{project_id}/cards", headers=headers)
+    assert cleared.status_code == 200
+    assert cleared.json() == {"cleared": 2}
+
+    board = client.get(f"/api/boards/projects/{project_id}", headers=headers)
+    assert board.status_code == 200
+    assert board.json()["cards"] == []
+    assert board.json()["archived_cards"] == []
+
+    recycle_bin = client.get("/api/boards/admin/recycle-bin", headers=headers)
+    assert recycle_bin.status_code == 200
+    assert {card["id"] for card in recycle_bin.json()} >= {active["id"], archived["id"]}
+
+    repeated = client.delete(f"/api/boards/projects/{project_id}/cards", headers=headers)
+    assert repeated.status_code == 200
+    assert repeated.json() == {"cleared": 0}
+
+
 def test_board_card_attachment_flow_and_permissions(client):
     admin_headers = _login(client)
     editor_headers = _login(client, "editor", "editor12345")
@@ -493,6 +795,33 @@ def test_board_detail_exposes_access_users_for_invited_non_admin(client):
     assert payload["access_users"][1]["is_admin"] is False
     assert payload["access_users"][1]["is_active"] is True
     assert "email" not in payload["access_users"][0]
+
+
+def test_existing_card_assignments_are_persisted_and_validated(client):
+    headers = _login(client)
+    users = client.get("/api/admin/users", headers=headers).json()
+    admin_id = next(user["id"] for user in users if user["username"] == "admin")
+    editor_id = next(user["id"] for user in users if user["username"] == "editor")
+    project = client.post("/api/boards/projects", headers=headers, json={"name": "Teamleden wijzigen", "invited_user_ids": []}).json()
+    card = client.post(f"/api/boards/projects/{project['id']}/cards", headers=headers, json={"title": "Teamkaart", "column": "todo"}).json()
+    endpoint = f"/api/boards/cards/{card['id']}/assignments"
+    response = client.patch(endpoint, headers=headers, json={"assignment_user_ids": [admin_id, admin_id]})
+    assert response.status_code == 200
+    assert [item["user_id"] for item in response.json()["assignments"]] == [admin_id]
+    for invalid_id in [editor_id, "unknown-user"]:
+        assert client.patch(endpoint, headers=headers, json={"assignment_user_ids": [invalid_id]}).status_code == 400
+    detail = client.get(f"/api/boards/cards/{card['id']}", headers=headers).json()
+    assert [item["user_id"] for item in detail["card"]["assignments"]] == [admin_id]
+    editor_headers = _login(client, "editor", "editor12345")
+    assert client.patch(endpoint, headers=editor_headers, json={"assignment_user_ids": []}).status_code == 403
+    response = client.patch(endpoint, headers=headers, json={"assignment_user_ids": []})
+    assert response.status_code == 200
+    assert response.json()["assignments"] == []
+    assert client.get(f"/api/boards/cards/{card['id']}", headers=headers).json()["card"]["assignments"] == []
+    client.patch(f"/api/admin/users/{editor_id}/active", headers=headers, json={"is_active": False})
+    assert client.patch(endpoint, headers=headers, json={"assignment_user_ids": [editor_id]}).status_code == 400
+    client.patch(f"/api/admin/projects/{project['id']}", headers=headers, json={"is_visible_in_boards": False})
+    assert client.patch(endpoint, headers=headers, json={"assignment_user_ids": [admin_id]}).status_code == 409
 
 
 def test_board_card_assignment_rejects_inactive_or_disallowed_users(client):
@@ -749,6 +1078,34 @@ def test_upload_recording_normalizes_zero_duration_to_none(client):
     detail = client.get(f"/api/boards/cards/{card_id}", headers=headers)
     assert detail.status_code == 200
     assert detail.json()["recordings"][0]["duration"] is None
+
+
+def test_upload_recording_rejects_empty_audio(client):
+    headers = _login(client)
+    create_project = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Lege opname", "description": "", "invited_user_ids": []},
+    )
+    assert create_project.status_code == 200
+    project_id = create_project.json()["id"]
+
+    create_card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Kaart", "description": "", "column": "todo", "assignment_user_ids": []},
+    )
+    assert create_card.status_code == 200
+    card_id = create_card.json()["id"]
+
+    record = client.post(
+        f"/api/boards/cards/{card_id}/recordings",
+        headers=headers,
+        files={"file": ("opname.webm", BytesIO(b""), "audio/webm")},
+    )
+
+    assert record.status_code == 400
+    assert record.json()["detail"] == "Lege opname is niet toegestaan."
 
 
 def test_move_card_rejects_negative_position(client):

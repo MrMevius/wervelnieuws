@@ -547,7 +547,7 @@ def test_mock_only_audio_flow_uploads_indexes_fails_and_retries(
     ) -> dict:
         nonlocal failed_once
         calls.append(Path(file_path).name)
-        assert model == "whisper-1"
+        assert model == "gpt-transcribe"
         assert language == "nl"
         if Path(file_path).read_bytes() == b"second-audio" and not failed_once:
             failed_once = True

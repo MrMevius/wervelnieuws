@@ -1,6 +1,6 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-ARG VITE_API_BASE_URL=http://localhost:8001/api
+ARG VITE_API_BASE_URL=/api
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 COPY frontend/package.json /app/package.json
 COPY frontend/package-lock.json /app/package-lock.json

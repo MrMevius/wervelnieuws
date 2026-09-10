@@ -8,11 +8,11 @@ from app.api.deps import get_db
 from app.core.settings import get_settings
 from app.core.security import hash_password
 from app.main import app
+from scripts.release_schema_preflight import EXPECTED_HEAD as RELEASE_HEAD
 
 
 RELEASED_PARENT = "20260810_0028"
 VISIBILITY_REVISION = "20260810_0029"
-RELEASE_HEAD = "20260811_0030"
 
 
 def test_visibility_migration_preserves_populated_legacy_relations_and_isolates_audio(tmp_path, monkeypatch):

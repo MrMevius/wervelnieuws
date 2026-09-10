@@ -1,0 +1,146 @@
+body:has(.hours-workspace) { background: var(--bg); }
+.hours-workspace { width: 100%; min-width: 0; padding: 6px 0 24px; }
+:root[data-theme="dark"] :is(.hours-workspace, .hours-entry-dialog) { color-scheme: dark; }
+:root[data-theme="light"] :is(.hours-workspace, .hours-entry-dialog) { color-scheme: light; }
+.hours-page-heading { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 26px; }
+.hours-page-heading h1 { font-size: clamp(1.5rem, 2.3vw, 2rem); letter-spacing: -.035em; margin: 0 0 5px; }
+.hours-page-heading p { margin: 0; color: var(--text-muted); font-size: .93rem; }
+.hours-page-actions { display: flex; gap: 10px; align-items: center; }
+.hours-overview-summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 0 20px; border-bottom: 1px solid var(--line); }
+.hours-overview-summary > p { margin: 0; font-size: .9rem; color: var(--text-muted); }
+.hours-overview-summary > p strong { color: var(--text); font-size: 1.12rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.hours-overview-summary > p > span[aria-hidden] { padding: 0 10px; }
+.hours-summary-scope { margin-left: 5px; font-size: .8rem; }
+.hours-project-totals { position: relative; flex-shrink: 0; }
+.hours-project-totals summary { font-size: .85rem; cursor: pointer; padding: 10px 12px; border-radius: 8px; list-style: none; }
+.hours-project-totals summary::-webkit-details-marker { display: none; }
+.hours-project-totals summary:hover { background: var(--surface-muted); }
+.hours-project-totals summary span { margin-left: 12px; }
+.hours-project-totals section { position: absolute; top: 100%; right: 0; z-index: 3; width: min(380px, calc(100vw - 40px)); padding: 20px; border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); background: var(--surface); }
+.hours-project-totals p { color: var(--text-muted); font-size: .82rem; margin: 0 0 16px; }
+.hours-project-totals dl { margin: 0; display: grid; gap: 14px; font-size: .88rem; }
+.hours-project-totals dl div { display: flex; justify-content: space-between; gap: 24px; }
+.hours-project-totals dt { overflow-wrap: anywhere; }
+.hours-project-totals dd { margin: 0; font-weight: 600; white-space: nowrap; }
+.hours-list-filters { display: flex; align-items: end; gap: 14px; padding: 22px 0; }
+.hours-list-filters label { flex: 1; }
+.hours-list-filters .hours-list-search { flex: 2; }
+.hours-workspace label, .hours-entry-fields label { display: flex; flex-direction: column; gap: 7px; font-size: .82rem; font-weight: 500; min-width: 0; }
+.hours-workspace :is(input,select), .hours-entry-dialog :is(input,select,textarea) { font: inherit; color: var(--text); border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 12px; min-width: 0; box-sizing: border-box; width: 100%; min-height: 42px; }
+.hours-workspace :is(input,select):focus-visible, .hours-entry-dialog :is(input,select,textarea):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.hours-entry-dialog [aria-invalid="true"] { border-color: var(--danger); }
+.hours-register-head, .hours-register-row { display: grid; grid-template-columns: 130px minmax(0, 2fr) minmax(110px, 1fr) 140px 128px; gap: 22px; align-items: center; }
+.hours-register-head { padding: 11px 14px; color: var(--text-muted); font-size: .74rem; border-block: 1px solid var(--line); }
+.hours-register-row { padding: 19px 14px; border-bottom: 1px solid var(--line); transition: background 140ms ease; }
+.hours-register-row:hover { background: var(--surface-muted); }
+.hours-record-date, .hours-record-duration { display: grid; gap: 5px; font-size: .88rem; font-variant-numeric: tabular-nums; }
+.hours-record-date > span, .hours-record-duration > span { color: var(--text-muted); font-size: .76rem; }
+.hours-record-work { min-width: 0; }
+.hours-record-work h2 { margin: 0 0 5px; font-size: .95rem; font-weight: 550; line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.hours-record-work p { color: var(--text-muted); font-size: .78rem; margin: 0; overflow-wrap: anywhere; }
+.hours-record-people { display: grid; gap: 6px; min-width: 0; }
+.hours-record-people > span { color: var(--text-muted); font-size: .75rem; overflow-wrap: anywhere; }
+.hours-avatar-stack { display: flex; padding-left: 4px; }
+.hours-avatar-stack > span { display: grid; place-items: center; width: 26px; height: 26px; margin-left: -4px; border: 2px solid var(--surface); border-radius: 50%; background: var(--surface-muted); color: var(--text-muted); font-size: .58rem; font-weight: 600; }
+.hours-record-actions { display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.hours-record-actions .material-button--icon { --md-icon-button-icon-color: var(--text-muted); }
+.hours-list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 18px; }
+.hours-list-pagination label { display: flex; flex-direction: row; align-items: center; white-space: nowrap; font-size: .8rem; gap: 10px; }
+.hours-list-pagination select { width: 76px; }
+.hours-list-pagination > div { display: flex; align-items: center; gap: 10px; font-size: .8rem; color: var(--text-muted); }
+.hours-list-empty { padding: 62px 24px; text-align: center; border-block: 1px solid var(--line); color: var(--text-muted); }
+.hours-list-empty h2 { color: var(--text); font-size: 1.2rem; margin: 0 0 12px; }
+.hours-list-empty p { max-width: 440px; margin: auto; line-height: 1.7; font-size: .9rem; }
+.hours-feedback { margin: 4px 0 18px; font-size: .9rem; color: var(--text-muted); }
+.hours-field-error { color: var(--danger); font-size: .82rem; line-height: 1.5; }
+dialog.hours-entry-dialog { width: min(760px, calc(100vw - 48px)); max-width: 100vw; height: auto; max-height: min(960px, calc(100dvh - 48px)); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: 0 20px 80px #0004; }
+.hours-entry-dialog::backdrop { background: var(--overlay-backdrop); }
+.hours-entry-dialog[open] { display: flex; animation: hours-dialog-enter 160ms ease-out; }
+.hours-entry-dialog > form { display: flex; flex-direction: column; min-height: 0; width: 100%; max-height: inherit; }
+.hours-entry-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 23px 30px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.hours-entry-header p { margin: 0 0 6px; font-size: .67rem; letter-spacing: .12em; color: var(--text-muted); }
+.hours-entry-header h2 { margin: 0; font-size: 1.5rem; letter-spacing: -.025em; }
+.hours-close { color: var(--text-muted); font-size: 27px; line-height: 1; font-weight: 400; }
+.hours-entry-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 25px 30px 28px; }
+fieldset.hours-entry-fields { display: grid; gap: 24px; margin: 0; padding: 0; border: 0; min-width: 0; }
+.hours-field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.hours-field-hint { color: var(--text-muted); font-size: .72rem; line-height: 1.6; margin: -16px 0 -6px; }
+.hours-optional { color: var(--text-muted); font-size: .72rem; font-weight: 400; display: inline; }
+.hours-field-row label:has(.hours-optional) { position: relative; }
+.hours-field-row .hours-optional { position: absolute; right: 0; top: 0; }
+.hours-duration-block { padding: 20px 0; border-block: 1px solid var(--line); }
+.hours-duration-block h3 { margin: 0 0 14px; font-size: .85rem; font-weight: 500; }
+.hours-duration-control { display: flex; align-items: center; gap: 10px; }
+.hours-duration-control .hours-duration-value { width: 120px; flex-shrink: 0; }
+.hours-entry-dialog .hours-duration-value input { font-size: 1.8rem; height: 58px; font-weight: 550; letter-spacing: -.025em; }
+.hours-duration-control > select { width: 118px; font-size: .9rem; height: 58px; }
+.hours-per-person { color: var(--text-muted); font-size: .8rem; padding-left: 4px; }
+.hours-duration-shortcuts { display: flex; gap: 7px; margin-top: 14px; flex-wrap: wrap; }
+fieldset.hours-people { margin: 0; padding: 0; border: 0; min-width: 0; }
+.hours-people legend { width: 100%; margin-bottom: 10px; font-size: .85rem; font-weight: 500; }
+.hours-people legend span { float: right; color: var(--text-muted); font-size: .76rem; font-weight: 400; }
+.hours-people > input { margin-bottom: 10px; }
+.hours-person-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; padding: 3px; }
+.hours-person-options label { display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid transparent; border-radius: 8px; font-weight: 400; cursor: pointer; transition: background 120ms ease, border-color 120ms ease; }
+.hours-person-options label:hover { background: var(--surface-muted); }
+.hours-person-options label.is-selected { background: var(--surface-accent-subtle); border-color: var(--border-accent); }
+.hours-entry-dialog .hours-person-options input { width: 17px; height: 17px; min-height: 17px; margin: 0; flex: 0 0 17px; accent-color: var(--brand); }
+.hours-person-avatar { display: grid; place-items: center; width: 27px; height: 27px; flex: 0 0 27px; border-radius: 50%; background: var(--surface-muted); color: var(--text-muted); font-size: .6rem; }
+.hours-person-options label > span:last-child { overflow-wrap: anywhere; }
+.hours-person-options small { display: block; color: var(--text-muted); font-size: .68rem; }
+.hours-entry-dialog textarea { resize: vertical; min-height: 100px; line-height: 1.6; }
+.hours-entry-footer { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 18px 30px; border-top: 1px solid var(--line); background: var(--surface-accent-subtle); }
+.hours-save-summary { display: grid; gap: 5px; font-size: .85rem; }
+.hours-save-summary strong { font-weight: 500; }
+.hours-save-summary span { font-size: .76rem; color: var(--text-muted); }
+.hours-discard { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hours-discard p { flex: 1 0 100%; margin: 0 0 8px; font-size: .88rem; }
+.hours-delete-confirm p { line-height: 1.65; }
+.hours-delete-confirm > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+@keyframes hours-dialog-enter { from { opacity: .6; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 1100px) {
+  .hours-register-head, .hours-register-row { grid-template-columns: 112px minmax(0, 1fr) 110px 110px; gap: 16px; }
+  .hours-register-head > span:nth-child(3) { display: none; }
+  .hours-record-people { grid-column: 2; grid-row: 2; display: flex; align-items: center; }
+  .hours-record-date, .hours-record-duration, .hours-record-actions { grid-row: 1 / span 2; }
+  .hours-record-duration { grid-column: 3; }
+  .hours-record-actions { grid-column: 4; }
+  .hours-register-row { row-gap: 8px; }
+}
+@media (max-width: 680px) {
+  .hours-page-heading { flex-direction: column; align-items: stretch; gap: 18px; margin-bottom: 22px; }
+  .hours-page-actions { justify-content: flex-end; }
+  .hours-overview-summary { align-items: flex-start; }
+  .hours-summary-scope { display: block; margin: 7px 0 0; }
+  .hours-overview-summary > p { font-size: .78rem; }
+  .hours-overview-summary > p > span[aria-hidden] { padding: 0 5px; }
+  .hours-project-totals summary { padding-inline: 4px; white-space: nowrap; font-size: .76rem; }
+  .hours-list-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 10px; }
+  .hours-list-search { grid-column: 1 / -1; }
+  .hours-register-head { display: none; }
+  .hours-register { border-top: 1px solid var(--line); }
+  .hours-register-row { grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 20px 2px; }
+  .hours-record-date { grid-column: 1; grid-row: 1; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; font-size: .78rem; color: var(--text-muted); }
+  .hours-record-work { grid-column: 1 / -1; grid-row: 2; }
+  .hours-record-duration { grid-column: 2; grid-row: 1; justify-items: end; font-size: .9rem; }
+  .hours-record-people { grid-column: 1; grid-row: 3; display: grid; }
+  .hours-record-actions { grid-column: 2; grid-row: 3; }
+  .hours-list-pagination { flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+  .hours-list-pagination > div { gap: 4px; }
+  .hours-workspace :is(input,select), .hours-entry-dialog :is(input,select,textarea) { font-size: 16px; }
+  dialog.hours-entry-dialog { width: 100vw; height: 100dvh; max-height: 100dvh; max-width: 100vw; margin: 0; inset: 0; border: 0; border-radius: 0; }
+  .hours-entry-dialog > form { height: 100%; }
+  .hours-entry-header { padding: max(18px, env(safe-area-inset-top)) 20px 18px; }
+  .hours-entry-header h2 { font-size: 1.3rem; }
+  .hours-entry-body { padding: 24px 20px; }
+  .hours-entry-footer { padding: 16px 20px max(16px, env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .hours-entry-footer > .material-button { margin-left: auto; }
+  .hours-person-options { grid-template-columns: minmax(0, 1fr); }
+  .hours-person-options label { min-height: 46px; }
+  .hours-field-row { gap: 12px; }
+  .hours-entry-dialog .hours-duration-value input { font-size: 1.7rem; }
+  .hours-duration-control .hours-duration-value { width: 105px; }
+  .hours-duration-control > select { width: 105px; }
+  .hours-per-person { font-size: .72rem; }
+}
+@media (prefers-reduced-motion: reduce) { .hours-entry-dialog[open] { animation: none; } .hours-register-row, .hours-person-options label { transition: none; } }

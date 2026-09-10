@@ -45,7 +45,7 @@ class WorkHoursRepository:
                     WorkPost.name.ilike(like),
                 )
             )
-            stmt = stmt.join(Project, Project.id == WorkHourGroup.project_id).join(
+            stmt = stmt.join(Project, Project.id == WorkHourGroup.project_id).outerjoin(
                 WorkPost, WorkPost.id == WorkHourGroup.post_id
             )
         if participant_kind := filters.get("participant_kind"):
@@ -262,7 +262,7 @@ class WorkHoursRepository:
             "post": WorkPost.name,
             "name_person": primary_participant_name,
             "type_person": primary_participant_type,
-            "duration_half_hours": WorkHourGroup.duration_half_hours,
+            "duration_half_hours": WorkHourGroup.duration_minutes,
             "created_at": WorkHourGroup.created_at,
             "updated_at": WorkHourGroup.updated_at,
         }
@@ -271,11 +271,14 @@ class WorkHoursRepository:
         ids_stmt = select(WorkHourGroup.id)
         ids_stmt = self._apply_group_filters(ids_stmt, filters)
         if sort_key in {"project", "post"} and not query_text:
-            ids_stmt = ids_stmt.join(Project, Project.id == WorkHourGroup.project_id).join(
+            ids_stmt = ids_stmt.join(Project, Project.id == WorkHourGroup.project_id).outerjoin(
                 WorkPost, WorkPost.id == WorkHourGroup.post_id
             )
         ids_stmt = ids_stmt.distinct()
-        ids_stmt = ids_stmt.order_by(desc(sort_column) if direction == "desc" else asc(sort_column), WorkHourGroup.id.asc())
+        ordering = [desc(sort_column) if direction == "desc" else asc(sort_column)]
+        if sort_key == "work_date":
+            ordering.append(desc(WorkHourGroup.start_time).nullslast() if direction == "desc" else asc(WorkHourGroup.start_time).nullslast())
+        ids_stmt = ids_stmt.order_by(*ordering, WorkHourGroup.id.asc())
         if offset is not None:
             ids_stmt = ids_stmt.offset(offset)
         if limit is not None:
@@ -315,17 +318,17 @@ class WorkHoursRepository:
             .group_by(WorkHourGroupParticipant.group_id)
             .subquery()
         )
-        count_value, duration_value, people_value, person_half_hours = self.db.execute(
+        count_value, duration_value, people_value, person_minutes = self.db.execute(
             select(
                 func.count(WorkHourGroup.id),
-                func.coalesce(func.sum(WorkHourGroup.duration_half_hours), 0),
+                func.coalesce(func.sum(WorkHourGroup.duration_minutes), 0),
                 func.coalesce(func.sum(participant_counts.c.participant_count), 0),
-                func.coalesce(func.sum(WorkHourGroup.duration_half_hours * participant_counts.c.participant_count), 0),
+                func.coalesce(func.sum(WorkHourGroup.duration_minutes * participant_counts.c.participant_count), 0),
             )
             .join(group_ids, group_ids.c.id == WorkHourGroup.id)
             .outerjoin(participant_counts, participant_counts.c.group_id == WorkHourGroup.id)
         ).one()
-        return int(count_value or 0), int(people_value or 0), int(duration_value or 0), float(person_half_hours or 0) / 2
+        return int(count_value or 0), int(people_value or 0), int(duration_value or 0), float(person_minutes or 0) / 60
 
     def aggregate_project_totals(self, filters: dict[str, object]) -> list[dict[str, object]]:
         """Return person-hours per project from the complete active, deduplicated list basis."""
@@ -344,7 +347,7 @@ class WorkHoursRepository:
             select(
                 WorkHourGroup.project_id.label("project_id"),
                 Project.name.label("project_name"),
-                func.coalesce(func.sum(WorkHourGroup.duration_half_hours * participant_counts.c.participant_count), 0).label("person_half_hours"),
+                func.coalesce(func.sum(WorkHourGroup.duration_minutes * participant_counts.c.participant_count), 0).label("person_minutes"),
             )
             .join(group_ids, group_ids.c.id == WorkHourGroup.id)
             .join(Project, Project.id == WorkHourGroup.project_id)
@@ -353,7 +356,7 @@ class WorkHoursRepository:
             .order_by(Project.name.asc(), WorkHourGroup.project_id.asc())
         ).mappings().all()
         return [
-            {"project_id": row["project_id"], "project_name": row["project_name"], "person_hours": float(row["person_half_hours"] or 0) / 2}
+            {"project_id": row["project_id"], "project_name": row["project_name"], "person_hours": float(row["person_minutes"] or 0) / 60}
             for row in rows
         ]
 

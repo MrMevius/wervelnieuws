@@ -88,7 +88,7 @@ PowerShell:
 Copy-Item .env.example .env
 ```
 
-Start the development stack:
+Set `BOOTSTRAP_ADMIN_PASSWORD` in `.env` to a unique password of 12–128 characters before the first start. Then start the development stack:
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build
@@ -104,9 +104,9 @@ Open:
 Local development login:
 
 - username: `admin`
-- password: `admin12345`
+- password: the value you set in `BOOTSTRAP_ADMIN_PASSWORD`
 
-These credentials are only for the isolated local development database.
+There is no built-in password. Remove `BOOTSTRAP_ADMIN_PASSWORD` from `.env` after the first successful start. Existing administrators and their passwords are left unchanged on restart; bootstrap never promotes an existing normal user.
 
 Stop the environment while keeping local data:
 
@@ -175,6 +175,7 @@ Production lifecycle, migration, backup and rollback procedures are documented i
 
 ## Documentation
 
+- [Participatiemomenten: gespreksregister en exports](docs/participatiemomenten.md)
 - [Architecture](docs/architecture.md)
 - [Docker Compose operations](docs/docker-compose-operations.md)
 - [Release readiness](docs/release-readiness.md)

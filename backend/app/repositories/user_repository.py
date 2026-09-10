@@ -1,8 +1,10 @@
-from sqlalchemy import func, select
+from datetime import UTC, datetime
+
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.enums import ThemePreference
-from app.models.entities import User
+from app.models.entities import RememberSession, User
 
 
 class UserRepository:
@@ -62,6 +64,11 @@ class UserRepository:
 
     def update_password(self, user: User, password_hash: str) -> None:
         user.password_hash = password_hash
+        self.db.execute(
+            update(RememberSession)
+            .where(RememberSession.user_id == user.id, RememberSession.revoked_at.is_(None))
+            .values(revoked_at=datetime.now(UTC))
+        )
         self.db.add(user)
         self.db.commit()
 

@@ -2,12 +2,22 @@
 
 ## Registreren en overzicht houden
 
-- Open **Urenregistratie** en gebruik de permanent zichtbare bovenste tabelrij.
-- Kies datum, project, globale post, duur en omschrijving. Datums die de app toont gebruiken `dd-mm-jjjj`; de datumkiezer blijft de eigen native browserbediening. Kies de duur in stappen van een half uur, van 0,5 tot en met 8 uur. Open **Deelnemer(s) ▾**; zodra je personen kiest wordt dit **n deelnemer(s) ▾**. Deze ene knop bevat de teller; er is geen los label of losse teller en er verschijnen geen gekozen namen of typen wanneer de kiezer gesloten is. De zwevende kiezer toont alleen selecteerbare **WindWilly-personen** als keuzevakjes; externe personen kunnen niet aan nieuwe registraties worden toegevoegd. Bestaande registraties met externe deelnemers blijven leesbaar en kunnen worden bewerkt zolang de deelnemers niet veranderen. Sluit de kiezer met Escape, een tik/klik buiten de kiezer of de trigger; je keuze blijft behouden.
-- De kolomkoppen zijn vaste labels: er zijn geen kolomfilters of knop **Alle filters wissen**.
-- Rechtsboven naast de urenlijst staan de totale persoon-uren per project, voor alle deelnemers. Op ruime schermen blijven deze projecttotalen zichtbaar tijdens scrollen; op smalle schermen staan ze statisch boven de urenbediening. De totalen omvatten alle actieve registraties en zijn niet beperkt tot de zichtbare pagina. CSV exporteert eveneens de volledige set.
-- De lijst staat altijd met de nieuwste werkdatum eerst. Er is geen handmatige sorteer- of volgordekeuze. Gebruik **CSV export** en kies **Per pagina** direct onder de tabel; vorige en volgende staan daar ook.
-- Op desktop hebben datum, project, post, duur, omschrijving en de deelnemerskiezer in de bovenste invoerrij dezelfde hoogte. De deelnemerskiezer blijft op dezelfde manier met muis en toetsenbord bruikbaar.
+- Open **Urenregistratie** en kies **Uren registreren**. Nieuwe en bestaande registraties krijgen een los formulier; de lijst is uitsluitend het overzicht.
+- Kies een werkdatum, begintijd, duur, één project en minimaal één persoon. Een post/categorie en beschrijving zijn optioneel. Datum en begintijd zijn lokale tijden in **Europe/Amsterdam**. Een werkdatum in de toekomst is niet toegestaan; de duur mag over middernacht lopen en hoort bij de gekozen werkdatum.
+- Registreer van **1 minuut tot 24 uur per persoon**. Vul bijvoorbeeld `7` minuten of `1,5` uur in, of gebruik een snelkeuze. Komma en punt worden ondersteund bij uren. Alleen hele minuten worden opgeslagen, zonder afronden naar halve uren. Wisselen van eenheid verandert de duur niet.
+- Kies één of meer personen met de keuzevakjes; bij nieuwe registraties ben je zelf alvast geselecteerd wanneer je selecteerbaar bent. Bij veel personen verschijnt een zoekveld. Nieuwe deelnemers zijn actieve, selecteerbare WindWilly-gebruikers. Bestaande historische deelnemers blijven behouden bij het bewerken.
+- De duur geldt voor iedere deelnemer. Onderaan staat steeds de berekening: **30 minuten × 3 personen = 1,5 persoon-uur**. De knop **Registratie opslaan** blijft zichtbaar, ook op een telefoon. Bij fouten blijft de invoer staan; sluiten met niet-opgeslagen wijzigingen vraagt bevestiging.
+- Het overzicht toont datum en begintijd, werk/project, personen en duur. De nieuwste werkdatum staat bovenaan; binnen dezelfde datum komt de nieuwste begintijd eerst. Oudere registraties zonder tijd tonen **Tijd niet vastgelegd**.
+- Zoek op inhoud of filter op project en werkdatum. Het totaal boven de lijst omvat de volledige selectie, niet alleen de huidige pagina. **Per project** toont de totalen uitgesplitst per project voor diezelfde selectie. Onder de lijst kun je pagineren en het aantal registraties per pagina kiezen.
+- **CSV export** exporteert alle registraties binnen de huidige filters, met één rij per deelnemer. De oorspronkelijke kolommen blijven behouden; begintijd en exacte duur in minuten zijn toegevoegd. Gebruik de minutenkolom wanneer de duur niet exact in decimale uren uit te drukken is.
+
+### Upgrade naar minutenregistratie
+
+Migratie `20260910_0032` (vanaf `20260909_0031`) rekent elke bestaande duur exact om: `duration_minutes = duration_half_hours × 30`. Bestaande datums, projecten, posten, deelnemers en auditregels blijven behouden. Begintijden worden niet verzonnen en blijven voor oude registraties leeg. Posten zijn voortaan optioneel.
+
+Maak vóór deze upgrade een database- en storageback-up en stop de API en worker tijdens de omzetting. Controleer daarna de schema-versie, integriteit, oorspronkelijke registraties en exports voordat writers opnieuw starten. De API accepteert nog het oude veld `duration_half_hours` als alternatief voor `duration_minutes`, maar nooit beide tegelijk. Bij een duur die geen veelvoud van 30 is, is het oude responseveld `null`.
+
+Een downgrade weigert als die een ingevulde begintijd, een registratie zonder post of een exacte minutenduur zou verliezen. Herstel bij een rollback de geverifieerde back-up en bijbehorende release; een downgrade mag nooit tijden afronden of een post verzinnen.
 
 ## Centrale masterdata
 

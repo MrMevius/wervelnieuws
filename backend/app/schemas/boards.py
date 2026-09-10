@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.models.enums import BoardColumn
+from app.models.enums import BoardColumn, BoardUrgency
 
 BOARD_CARD_TITLE_MAX_LENGTH = 80
 
@@ -63,12 +63,57 @@ class BoardCardCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=BOARD_CARD_TITLE_MAX_LENGTH)
     description: str = ""
     column: BoardColumn = BoardColumn.todo
+    urgency: BoardUrgency = BoardUrgency.normal
     assignment_user_ids: list[str] = Field(default_factory=list)
+
+
+class BoardTransferItem(BaseModel):
+    source_id: str | None = None
+    title: str
+    reason: str | None = None
+
+
+class BoardTrelloImportResponse(BaseModel):
+    imported: list[BoardTransferItem] = Field(default_factory=list)
+    skipped: list[BoardTransferItem] = Field(default_factory=list)
+    failed: list[BoardTransferItem] = Field(default_factory=list)
+    not_selected_count: int = Field(default=0, ge=0)
+
+
+class BoardClearResponse(BaseModel):
+    cleared: int = Field(ge=0)
+
+
+class BoardTitleSuggestionRequest(BaseModel):
+    description: str = Field(min_length=1, max_length=5000)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def normalize_description(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Beschrijving moet tekst zijn.")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Vul eerst een beschrijving in.")
+        return normalized
+
+
+class BoardTitleSuggestionResponse(BaseModel):
+    title: str = Field(min_length=1, max_length=BOARD_CARD_TITLE_MAX_LENGTH)
 
 
 class BoardCardMoveRequest(BaseModel):
     column: BoardColumn
     position: int = Field(ge=0)
+
+
+class BoardCardUrgencyUpdateRequest(BaseModel):
+    urgency: BoardUrgency
+
+
+class BoardCardAssignmentsUpdateRequest(BaseModel):
+    assignment_user_ids: list[str]
+    model_config = ConfigDict(extra="forbid")
 
 
 class BoardCardTitleUpdateRequest(BaseModel):
@@ -138,6 +183,29 @@ class RecordingResponse(BaseModel):
     download_url: str
 
 
+class LiveTranscriptionResponse(BaseModel):
+    text: str
+
+
+class LiveTranscriptReviewRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=5000)
+    allow_content_changes: bool = False
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        if not isinstance(value, str):
+            raise ValueError("Transcriptie moet tekst zijn.")
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Transcriptie mag niet leeg zijn.")
+        return normalized
+
+
+class LiveTranscriptReviewResponse(BaseModel):
+    text: str
+
+
 class BoardAttachmentResponse(BaseModel):
     id: str
     uploaded_by_user_id: str
@@ -156,6 +224,7 @@ class BoardCardResponse(BaseModel):
     title: str
     description: str
     column: BoardColumn
+    urgency: BoardUrgency = BoardUrgency.normal
     position: int
     is_archived: bool = False
     assignments: list[CardAssignmentResponse]
@@ -181,6 +250,7 @@ class BoardRecycleBinCardResponse(BaseModel):
     title: str
     description: str
     column: BoardColumn
+    urgency: BoardUrgency = BoardUrgency.normal
     position: int
     is_archived: bool = False
     deleted_at: datetime

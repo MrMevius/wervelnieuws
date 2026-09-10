@@ -16,7 +16,7 @@ class AuthService:
             or not user.is_active
         ):
             return None
-        return create_access_token(user.id)
+        return create_access_token(user.id, user.password_hash)
 
     def get_user_id(self, username: str) -> str:
         user = self.user_repo.get_by_username(username)

@@ -72,6 +72,7 @@ class IngestionService:
             self.db.add(document)
             self.db.commit()
         except Exception as exc:
+            self.db.rollback()
             document.status = DocumentStatus.failed
             document.extraction_error = str(exc)
             self.db.add(document)
@@ -135,6 +136,7 @@ class IngestionService:
             self.db.add(document)
             self.db.commit()
         except Exception as exc:
+            self.db.rollback()
             document.status = DocumentStatus.failed
             document.extraction_error = str(exc)
             self.db.add(document)

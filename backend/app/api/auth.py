@@ -12,6 +12,7 @@ from app.core.db import get_db
 from app.core.rate_limit import rate_limit
 from app.core.settings import get_settings
 from app.core.security import (
+    create_access_token,
     create_remember_token,
     hash_password,
     hash_remember_token,
@@ -32,6 +33,35 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
+def _set_access_cookie(response: Response, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=settings.auth_cookie_name, value=token,
+        max_age=settings.access_token_ttl_minutes * 60,
+        httponly=True, secure=settings.auth_cookie_secure,
+        samesite=settings.auth_cookie_samesite, path="/",
+    )
+
+
+def _revoke_current_remember_session(request: Request, db: Session) -> None:
+    token = request.cookies.get(get_settings().remember_cookie_name)
+    if token:
+        session = (
+            db.query(RememberSession)
+            .filter(RememberSession.token_hash == hash_remember_token(token))
+            .first()
+        )
+        if session and session.revoked_at is None:
+            session.revoked_at = datetime.now(UTC)
+            db.commit()
+
+
+def _delete_remember_cookie(response: Response) -> None:
+    response.delete_cookie(
+        key=get_settings().remember_cookie_name, path="/", secure=True, samesite="lax",
+    )
+
+
 @router.post("/login", response_model=TokenResponse, dependencies=[Depends(rate_limit)])
 def login(
     payload: LoginRequest,
@@ -45,15 +75,10 @@ def login(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
-    response.set_cookie(
-        key=settings.auth_cookie_name,
-        value=token,
-        max_age=settings.auth_cookie_ttl_days * 24 * 60 * 60,
-        httponly=True,
-        secure=settings.auth_cookie_secure,
-        samesite=settings.auth_cookie_samesite,
-        path="/",
-    )
+    _revoke_current_remember_session(request, db)
+    if request.cookies.get(settings.remember_cookie_name):
+        _delete_remember_cookie(response)
+    _set_access_cookie(response, token)
     if payload.remember_me:
         remember_token = create_remember_token()
         session = RememberSession(
@@ -93,29 +118,14 @@ def logout(
     request: Request, response: Response, db: Session = Depends(get_db)
 ) -> dict[str, str]:
     settings = get_settings()
-    remember_token = request.cookies.get(settings.remember_cookie_name)
-    if remember_token:
-        session = (
-            db.query(RememberSession)
-            .filter(RememberSession.token_hash == hash_remember_token(remember_token))
-            .first()
-        )
-        if session and session.revoked_at is None:
-            session.revoked_at = datetime.now(UTC)
-            db.add(session)
-            db.commit()
+    _revoke_current_remember_session(request, db)
     response.delete_cookie(
         key=settings.auth_cookie_name,
         path="/",
         secure=settings.auth_cookie_secure,
         samesite=settings.auth_cookie_samesite,
     )
-    response.delete_cookie(
-        key=settings.remember_cookie_name,
-        path="/",
-        secure=True,
-        samesite="lax",
-    )
+    _delete_remember_cookie(response)
     return {"status": "ok"}
 
 
@@ -216,6 +226,7 @@ def get_my_avatar(current: User = Depends(get_current_user)) -> FileResponse:
 @router.patch("/me/password")
 def change_my_password(
     payload: ChangePasswordRequest,
+    response: Response,
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> dict[str, str]:
@@ -227,4 +238,6 @@ def change_my_password(
 
     user_repo = UserRepository(db)
     user_repo.update_password(current, hash_password(payload.new_password))
+    _delete_remember_cookie(response)
+    _set_access_cookie(response, create_access_token(current.id, current.password_hash))
     return {"status": "ok"}

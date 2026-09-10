@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { RichTextEditor } from "../../design-system/RichTextEditor";
+import { ParticipationPage } from "../features/participation/ParticipationPage";
+import { toPreviewHtml } from "../../lib/richText";
 import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   AdminTheme,
   AdminUser,
@@ -90,6 +93,8 @@ import {
 } from "../../lib/api/client";
 
 import { WERVEL_PATHS, WINDWILLY_PATHS } from "../routes/paths";
+import { MobileNavigation } from "./MobileNavigation";
+import { ResponsiveTable, ResponsiveRow } from "../../design-system/ResponsiveTable";
 import { useMainDashboardData } from "../features/main/hooks/useMainDashboardData";
 import { usePlanningData } from "../features/planning/hooks/usePlanningData";
 import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
@@ -311,6 +316,7 @@ function boardRightsMatchesFilters(
 
 export function App() {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -326,6 +332,16 @@ export function App() {
   const vergaderDropdownCloseTimeoutRef = useRef<number | null>(null);
   const showWervelDropdown = wervelDropdownOpen;
   const showVergaderDropdown = vergaderDropdownOpen;
+  const activeBoardProjectId = new URLSearchParams(location.search).get("project");
+
+  useEffect(() => {
+    const scrollingElement = document.scrollingElement ?? document.documentElement;
+    scrollingElement.scrollTop = 0;
+    scrollingElement.scrollLeft = 0;
+    lastScrollYRef.current = 0;
+    setTopbarHidden(false);
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
 
   function openWervelDropdown() {
     if (wervelDropdownCloseTimeoutRef.current !== null) {
@@ -545,8 +561,8 @@ export function App() {
           <h1>Suite Dashboard</h1>
           <p>Log in om de planning, publicaties en changelog te bekijken.</p>
           <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
-            <input name="username" placeholder="Gebruikersnaam" defaultValue="admin" required />
-            <input name="password" type="password" placeholder="Wachtwoord" defaultValue="admin12345" required />
+            <input name="username" aria-label="Gebruikersnaam" placeholder="Gebruikersnaam" autoComplete="username" autoCapitalize="none" required />
+            <input name="password" aria-label="Wachtwoord" type="password" placeholder="Wachtwoord" autoComplete="current-password" required />
             <label className="remember-me-option">
               <input name="rememberMe" type="checkbox" />
               <span>Onthoud mij</span>
@@ -577,44 +593,9 @@ export function App() {
     <div className="app-shell">
       <header className={`topbar ${topbarHidden ? "is-hidden" : ""}`}>
         <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="WindWilly landing">
-          <svg className="windmill-logo" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-            <circle cx="32" cy="24" r="4" />
-            <line x1="32" y1="28" x2="32" y2="54" />
-            <line x1="32" y1="24" x2="50" y2="14" />
-            <line x1="32" y1="24" x2="53" y2="27" />
-            <line x1="32" y1="24" x2="21" y2="9" />
-          </svg>
-          <span className="sr-only">WindWilly</span>
+          <img className="brand-logo" src="https://www.groenenoabers.nl/Groene-Noabers-Logo.png" alt="Groene Noabers" />
         </NavLink>
         <nav className="tabs suite-tabs" aria-label="Hoofdnavigatie">
-          <NavLink to={WINDWILLY_PATHS.module}>WindWilly</NavLink>
-          <div
-            className={`suite-group ${showWervelDropdown ? "is-open" : ""}`}
-            aria-label="Wervelnieuws module"
-            onMouseEnter={openWervelDropdown}
-            onMouseLeave={scheduleWervelDropdownClose}
-            onFocus={openWervelDropdown}
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                scheduleWervelDropdownClose();
-              }
-            }}
-          >
-            <NavLink to={WERVEL_PATHS.base}>
-              Wervelnieuws
-            </NavLink>
-            <nav
-              className={`wervel-dropdown ${showWervelDropdown ? "is-open" : ""}`}
-              aria-label="Wervelnieuws navigatie"
-              aria-hidden={!showWervelDropdown}
-            >
-              <NavLink to={WERVEL_PATHS.main}>Main</NavLink>
-              <NavLink to={WERVEL_PATHS.planning}>Planning</NavLink>
-              <NavLink to={WERVEL_PATHS.database}>Bronbestanden</NavLink>
-              <NavLink to={WERVEL_PATHS.log}>Log</NavLink>
-              <NavLink to={WERVEL_PATHS.about}>About</NavLink>
-            </nav>
-          </div>
           <div
             className={`suite-group ${showVergaderDropdown ? "is-open" : ""}`}
             aria-label="Vergaderborden projecten"
@@ -634,17 +615,52 @@ export function App() {
               aria-hidden={!showVergaderDropdown}
             >
               {(boardProjectsQuery.data ?? []).map((project) => (
-                <NavLink key={project.id} to={`${WINDWILLY_PATHS.vergaderborden}?project=${project.id}`}>
+                <Link
+                  key={project.id}
+                  to={`${WINDWILLY_PATHS.vergaderborden}?project=${project.id}`}
+                  className={activeBoardProjectId === project.id ? "active" : undefined}
+                  aria-current={activeBoardProjectId === project.id ? "page" : undefined}
+                >
                   {project.name}
-                </NavLink>
+                </Link>
               ))}
             </nav>
           </div>
           <NavLink to={WERVEL_PATHS.urenverantwoording}>Urenregistratie</NavLink>
           <NavLink to="/participatiemomenten">Participatiemomenten</NavLink>
+          <div className="quiet-suite-navigation">
+            <NavLink to={WINDWILLY_PATHS.module} className="quiet-suite-link">WindWilly</NavLink>
+            <div
+              className={`suite-group quiet-suite-group ${showWervelDropdown ? "is-open" : ""}`}
+              aria-label="Wervelnieuws module"
+              onMouseEnter={openWervelDropdown}
+              onMouseLeave={scheduleWervelDropdownClose}
+              onFocus={openWervelDropdown}
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                  scheduleWervelDropdownClose();
+                }
+              }}
+            >
+              <NavLink to={WERVEL_PATHS.base} className="quiet-suite-link">
+                Wervelnieuws
+              </NavLink>
+              <nav
+                className={`wervel-dropdown ${showWervelDropdown ? "is-open" : ""}`}
+                aria-label="Wervelnieuws navigatie"
+                aria-hidden={!showWervelDropdown}
+              >
+                <NavLink to={WERVEL_PATHS.main}>Main</NavLink>
+                <NavLink to={WERVEL_PATHS.planning}>Planning</NavLink>
+                <NavLink to={WERVEL_PATHS.database}>Bronbestanden</NavLink>
+                <NavLink to={WERVEL_PATHS.log}>Log</NavLink>
+                <NavLink to={WERVEL_PATHS.about}>About</NavLink>
+              </nav>
+            </div>
+          </div>
         </nav>
         <div className="user-menu-wrap">
-          <button className="user-trigger" onClick={() => setMenuOpen((open) => !open)}>
+          <button className="user-trigger" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>
             {avatarUrl ? (
               <img src={avatarUrl} alt="Profielfoto" className="avatar" />
             ) : (
@@ -652,7 +668,7 @@ export function App() {
                 {avatarFallback}
               </span>
             )}
-            <span>{displayName}</span>
+            <span className="user-display-name">{displayName}</span>
           </button>
           {menuOpen && (
             <div className="user-menu" role="menu">
@@ -670,7 +686,7 @@ export function App() {
             </div>
           )}
         </div>
-
+        <MobileNavigation projects={boardProjectsQuery.data ?? []} boardTarget={vergaderbordenTarget} />
       </header>
 
       <main className="page-content">
@@ -733,7 +749,7 @@ export function App() {
           <Route path={WERVEL_PATHS.urenverantwoording} element={<UrenverantwoordingPage />} />
           <Route path="/urenverantwoording" element={<LegacyWorkHoursRedirect />} />
           <Route path={WINDWILLY_PATHS.vergaderborden} element={<VergaderbordenPage />} />
-          <Route path="/participatiemomenten" element={<SuitePlaceholderPage title="Participatiemomenten" description="Deze module wordt in een volgende iteratie uitgewerkt." />} />
+          <Route path="/participatiemomenten" element={<ParticipationPage />} />
 
           <Route path="/main" element={<Navigate to={WERVEL_PATHS.main} replace />} />
           <Route path="/planning" element={<Navigate to={WERVEL_PATHS.planning} replace />} />
@@ -1516,9 +1532,9 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
       )}
 
       <div className="table-wrap">
-        <table className="planning-table">
+        <ResponsiveTable className="planning-table">
           <thead>
-            <tr>
+            <ResponsiveRow>
               <th aria-sort={ariaSortFor("subject")}>
                 <button type="button" className={`table-sort ${sortClass("subject")}`} onClick={() => toggleSort("subject")}>Onderwerp</button>
               </th>
@@ -1547,16 +1563,16 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
                 <button type="button" className={`table-sort ${sortClass("newsletter")}`} onClick={() => toggleSort("newsletter")}>Nieuwsbrief</button>
               </th>
               <th>Acties</th>
-            </tr>
+            </ResponsiveRow>
           </thead>
           <tbody>
             {sortedTopics.length === 0 && (
-              <tr>
+              <ResponsiveRow>
                 <td colSpan={10}>Nog geen records beschikbaar.</td>
-              </tr>
+              </ResponsiveRow>
             )}
             {sortedTopics.map((topic) => (
-              <tr key={topic.id}>
+              <ResponsiveRow key={topic.id}>
                 <td>{topic.subject}</td>
                 <td>{topic.theme}</td>
                 <td>{topic.project_name}</td>
@@ -1601,10 +1617,10 @@ function PlanningPage({ topics }: { topics: Topic[] }) {
                     Open
                   </button>
                 </td>
-              </tr>
+              </ResponsiveRow>
             ))}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </div>
     </section>
   );
@@ -2657,85 +2673,6 @@ function extractStructuredContentFromRaw(raw: string): Partial<VariantDraft> | n
   }
 }
 
-function toPreviewHtml(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return "<p>Nog geen inhoud toegevoegd.</p>";
-  }
-  if (looksLikeHtml(trimmed)) {
-    return trimmed;
-  }
-  return `<p>${escapeHtml(trimmed).replace(/\n/g, "<br />")}</p>`;
-}
-
-function looksLikeHtml(value: string): boolean {
-  return /<\/?[a-z][\s\S]*>/i.test(value);
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
-
-function RichTextEditor({
-  label,
-  value,
-  onChange,
-  compact = false
-}: {
-  label: string;
-  value: string;
-  onChange: (nextValue: string) => void;
-  compact?: boolean;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (!ref.current) {
-      return;
-    }
-    if (ref.current.innerHTML !== value) {
-      ref.current.innerHTML = value;
-    }
-  }, [value]);
-
-  function runCommand(command: "bold" | "italic" | "insertUnorderedList") {
-    if (typeof document.execCommand !== "function") {
-      return;
-    }
-    document.execCommand(command);
-    onChange(ref.current?.innerHTML ?? "");
-  }
-
-  return (
-    <label className="wysiwyg-field">
-      {label}
-      <div className="wysiwyg-toolbar" role="toolbar" aria-label={`${label} toolbar`}>
-        <button type="button" onClick={() => runCommand("bold")}>
-          Vet
-        </button>
-        <button type="button" onClick={() => runCommand("italic")}>
-          Cursief
-        </button>
-        <button type="button" onClick={() => runCommand("insertUnorderedList")}>
-          Lijst
-        </button>
-      </div>
-      <div
-        ref={ref}
-        className={compact ? "wysiwyg-editor compact" : "wysiwyg-editor"}
-        contentEditable
-        suppressContentEditableWarning
-        onInput={(event) => onChange(event.currentTarget.innerHTML)}
-      />
-    </label>
-  );
-}
-
 function displayStatus(workflowState: string): "Nieuw" | "Gepland" | "Gereed" | "Akkoord" | "Gepubliceerd" {
   if (workflowState === "published") {
     return "Gepubliceerd";
@@ -3262,9 +3199,9 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
       )}
 
       <div className="table-wrap">
-        <table>
+        <ResponsiveTable>
           <thead>
-            <tr>
+            <ResponsiveRow>
               <th>
                 <input
                   type="checkbox"
@@ -3293,27 +3230,27 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
                 <button type="button" className="table-sort" onClick={() => toggleSort("status")}>Status</button>
               </th>
               <th>Acties</th>
-            </tr>
+            </ResponsiveRow>
           </thead>
           <tbody>
             {documentsQuery.isLoading && (
-              <tr>
+              <ResponsiveRow>
                 <td colSpan={9}>Laden...</td>
-              </tr>
+              </ResponsiveRow>
             )}
             {documentsQuery.isError && (
-              <tr>
+              <ResponsiveRow>
                 <td colSpan={9}>Bestandslijst kon niet geladen worden.</td>
-              </tr>
+              </ResponsiveRow>
             )}
             {!documentsQuery.isLoading && !documentsQuery.isError && sortedDocuments.length === 0 && (
-              <tr>
+              <ResponsiveRow>
                 <td colSpan={9}>
                   {filterProjectId === "all"
                     ? "Nog geen bestanden gevonden."
                     : "Nog geen bestanden voor dit project."}
                 </td>
-              </tr>
+              </ResponsiveRow>
             )}
             {sortedDocuments.map((document) => (
               <DatabaseDocumentRow
@@ -3324,7 +3261,7 @@ function DatabasePage({ currentUser }: { currentUser: CurrentUser | undefined })
               />
             ))}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </div>
 
     </section>
@@ -3341,7 +3278,7 @@ function DatabaseDocumentRow({
   onSelect: (checked: boolean) => void;
 }) {
   return (
-    <tr>
+    <ResponsiveRow>
       <td>
         <input
           type="checkbox"
@@ -3365,7 +3302,7 @@ function DatabaseDocumentRow({
       <td>{formatSize(document.size_bytes)}</td>
       <td>{document.status}</td>
       <td>-</td>
-    </tr>
+    </ResponsiveRow>
   );
 }
 
@@ -3662,18 +3599,18 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
             <p className="muted">Nog geen scheduler-runs gevonden.</p>
           ) : (
             <div className="table-wrap">
-              <table>
+              <ResponsiveTable>
                 <thead>
-                  <tr>
+                  <ResponsiveRow>
                     <th>Taak</th>
                     <th>Status</th>
                     <th>Gepland voor</th>
                     <th>Laatst bijgewerkt</th>
-                  </tr>
+                  </ResponsiveRow>
                 </thead>
                 <tbody>
                   {data.recent_runs.map((run) => (
-                    <tr key={run.schedule_id}>
+                    <ResponsiveRow key={run.schedule_id}>
                       <td>{run.topic_subject}</td>
                       <td>
                         <span className={`status-pill status-${schedulerStatusTone(run.status)}`}>
@@ -3682,10 +3619,10 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
                       </td>
                       <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
                       <td>{formatAmsterdamDateTime(run.updated_at)}</td>
-                    </tr>
+                    </ResponsiveRow>
                   ))}
                 </tbody>
-              </table>
+              </ResponsiveTable>
             </div>
           )}
         </article>
@@ -3696,17 +3633,17 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
             <p className="muted">Er staan geen taken gepland.</p>
           ) : (
             <div className="table-wrap">
-              <table>
+              <ResponsiveTable>
                 <thead>
-                  <tr>
+                  <ResponsiveRow>
                     <th>Taak</th>
                     <th>Status</th>
                     <th>Volgende run</th>
-                  </tr>
+                  </ResponsiveRow>
                 </thead>
                 <tbody>
                   {data.upcoming_runs.map((run) => (
-                    <tr key={run.schedule_id}>
+                    <ResponsiveRow key={run.schedule_id}>
                       <td>{run.topic_subject}</td>
                       <td>
                         <span className={`status-pill status-${schedulerStatusTone(run.status)}`}>
@@ -3714,10 +3651,10 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
                         </span>
                       </td>
                       <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
-                    </tr>
+                    </ResponsiveRow>
                   ))}
                 </tbody>
-              </table>
+              </ResponsiveTable>
             </div>
           )}
         </article>
@@ -3729,20 +3666,20 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
           <p className="muted">Geen retrytaken in de queue.</p>
         ) : (
           <div className="table-wrap">
-            <table>
+            <ResponsiveTable>
               <thead>
-                <tr>
+                <ResponsiveRow>
                   <th>Taak</th>
                   <th>Flow</th>
                   <th>Status</th>
                   <th>Poging</th>
                   <th>Volgende run</th>
                   <th>Laatste fout</th>
-                </tr>
+                </ResponsiveRow>
               </thead>
               <tbody>
                 {data.retry_jobs.map((job) => (
-                  <tr key={job.id}>
+                  <ResponsiveRow key={job.id}>
                     <td>{job.topic_subject}</td>
                     <td>{job.flow_name}</td>
                     <td>
@@ -3755,10 +3692,10 @@ function AdminSchedulerPage({ currentUser }: { currentUser: CurrentUser | undefi
                     </td>
                     <td>{formatAmsterdamDateTime(job.next_run_at)}</td>
                     <td>{job.error_message || "-"}</td>
-                  </tr>
+                  </ResponsiveRow>
                 ))}
               </tbody>
-            </table>
+            </ResponsiveTable>
           </div>
         )}
       </article>
@@ -3913,20 +3850,20 @@ function LogPage() {
 
       {!notificationQuery.isLoading && !notificationQuery.isError && (notificationQuery.data ?? []).length > 0 && (
         <div className="table-wrap">
-          <table>
+          <ResponsiveTable>
             <thead>
-              <tr>
+              <ResponsiveRow>
                 <th>Tijd</th>
                 <th>Status</th>
                 <th>Event</th>
                 <th>Onderwerp</th>
                 <th>Melding</th>
                 <th>Delivery</th>
-              </tr>
+              </ResponsiveRow>
             </thead>
             <tbody>
               {(notificationQuery.data ?? []).map((item) => (
-                <tr key={item.id}>
+                <ResponsiveRow key={item.id}>
                   <td>{formatAmsterdamDateTime(item.created_at)}</td>
                   <td>
                     <span className={`notification-pill notification-${item.status}`}>
@@ -3937,10 +3874,10 @@ function LogPage() {
                   <td title={item.topic_subject ?? undefined}>{item.topic_subject || "-"}</td>
                   <td>{item.message}</td>
                   <td>{item.delivered_at ? "Afgeleverd" : `Nog niet (${item.delivery_attempts} pogingen)`}</td>
-                </tr>
+                </ResponsiveRow>
               ))}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </div>
       )}
 
@@ -3950,28 +3887,28 @@ function LogPage() {
 
       {!activityQuery.isLoading && !activityQuery.isError && (activityQuery.data ?? []).length > 0 && (
         <div className="table-wrap">
-          <table>
+          <ResponsiveTable>
             <thead>
-              <tr>
+              <ResponsiveRow>
                 <th>Tijd</th>
                 <th>Gebruiker</th>
                 <th>Actie</th>
                 <th>Onderwerp</th>
                 <th>Details</th>
-              </tr>
+              </ResponsiveRow>
             </thead>
             <tbody>
               {(activityQuery.data ?? []).map((item) => (
-                <tr key={item.id}>
+                <ResponsiveRow key={item.id}>
                   <td>{formatAmsterdamDateTime(item.created_at)}</td>
                   <td>{item.actor_username}</td>
                   <td>{activityEventLabel(item.event_type)}</td>
                   <td title={item.topic_subject ?? undefined}>{item.topic_subject || "-"}</td>
                   <td>{activityDetailsLabel(item.details_json)}</td>
-                </tr>
+                </ResponsiveRow>
               ))}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </div>
       )}
     </section>
@@ -4228,9 +4165,9 @@ function BoardRightsAdminTab() {
 
       {projects.length > 0 && (
         <div className="admin-board-rights-matrix-shell" role="region" aria-label="Bordrechten matrix" aria-busy={matrixLocked}>
-          <table className="admin-board-rights-matrix">
+          <ResponsiveTable className="admin-board-rights-matrix">
             <thead>
-              <tr>
+              <ResponsiveRow>
                 <th scope="col" className="admin-board-rights-sticky-col admin-board-rights-sticky-corner">
                   Gebruiker
                 </th>
@@ -4240,7 +4177,7 @@ function BoardRightsAdminTab() {
                     {project.description && <span className="admin-board-rights-column-description">{project.description}</span>}
                   </th>
                 ))}
-              </tr>
+              </ResponsiveRow>
             </thead>
             <tbody>
               {users.length > 0 ? (
@@ -4248,7 +4185,7 @@ function BoardRightsAdminTab() {
                   const userLabel = displayNameForBoardRightsUser(user);
                   const isEditableUser = !user.is_admin && user.is_active;
                   return (
-                    <tr key={user.id} className={user.is_admin ? "admin-board-rights-admin-row" : undefined}>
+                    <ResponsiveRow key={user.id} className={user.is_admin ? "admin-board-rights-admin-row" : undefined}>
                       <th scope="row" className="admin-board-rights-sticky-col">
                         <div className="admin-board-rights-user-row">
                           <span>{userLabel}</span>
@@ -4285,18 +4222,18 @@ function BoardRightsAdminTab() {
                           </td>
                         );
                       })}
-                    </tr>
+                    </ResponsiveRow>
                   );
                 })
               ) : (
-                <tr>
+                <ResponsiveRow>
                   <td colSpan={projects.length + 1} className="admin-board-rights-empty-cell">
                     Er zijn nog geen gebruikers om toegang toe te wijzen.
                   </td>
-                </tr>
+                </ResponsiveRow>
               )}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </div>
       )}
 
@@ -4477,10 +4414,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
 
   const modelOptions: GenAIModelOptions = modelOptionsQuery.data ?? {
     text_models: [],
-    image_models: []
+    image_models: [],
+    transcription_models: []
   };
   const textModelOptions = modelOptions.text_models;
   const imageModelOptions = modelOptions.image_models;
+  const transcriptionModelOptions = modelOptions.transcription_models;
 
   useEffect(() => {
     if (!genAIConfigQuery.data) {
@@ -5136,20 +5075,20 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           <p className="muted">Status, rol en accountacties per gebruiker.</p>
         </div>
       <div className="table-wrap">
-        <table>
+        <ResponsiveTable>
           <thead>
-            <tr>
+            <ResponsiveRow>
               <th>Gebruiker</th>
               <th>Naam</th>
               <th>E-mail</th>
               <th>Status</th>
               <th>Rol</th>
               <th>Acties</th>
-            </tr>
+            </ResponsiveRow>
           </thead>
           <tbody>
             {(usersQuery.data ?? []).map((user) => (
-              <tr key={user.id}>
+              <ResponsiveRow key={user.id}>
                 <td>{user.username}</td>
                 <td>{user.full_name ?? "-"}</td>
                 <td>{user.email ?? "-"}</td>
@@ -5167,10 +5106,10 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                     </button>
                   </div>
                 </td>
-              </tr>
+              </ResponsiveRow>
             ))}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </div>
       </section>
       {modalUser && (
@@ -5406,19 +5345,19 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         </button>
       </form>
       <div className="table-wrap">
-        <table>
+        <ResponsiveTable>
           <thead>
-            <tr>
+            <ResponsiveRow>
               <th>Project</th>
               <th>Status en beschikbaarheid</th>
               <th>Bewerken</th>
-            </tr>
+            </ResponsiveRow>
           </thead>
           <tbody>
             {(projectsQuery.data ?? []).map((project) => {
               const draftName = projectDrafts[project.id] ?? project.name;
               return (
-                <tr key={project.id}>
+                <ResponsiveRow key={project.id}>
                   <td>
                     <input
                       type="text"
@@ -5462,11 +5401,11 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                       </button>
                     </div>
                   </td>
-                </tr>
+                </ResponsiveRow>
               );
             })}
           </tbody>
-        </table>
+        </ResponsiveTable>
       </div>
       <section className="admin-work-posts" aria-labelledby="admin-work-posts-title">
         <AdminQueryStatus resource="Globale urenposten" isLoading={workPostsQuery.isLoading} isError={workPostsQuery.isError} onRetry={() => void workPostsQuery.refetch()} />
@@ -5477,12 +5416,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           <textarea aria-label="Beschrijving nieuwe globale post" placeholder="Beschrijving" rows={3} style={{ resize: "vertical" }} value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
           <button type="submit" disabled={createWorkPostMutation.isPending || newWorkPostName.trim().length < 2}>Post toevoegen</button>
         </form>
-        <div className="table-wrap"><table><thead><tr><th>Post</th><th>Beschrijving</th><th>Status</th><th>Acties</th></tr></thead><tbody>
+        <div className="table-wrap"><ResponsiveTable><thead><ResponsiveRow><th>Post</th><th>Beschrijving</th><th>Status</th><th>Acties</th></ResponsiveRow></thead><tbody>
           {(workPostsQuery.data?.posts ?? []).map((post) => {
             const draft = workPostDrafts[post.id] ?? { name: post.name, description: post.description ?? "" };
-            return <tr key={post.id}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><textarea aria-label={`Beschrijving post ${post.name}`} rows={3} style={{ resize: "vertical" }} value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td>{post.deleted_at ? "verwijderd" : post.is_archived ? "gearchiveerd" : post.is_active ? "actief" : "inactief"}</td><td><div className="admin-account-actions"><button type="button" onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{post.is_archived || post.deleted_at ? <button type="button" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></tr>;
+            return <ResponsiveRow key={post.id}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><textarea aria-label={`Beschrijving post ${post.name}`} rows={3} style={{ resize: "vertical" }} value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td>{post.deleted_at ? "verwijderd" : post.is_archived ? "gearchiveerd" : post.is_active ? "actief" : "inactief"}</td><td><div className="admin-account-actions"><button type="button" onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{post.is_archived || post.deleted_at ? <button type="button" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></ResponsiveRow>;
           })}
-        </tbody></table></div>
+        </tbody></ResponsiveTable></div>
       </section>
       </div>
 
@@ -5535,19 +5474,19 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </button>
         </form>
         <div className="table-wrap">
-          <table>
+          <ResponsiveTable>
             <thead>
-              <tr>
+              <ResponsiveRow>
                 <th>Thema</th>
                 <th>Status</th>
                 <th>Bewerken</th>
-              </tr>
+              </ResponsiveRow>
             </thead>
             <tbody>
               {(themesQuery.data ?? []).map((theme) => {
                 const draftName = themeDrafts[theme.id] ?? theme.name;
                 return (
-                  <tr key={theme.id}>
+                  <ResponsiveRow key={theme.id}>
                     <td>
                       <input
                         type="text"
@@ -5587,11 +5526,11 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                         </button>
                       </div>
                     </td>
-                  </tr>
+                  </ResponsiveRow>
                 );
               })}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </div>
       </div>
 
@@ -5684,14 +5623,28 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             </select>
           </label>
           <label>
-            Whisper-model
-            <input
-              type="text"
+            Transcriptiemodel
+            <select
               value={genAIForm.whisper_model}
               onChange={(event) => updateGenAIField("whisper_model", event.target.value)}
-              minLength={2}
-              required
-            />
+            >
+              {!transcriptionModelOptions.includes(genAIForm.whisper_model) && (
+                <option value={genAIForm.whisper_model}>{genAIForm.whisper_model}</option>
+              )}
+              {transcriptionModelOptions.map((model) => (
+                <option key={model} value={model}>
+                  {model === "gpt-transcribe"
+                    ? "GPT Transcribe — nieuwste kwaliteitsmodel"
+                    : model === "gpt-4o-mini-transcribe"
+                    ? "GPT-4o mini Transcribe — aanbevolen"
+                    : model === "gpt-4o-transcribe"
+                      ? "GPT-4o Transcribe — hoogste kwaliteit"
+                      : model === "whisper-1"
+                        ? "Whisper-1 — ouder model"
+                        : model}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Whisper-taal
@@ -5767,47 +5720,47 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             <article className="panel">
               <h3>Recent gedraaid</h3>
               <div className="table-wrap">
-                <table>
+                <ResponsiveTable>
                   <thead>
-                    <tr>
+                    <ResponsiveRow>
                       <th>Taak</th>
                       <th>Status</th>
                       <th>Gepland voor</th>
-                    </tr>
+                    </ResponsiveRow>
                   </thead>
                   <tbody>
                     {schedulerQuery.data.recent_runs.slice(0, 8).map((run) => (
-                      <tr key={run.schedule_id}>
+                      <ResponsiveRow key={run.schedule_id}>
                         <td>{run.topic_subject}</td>
                         <td>{run.status}</td>
                         <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
-                      </tr>
+                      </ResponsiveRow>
                     ))}
                   </tbody>
-                </table>
+                </ResponsiveTable>
               </div>
             </article>
             <article className="panel">
               <h3>Komende planning</h3>
               <div className="table-wrap">
-                <table>
+                <ResponsiveTable>
                   <thead>
-                    <tr>
+                    <ResponsiveRow>
                       <th>Taak</th>
                       <th>Status</th>
                       <th>Volgende run</th>
-                    </tr>
+                    </ResponsiveRow>
                   </thead>
                   <tbody>
                     {schedulerQuery.data.upcoming_runs.slice(0, 8).map((run) => (
-                      <tr key={run.schedule_id}>
+                      <ResponsiveRow key={run.schedule_id}>
                         <td>{run.topic_subject}</td>
                         <td>{run.status}</td>
                         <td>{formatAmsterdamDateTime(run.scheduled_for)}</td>
-                      </tr>
+                      </ResponsiveRow>
                     ))}
                   </tbody>
-                </table>
+                </ResponsiveTable>
               </div>
             </article>
           </div>
@@ -5823,31 +5776,31 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         <p className="muted">Recente beheeracties en systeemevents (automatisch elke 30 sec ververst).</p>
         <AdminQueryStatus resource="Admin log" isLoading={adminActivityQuery.isLoading} isError={adminActivityQuery.isError} onRetry={() => void adminActivityQuery.refetch()} />
         <div className="table-wrap">
-          <table>
+          <ResponsiveTable>
             <thead>
-              <tr>
+              <ResponsiveRow>
                 <th>Tijd</th>
                 <th>Gebruiker</th>
                 <th>Actie</th>
                 <th>Topic</th>
-              </tr>
+              </ResponsiveRow>
             </thead>
             <tbody>
               {(adminActivityQuery.data ?? []).map((item) => {
                 const topicSubject = item.topic_subject?.trim() ?? "";
                 return (
-                  <tr key={item.id}>
+                  <ResponsiveRow key={item.id}>
                     <td>{formatAmsterdamDateTime(item.created_at)}</td>
                     <td>{item.actor_username}</td>
                     <td>{item.event_type}</td>
                     <td title={topicSubject || undefined}>
                       {topicSubject ? truncateText(topicSubject, 60) : "-"}
                     </td>
-                  </tr>
+                  </ResponsiveRow>
                 );
               })}
             </tbody>
-          </table>
+          </ResponsiveTable>
         </div>
       </div>
     </section>

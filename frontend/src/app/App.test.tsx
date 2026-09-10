@@ -53,6 +53,13 @@ const mockApi = vi.hoisted(() => ({
       description: "Teamplanning en besluiten",
       invited_user_ids: ["u1"],
       card_count: 2
+    },
+    {
+      id: "bp2",
+      name: "Stille notities",
+      description: "",
+      invited_user_ids: [],
+      card_count: 0
     }
   ]),
   listBoardRights: vi.fn().mockResolvedValue({
@@ -231,7 +238,8 @@ const mockApi = vi.hoisted(() => ({
   }),
   getAdminGenAIModelOptions: vi.fn().mockResolvedValue({
     text_models: ["gpt-4.1-mini", "gpt-4.1", "gpt-4o-mini"],
-    image_models: ["gpt-image-1"]
+    image_models: ["gpt-image-1"],
+    transcription_models: ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"]
   }),
   updateAdminGenAIConfig: vi.fn().mockResolvedValue({
     system_prompt: "Aangepaste systeemprompt.",
@@ -871,11 +879,17 @@ function renderHoursCompatibility(entry: string) {
       theme_preference: "system",
       has_avatar: false
     });
+    fillLoginForm();
     fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
     await waitFor(() => {
       expect(screen.getByRole("navigation", { name: "Hoofdnavigatie" })).toBeInTheDocument();
     });
   }
+
+function fillLoginForm() {
+  fireEvent.change(screen.getByLabelText("Gebruikersnaam"), { target: { value: "admin" } });
+  fireEvent.change(screen.getByLabelText("Wachtwoord"), { target: { value: "admin12345" } });
+}
 
 function openWervelnieuwsDropdown() {
   const wervelLink = screen.getByRole("link", { name: "Wervelnieuws" });
@@ -947,6 +961,9 @@ describe("App", () => {
     renderApp();
     expect(screen.getByRole("button", { name: "Inloggen" })).toBeInTheDocument();
     expect(screen.getByLabelText("Onthoud mij")).toBeInTheDocument();
+    expect(screen.getByLabelText("Gebruikersnaam")).toHaveValue("");
+    expect(screen.getByLabelText("Wachtwoord")).toHaveValue("");
+    expect(screen.getByLabelText("Wachtwoord")).toHaveAttribute("autocomplete", "current-password");
   });
 
   it("sends remember me flag when checkbox is checked", async () => {
@@ -962,6 +979,7 @@ describe("App", () => {
     mockApi.login.mockRejectedValueOnce(new Error("Invalid credentials"));
     renderApp();
 
+    fillLoginForm();
     fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
 
     await waitFor(() => {
@@ -979,6 +997,9 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Urenregistratie" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Vergaderborden" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "WindWilly" })).toHaveClass("quiet-suite-link");
+      expect(screen.getByRole("link", { name: "Wervelnieuws" })).toHaveClass("quiet-suite-link");
+      expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "https://www.groenenoabers.nl/Groene-Noabers-Logo.png");
       expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Samenwerkende coöperaties" })).toBeInTheDocument();
       expect(screen.getByText(/online vraagbaak\./i)).toBeInTheDocument();
@@ -1012,6 +1033,27 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: "Nieuw project" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("marks only the open vergaderbord project in the project navigation", async () => {
+    renderApp();
+    await loginIntoApp();
+
+    clickVergaderbordenProject("Wekelijkse afstemming");
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Wekelijkse afstemming" })).toBeInTheDocument();
+    });
+
+    openVergaderbordenDropdown();
+
+    await waitFor(() => {
+      const navigation = within(screen.getByLabelText("Vergaderborden projectnavigatie"));
+      expect(navigation.getByRole("link", { name: "Wekelijkse afstemming" })).toHaveClass("active");
+      expect(navigation.getByRole("link", { name: "Wekelijkse afstemming" })).toHaveAttribute("aria-current", "page");
+      expect(navigation.getByRole("link", { name: "Stille notities" })).not.toHaveClass("active");
+      expect(navigation.getByRole("link", { name: "Stille notities" })).not.toHaveAttribute("aria-current");
     });
   });
 
@@ -1113,7 +1155,7 @@ describe("App", () => {
     });
   });
 
-  it("shows inline error for empty update and closes detail on outside click", async () => {
+  it("blocks empty updates, validates direct form submission and closes detail on outside click", async () => {
     mockApi.getBoardProject.mockResolvedValueOnce({
       project: {
         id: "bp1",
@@ -1154,7 +1196,11 @@ describe("App", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Update plaatsen" }));
+    const submitButton = screen.getByRole("button", { name: "Update plaatsen" });
+    expect(submitButton).toBeDisabled();
+    fireEvent.click(submitButton);
+    expect(mockApi.postBoardCardUpdate).not.toHaveBeenCalled();
+    fireEvent.submit(submitButton.closest("form")!);
 
     await waitFor(() => {
       expect(screen.getByText("Vul eerst een update in.")).toBeInTheDocument();
@@ -3236,7 +3282,7 @@ describe("App", () => {
     fireEvent.change(screen.getByLabelText("Website prompt"), {
       target: { value: "Websiteprompt iteratie 9" }
     });
-    fireEvent.change(screen.getByLabelText("Whisper-model"), {
+    fireEvent.change(screen.getByLabelText("Transcriptiemodel"), {
       target: { value: "whisper-1" }
     });
     fireEvent.change(screen.getByLabelText("Whisper-taal"), {
@@ -3380,6 +3426,7 @@ describe("App", () => {
   it("keeps the Admin guard for the hours submenu tabs", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
     renderApp();
+    fillLoginForm();
     await userEvent.click(screen.getByRole("button", { name: "Inloggen" }));
     await screen.findByRole("navigation", { name: "Hoofdnavigatie" });
     await userEvent.click(screen.getByRole("button", { name: "editor" }));

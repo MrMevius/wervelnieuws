@@ -1,17 +1,33 @@
+import json
+import re
+from datetime import UTC, datetime
+from io import BytesIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.entities import Recording, User
+from app.models.enums import BoardColumn, BoardUrgency
 from app.repositories.board_repository import BoardRepository
+from app.integrations.openai_client import OpenAIClient
 from app.schemas.boards import (
     BoardAccessUserResponse,
+    BoardClearResponse,
     BoardCardCreateRequest,
+    BoardTrelloImportResponse,
+    BoardTransferItem,
     BoardCardMoveRequest,
+    BoardTitleSuggestionRequest,
+    BoardTitleSuggestionResponse,
+    BoardCardUrgencyUpdateRequest,
+    BoardCardAssignmentsUpdateRequest,
     BoardCardDescriptionUpdateRequest,
     BoardAttachmentResponse,
     BoardCardResponse,
@@ -27,13 +43,21 @@ from app.schemas.boards import (
     CardDetailResponse,
     CardUpdateCreateRequest,
     CardUpdateResponse,
+    LiveTranscriptReviewRequest,
+    LiveTranscriptReviewResponse,
+    LiveTranscriptionResponse,
     ProjectBoardResponse,
     RecordingResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.board_service import BoardService
+from app.services.genai_config_service import GenAIConfigService
 
 router = APIRouter(prefix="/boards", tags=["boards"])
+
+_LIVE_TRANSCRIPTION_MAX_BYTES = 25 * 1024 * 1024
+_LIVE_TRANSCRIPTION_SUFFIXES = {".webm", ".ogg", ".wav", ".m4a", ".mp4"}
+_TRELLO_IMPORT_MAX_BYTES = 10 * 1024 * 1024
 
 _COLUMN_LABELS_NL = {
     "todo": "Te doen",
@@ -44,6 +68,112 @@ _COLUMN_LABELS_NL = {
 
 def _column_label_nl(column_value: str) -> str:
     return _COLUMN_LABELS_NL.get(column_value, column_value)
+
+
+def _trello_column(list_name: str) -> BoardColumn:
+    normalized = list_name.casefold()
+    if any(marker in normalized for marker in ("doing", "bezig", "in uitvoering")):
+        return BoardColumn.doing
+    if any(marker in normalized for marker in ("done", "klaar", "afgerond", "gereed")):
+        return BoardColumn.done
+    return BoardColumn.todo
+
+
+def _trello_card_description(card: dict, checklists_by_card: dict[str, list[dict]]) -> str:
+    sections: list[str] = [str(card.get("desc") or "").strip()]
+    checklists = checklists_by_card.get(str(card.get("id") or ""), [])
+    if checklists:
+        lines = ["### Trello-checklists"]
+        for checklist in checklists:
+            title = str(checklist.get("name") or "Checklist").strip()
+            lines.append(f"#### {title}")
+            for item in sorted(checklist.get("checkItems") or [], key=lambda value: value.get("pos", 0)):
+                marker = "x" if item.get("state") == "complete" else " "
+                lines.append(f"- [{marker}] {str(item.get('name') or '').strip()}")
+        sections.append("\n".join(lines))
+    return "\n\n".join(section for section in sections if section).strip()
+
+
+def _trello_comment_author(comment: dict) -> str | None:
+    author = str((comment.get("memberCreator") or {}).get("fullName") or "").strip()
+    return author or None
+
+
+def _trello_comment_created_at(comment: dict) -> datetime | None:
+    raw_date = str(comment.get("date") or "").strip()
+    if not raw_date:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _safe_export_name(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
+    return normalized[:72] or "vergaderbord"
+
+
+def _card_export(repo: BoardRepository, card) -> dict:
+    return {
+        "id": card.id,
+        "trello_card_id": card.trello_card_id,
+        "title": card.title,
+        "description": card.description,
+        "column": card.column.value,
+        "urgency": card.urgency.value,
+        "position": card.position,
+        "is_archived": card.is_archived,
+        "assignments": [
+            {"username": row.user.username, "display_name": _display_name(row.user)}
+            for row in card.assignments
+        ],
+        "updates": [
+            {
+                "author": row.external_author_name or _display_name(repo.get_user(row.author_user_id)),
+                "message": row.message,
+                "created_at": row.created_at.isoformat(),
+            }
+            for row in repo.list_updates(card.id)
+        ],
+        "recordings": [
+            {
+                "filename": row.filename,
+                "duration": row.duration,
+                "transcription": row.transcription_text,
+                "recorded_at": row.recorded_at.isoformat(),
+            }
+            for row in repo.list_recordings(card.id)
+        ],
+        "attachments": [
+            {"filename": row.filename, "mime_type": row.mime_type, "size_bytes": row.size_bytes}
+            for row in repo.list_attachments(card.id)
+        ],
+    }
+
+
+def _card_markdown(payload: dict) -> str:
+    lines = [f"# {payload['title']}", "", f"- Status: { _column_label_nl(payload['column']) }", f"- Urgentie: {'Urgent' if payload['urgency'] == 'urgent' else 'Normaal'}"]
+    if payload.get("trello_card_id"):
+        lines.append(f"- Trello-ID: {payload['trello_card_id']}")
+    if payload["assignments"]:
+        lines.append("- Toegewezen aan: " + ", ".join(item["display_name"] for item in payload["assignments"]))
+    lines.extend(["", "## Beschrijving", "", payload["description"] or "_Geen beschrijving._"])
+    if payload["updates"]:
+        lines.extend(["", "## Updates", ""])
+        for update in payload["updates"]:
+            lines.extend([f"### {update['author']} · {update['created_at']}", "", update["message"], ""])
+    if payload["recordings"]:
+        lines.extend(["", "## Opnames", ""])
+        for recording in payload["recordings"]:
+            lines.append(f"- {recording['filename']} ({recording['duration'] or 0}s)")
+            if recording["transcription"]:
+                lines.append(f"  - Transcriptie: {recording['transcription']}")
+    if payload["attachments"]:
+        lines.extend(["", "## Bijlagen", ""])
+        lines.extend(f"- {attachment['filename']} ({attachment['mime_type']})" for attachment in payload["attachments"])
+    return "\n".join(lines).strip() + "\n"
 
 
 def _display_name(user: User | None) -> str:
@@ -94,6 +224,7 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         title=card.title,
         description=card.description,
         column=card.column,
+        urgency=card.urgency,
         position=card.position,
         is_archived=card.is_archived,
         assignments=[
@@ -122,6 +253,7 @@ def _recycle_bin_card_response(repo: BoardRepository, card) -> BoardRecycleBinCa
         title=card.title,
         description=card.description,
         column=card.column,
+        urgency=card.urgency,
         position=card.position,
         is_archived=card.is_archived,
         deleted_at=card.deleted_at,
@@ -270,6 +402,208 @@ def get_project_board(project_id: str, current: User = Depends(get_current_user)
     )
 
 
+@router.delete("/projects/{project_id}/cards", response_model=BoardClearResponse)
+def clear_project_cards(
+    project_id: str,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BoardClearResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    project = service.ensure_project_writable(service.ensure_project_access(repo.get_project(project_id), current))
+    cleared = repo.soft_delete_project_cards(project.id, current.id)
+    if cleared:
+        service.touch_activity(project)
+    AuditService(db).log(
+        "board.project.cards_cleared",
+        actor_user_id=current.id,
+        details_json=service.audit_details(project_id=project.id, cards_cleared=cleared),
+    )
+    return BoardClearResponse(cleared=cleared)
+
+
+@router.post("/projects/{project_id}/import/trello", response_model=BoardTrelloImportResponse)
+async def import_trello_board(
+    project_id: str,
+    file: UploadFile = File(...),
+    selected_list_ids: str | None = Form(default=None),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BoardTrelloImportResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    project = service.ensure_project_writable(service.ensure_project_access(repo.get_project(project_id), current))
+    content = await file.read(_TRELLO_IMPORT_MAX_BYTES + 1)
+    if len(content) > _TRELLO_IMPORT_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="De Trello-export is groter dan 10 MB.")
+    try:
+        payload = json.loads(content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail="Dit bestand is geen geldige Trello-JSON-export.") from exc
+    if not isinstance(payload, dict) or not isinstance(payload.get("cards"), list):
+        raise HTTPException(status_code=422, detail="Dit bestand bevat geen Trello-kaarten.")
+
+    lists = {
+        str(row.get("id")): row
+        for row in payload.get("lists", [])
+        if isinstance(row, dict) and row.get("id")
+    }
+    selected_list_id_set: set[str] | None = None
+    if selected_list_ids is not None:
+        try:
+            selected_values = json.loads(selected_list_ids)
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="De geselecteerde Trello-kolommen zijn ongeldig.") from exc
+        if not isinstance(selected_values, list) or any(not isinstance(value, str) or not value.strip() for value in selected_values):
+            raise HTTPException(status_code=422, detail="De geselecteerde Trello-kolommen zijn ongeldig.")
+        selected_list_id_set = {value.strip() for value in selected_values}
+        unknown_list_ids = selected_list_id_set - set(lists)
+        if unknown_list_ids:
+            raise HTTPException(status_code=422, detail="Een geselecteerde Trello-kolom komt niet uit dit bestand.")
+
+    cards = [row for row in payload["cards"] if isinstance(row, dict)]
+    source_ids = [str(row.get("id")) for row in cards if row.get("id")]
+    known_source_ids = repo.list_trello_card_ids(source_ids)
+    imported: list[BoardTransferItem] = []
+    skipped: list[BoardTransferItem] = []
+    failed: list[BoardTransferItem] = []
+    seen_source_ids: set[str] = set()
+    not_selected_count = 0
+
+    checklists_by_card: dict[str, list[dict]] = {}
+    for checklist in payload.get("checklists", []):
+        if isinstance(checklist, dict) and checklist.get("idCard"):
+            checklists_by_card.setdefault(str(checklist["idCard"]), []).append(checklist)
+    comments_by_card: dict[str, list[dict]] = {}
+    for action in payload.get("actions", []):
+        if not isinstance(action, dict) or action.get("type") != "commentCard":
+            continue
+        card_id = (action.get("data") or {}).get("idCard")
+        if card_id:
+            comments_by_card.setdefault(str(card_id), []).append(action)
+
+    for raw_card in sorted(cards, key=lambda row: (float(row.get("pos") or 0), str(row.get("id") or ""))):
+        list_id = str(raw_card.get("idList") or "").strip()
+        if selected_list_id_set is not None and list_id not in selected_list_id_set:
+            not_selected_count += 1
+            continue
+        source_id = str(raw_card.get("id") or "").strip()
+        title = str(raw_card.get("name") or "").strip()
+        if not source_id:
+            failed.append(BoardTransferItem(title=title or "Naamloze Trello-kaart", reason="Trello-ID ontbreekt."))
+            continue
+        if source_id in seen_source_ids:
+            skipped.append(BoardTransferItem(source_id=source_id, title=title or "Naamloze Trello-kaart", reason="Dubbele Trello-ID in dit bestand."))
+            continue
+        seen_source_ids.add(source_id)
+        if source_id in known_source_ids:
+            skipped.append(BoardTransferItem(source_id=source_id, title=title or "Naamloze Trello-kaart", reason="Deze Trello-kaart is al eerder geïmporteerd."))
+            continue
+        if not title:
+            failed.append(BoardTransferItem(source_id=source_id, title="Naamloze Trello-kaart", reason="Kaarttitel ontbreekt."))
+            continue
+
+        list_row = lists.get(list_id, {})
+        list_name = str(list_row.get("name") or "").strip()
+        labels = raw_card.get("labels") or []
+        urgency = BoardUrgency.urgent if any(
+            isinstance(label, dict)
+            and (label.get("color") == "red" or "urgent" in str(label.get("name") or "").casefold() or "spoed" in str(label.get("name") or "").casefold())
+            for label in labels
+        ) else BoardUrgency.normal
+        description = _trello_card_description(raw_card, checklists_by_card)
+        if len(title) > 80:
+            description = f"**Originele Trello-titel:** {title}\n\n{description}".strip()
+            title = title[:80].rstrip()
+        card = repo.create_card(
+            project.id,
+            title,
+            description,
+            _trello_column(list_name),
+            urgency,
+            trello_card_id=source_id,
+            is_archived=bool(raw_card.get("closed") or list_row.get("closed")),
+        )
+        for comment in sorted(
+            comments_by_card.get(source_id, []),
+            key=lambda value: (_trello_comment_created_at(value) or datetime.min.replace(tzinfo=UTC), str(value.get("id") or "")),
+        ):
+            message = str((comment.get("data") or {}).get("text") or "").strip()
+            if message:
+                repo.create_update(
+                    card.id,
+                    current.id,
+                    message,
+                    created_at=_trello_comment_created_at(comment),
+                    external_author_name=_trello_comment_author(comment),
+                )
+        imported.append(BoardTransferItem(source_id=source_id, title=card.title))
+
+    db.commit()
+    if imported:
+        service.touch_activity(project)
+    AuditService(db).log(
+        "board.trello_imported",
+        actor_user_id=current.id,
+        details_json=service.audit_details(
+            project_id=project.id,
+            imported=len(imported),
+            skipped=len(skipped),
+            failed=len(failed),
+            not_selected_count=not_selected_count,
+            selected_list_ids=sorted(selected_list_id_set) if selected_list_id_set is not None else None,
+        ),
+    )
+    return BoardTrelloImportResponse(
+        imported=imported,
+        skipped=skipped,
+        failed=failed,
+        not_selected_count=not_selected_count,
+    )
+
+
+@router.get("/projects/{project_id}/export.json")
+def export_board_json(project_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    project = service.ensure_project_access(repo.get_project(project_id), current)
+    cards = [*repo.list_project_cards(project.id), *repo.list_archived_project_cards(project.id)]
+    payload = {
+        "format": "windwilly-vergaderbord/v1",
+        "project": {"id": project.id, "name": project.name, "description": project.description},
+        "cards": [_card_export(repo, card) for card in cards],
+    }
+    filename = f"{_safe_export_name(project.name)}-vergaderbord.json"
+    return Response(
+        content=json.dumps(payload, ensure_ascii=False, indent=2, default=str),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/projects/{project_id}/export-markdown.zip")
+def export_board_markdown(project_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> Response:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    project = service.ensure_project_access(repo.get_project(project_id), current)
+    cards = [*repo.list_project_cards(project.id), *repo.list_archived_project_cards(project.id)]
+    archive_by_column = {"todo": "Te doen", "doing": "Bezig", "done": "Klaar"}
+    buffer = BytesIO()
+    with ZipFile(buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("README.md", f"# {project.name}\n\nMarkdown-export van het vergaderbord.\n")
+        for card in cards:
+            payload = _card_export(repo, card)
+            folder = "Archief" if card.is_archived else archive_by_column[card.column.value]
+            filename = f"{card.position + 1:03d}-{_safe_export_name(card.title)}.md"
+            archive.writestr(f"{folder}/{filename}", _card_markdown(payload))
+    filename = f"{_safe_export_name(project.name)}-vergaderbord-markdown.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.post("/projects/{project_id}/cards", response_model=BoardCardResponse)
 def create_card(project_id: str, payload: BoardCardCreateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
     repo = BoardRepository(db)
@@ -277,7 +611,7 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     project = service.ensure_project_access(repo.get_project(project_id), current)
     service.ensure_project_writable(project)
     assignment_user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
-    card = repo.create_card(project.id, payload.title, payload.description, payload.column)
+    card = repo.create_card(project.id, payload.title, payload.description, payload.column, payload.urgency)
     repo.replace_assignments(card, assignment_user_ids)
     card = service.ensure_card_access(repo.get_card(card.id), current)
     service.touch_activity(project)
@@ -383,6 +717,36 @@ def update_card_description(card_id: str, payload: BoardCardDescriptionUpdateReq
     return _card_response(repo, updated)
 
 
+@router.patch("/cards/{card_id}/urgency", response_model=BoardCardResponse)
+def update_card_urgency(card_id: str, payload: BoardCardUrgencyUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
+    previous_urgency = card.urgency
+    updated = repo.update_card_urgency(card, payload.urgency)
+    service.touch_activity(service.ensure_project_access(repo.get_project(updated.project_id), current))
+    AuditService(db).log(
+        "board.card.urgency_updated",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=updated.id, previous_urgency=previous_urgency.value, urgency=updated.urgency.value),
+    )
+    return _card_response(repo, updated)
+
+
+@router.patch("/cards/{card_id}/assignments", response_model=BoardCardResponse)
+def update_card_assignments(card_id: str, payload: BoardCardAssignmentsUpdateRequest, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> BoardCardResponse:
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    card = service.ensure_card_writable(repo.get_card(card_id), current)
+    project = service.ensure_project_access(repo.get_project(card.project_id), current)
+    user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
+    repo.replace_assignments(card, user_ids)
+    service.touch_activity(project)
+    db.expire(card, ["assignments"])
+    AuditService(db).log("board.card.assignments_updated", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, project_id=project.id, assignment_user_ids=user_ids))
+    return _card_response(repo, card)
+
+
 @router.get("/cards/{card_id}", response_model=CardDetailResponse)
 def get_card_detail(card_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> CardDetailResponse:
     repo = BoardRepository(db)
@@ -398,7 +762,7 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
                 id=row.id,
                 author_user_id=row.author_user_id,
                 author_username=author.username if (author := repo.get_user(row.author_user_id)) else "onbekend",
-                author_display_name=_display_name(author),
+                author_display_name=row.external_author_name or _display_name(author),
                 message=row.message,
                 image_url=_update_image_url(row.id, row.image_path),
                 edited_from_update_id=row.edited_from_update_id,
@@ -517,6 +881,136 @@ def delete_own_update(
         details_json=service.audit_details(card_id=card.id, update_id=update.id),
     )
     return {"status": "deleted"}
+
+
+@router.post("/transcribe", response_model=LiveTranscriptionResponse)
+async def transcribe_live_audio(
+    file: UploadFile = File(...),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LiveTranscriptionResponse:
+    """Transcribe a short, in-memory dictation fragment without persisting the audio."""
+    del current
+    suffix = Path(file.filename or "live-dictaat.webm").suffix.lower()
+    if suffix not in _LIVE_TRANSCRIPTION_SUFFIXES:
+        raise HTTPException(status_code=415, detail="Gebruik een ondersteund audioformaat.")
+
+    temporary_path: Path | None = None
+    try:
+        payload = await file.read(_LIVE_TRANSCRIPTION_MAX_BYTES + 1)
+        if not payload:
+            raise HTTPException(status_code=422, detail="Het audiofragment is leeg.")
+        if len(payload) > _LIVE_TRANSCRIPTION_MAX_BYTES:
+            raise HTTPException(status_code=413, detail="Het audiofragment is te groot.")
+
+        with NamedTemporaryFile(suffix=suffix, delete=False) as temporary_file:
+            temporary_file.write(payload)
+            temporary_path = Path(temporary_file.name)
+
+        config = GenAIConfigService(db).get_effective_config()
+        openai = OpenAIClient(
+            api_key=config.openai_api_key,
+            text_model=config.text_model,
+            image_model=config.image_model,
+        )
+        result = await run_in_threadpool(
+            openai.transcribe_audio,
+            str(temporary_path),
+            model=config.whisper_model,
+            language=config.whisper_language,
+        )
+        return LiveTranscriptionResponse(text=str(result.get("text") or "").strip())
+    except HTTPException:
+        raise
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Live transcriptie is niet geconfigureerd.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Live transcriptie is mislukt.") from exc
+    finally:
+        await file.close()
+        if temporary_path:
+            temporary_path.unlink(missing_ok=True)
+
+
+@router.post("/transcribe/review", response_model=LiveTranscriptReviewResponse)
+def review_live_transcript(
+    payload: LiveTranscriptReviewRequest,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> LiveTranscriptReviewResponse:
+    """Lightly edit a completed dictation without changing its meaning or facts."""
+    del current
+    config = GenAIConfigService(db).get_effective_config()
+    if not config.openai_api_key:
+        raise HTTPException(status_code=503, detail="Tekstreview is niet geconfigureerd.")
+
+    if payload.allow_content_changes:
+        instructions = (
+            "Herschrijf de onderstaande Nederlandse tekst tot een heldere, verzorgde "
+            "en prettig leesbare kaartbeschrijving. Je mag formuleringen, zinsvolgorde "
+            "en alinea's verbeteren en herstructureren. Behoud wel alle kernfeiten, "
+            "namen, getallen, afspraken en de bedoeling. Voeg geen onbewezen informatie "
+            "toe en geef geen toelichting; geef uitsluitend de verbeterde tekst terug."
+        )
+    else:
+        instructions = (
+            "Verbeter uitsluitend spelling, hoofdletters, grammatica, leesbaarheid en "
+            "interpunctie in de onderstaande gedicteerde tekst. Behoud alle feiten, "
+            "namen, getallen, afspraken, toon en betekenis exact. Voeg geen informatie "
+            "toe, vat niet samen en geef geen toelichting. Geef uitsluitend de verbeterde "
+            "tekst terug."
+        )
+    prompt = f"Je bent een zorgvuldige Nederlandse eindredacteur. {instructions}\n\nTekst:\n{payload.text}"
+    try:
+        openai = OpenAIClient(
+            api_key=config.openai_api_key,
+            text_model=config.text_model,
+            image_model=config.image_model,
+        )
+        reviewed, _ = openai.generate_text(prompt)
+        cleaned = reviewed.strip()
+        if not cleaned:
+            raise RuntimeError("De tekstreview gaf geen tekst terug.")
+        return LiveTranscriptReviewResponse(text=cleaned)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Tekstreview is niet beschikbaar.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Tekstreview is mislukt.") from exc
+
+
+@router.post("/title-suggestion", response_model=BoardTitleSuggestionResponse)
+def suggest_board_card_title(
+    payload: BoardTitleSuggestionRequest,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BoardTitleSuggestionResponse:
+    del current
+    config = GenAIConfigService(db).get_effective_config()
+    if not config.openai_api_key:
+        raise HTTPException(status_code=503, detail="Titelvoorstel is niet geconfigureerd.")
+
+    prompt = (
+        "Bedenk één korte, concrete Nederlandse titel voor een vergaderbordkaart op "
+        "basis van de beschrijving hieronder. Maximaal 80 tekens. Benoem de actie of "
+        "het onderwerp, zonder inleiding, aanhalingstekens, opsomming of toelichting. "
+        "Verzin geen feiten. Geef uitsluitend de titel terug.\n\n"
+        f"Beschrijving:\n{payload.description}"
+    )
+    try:
+        openai = OpenAIClient(
+            api_key=config.openai_api_key,
+            text_model=config.text_model,
+            image_model=config.image_model,
+        )
+        suggested, _ = openai.generate_text(prompt)
+        title = " ".join(suggested.strip().strip("\"'").split())[:80].rstrip(" ,.;:")
+        if not title:
+            raise RuntimeError("Het titelvoorstel gaf geen titel terug.")
+        return BoardTitleSuggestionResponse(title=title)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Titelvoorstel is niet beschikbaar.") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Titelvoorstel is mislukt.") from exc
 
 
 @router.post("/cards/{card_id}/recordings", response_model=RecordingResponse)

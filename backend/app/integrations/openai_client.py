@@ -108,7 +108,7 @@ class OpenAIClient:
             request_payload = {
                 "model": model,
                 "file": audio_file,
-                "response_format": "verbose_json",
+                "response_format": self._transcription_response_format(model),
             }
             if language:
                 request_payload["language"] = language
@@ -123,6 +123,13 @@ class OpenAIClient:
         text = getattr(response, "text", "")
         segments = getattr(response, "segments", [])
         return {"text": text, "segments": segments}
+
+    def _transcription_response_format(self, model: str) -> str:
+        """Use the compact JSON format required by the GPT-4o transcription models."""
+        normalized = model.strip().lower()
+        if normalized == "gpt-transcribe" or normalized.startswith(("gpt-4o-transcribe", "gpt-4o-mini-transcribe")):
+            return "json"
+        return "verbose_json"
 
     def _extract_web_hits(self, response: object) -> list[dict[str, str]]:
         model_dump = getattr(response, "model_dump", None)
