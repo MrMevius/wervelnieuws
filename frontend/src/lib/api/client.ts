@@ -470,7 +470,9 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
   });
   if (!res.ok) {
-    throw new Error(await res.text());
+    const error = new Error(await res.text()) as Error & { status: number };
+    error.status = res.status;
+    throw error;
   }
   return res.json() as Promise<T>;
 }
