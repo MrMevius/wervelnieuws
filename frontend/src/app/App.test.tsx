@@ -1419,6 +1419,24 @@ describe("App", () => {
     await waitFor(() => expect(failedRequest).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
+  it.each([
+    ["missing", {}],
+    ["legacy partial", { text_models: ["gpt-4.1-mini"], image_models: ["gpt-image-1"] }]
+  ])("renders Admin with %s GenAI model options", async (_label, response) => {
+    mockApi.getAdminGenAIModelOptions.mockResolvedValueOnce(response as never);
+
+    renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    fireEvent.click(screen.getByRole("tab", { name: "AI" }));
+
+    expect(await screen.findByRole("heading", { name: "GenAI configuratie" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Tekstmodel")).toHaveValue("gpt-4.1-mini");
+    expect(await screen.findByLabelText("Afbeeldingsmodel")).toHaveValue("gpt-image-1");
+    expect(await screen.findByLabelText("Transcriptiemodel")).toHaveValue("whisper-1");
+  });
+
   it("hides admin option in user menu for non-admins", async () => {
     mockApi.getCurrentUser.mockRejectedValueOnce(new Error("401"));
     mockApi.getCurrentUser.mockResolvedValueOnce({
@@ -2232,6 +2250,64 @@ describe("App", () => {
       expect(screen.getByText("Wachtwoord bijgewerkt.")).toBeInTheDocument();
     });
 
+    confirmSpy.mockRestore();
+  });
+
+  it("shows safe validation feedback for a FastAPI 422 password reset response", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockApi.changeAdminUserPassword.mockRejectedValueOnce(
+      Object.assign(
+        new Error(JSON.stringify({
+          detail: [{
+            type: "string_too_short",
+            loc: ["body", "new_password"],
+            msg: "String should have at least 4 characters",
+            input: "abc",
+            ctx: { min_length: 4 }
+          }]
+        })),
+        { status: 422 }
+      )
+    );
+
+    renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset wachtwoord voor editor" }));
+    fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), { target: { value: "geldig123" } });
+    fireEvent.change(screen.getByLabelText("Bevestig wachtwoord voor editor"), { target: { value: "geldig123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Wijzig wachtwoord voor editor" }));
+
+    const feedback = await screen.findByRole("status");
+    expect(feedback).toHaveTextContent("Wachtwoord moet minimaal 4 tekens bevatten.");
+    expect(feedback).toHaveClass("error");
+    expect(feedback).not.toHaveTextContent("String should have at least");
+    expect(feedback).not.toHaveTextContent("abc");
+    confirmSpy.mockRestore();
+  });
+
+  it("shows origin security feedback as a safe visual error", async () => {
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockApi.changeAdminUserPassword.mockRejectedValueOnce(
+      Object.assign(new Error('{"detail":"Request origin is not allowed"}'), { status: 403 })
+    );
+
+    renderApp();
+    await loginIntoApp();
+    fireEvent.click(screen.getByRole("button", { name: "admin" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Bewerk gebruiker editor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset wachtwoord voor editor" }));
+    fireEvent.change(screen.getByLabelText("Nieuw wachtwoord voor editor"), { target: { value: "geldig123" } });
+    fireEvent.change(screen.getByLabelText("Bevestig wachtwoord voor editor"), { target: { value: "geldig123" } });
+    fireEvent.click(screen.getByRole("button", { name: "Wijzig wachtwoord voor editor" }));
+
+    const feedback = await screen.findByRole("status");
+    expect(feedback).toHaveTextContent("De beveiligingscontrole heeft deze wijziging geblokkeerd. Neem contact op met de beheerder.");
+    expect(feedback).toHaveClass("error");
+    expect(feedback).not.toHaveTextContent("Request origin is not allowed");
     confirmSpy.mockRestore();
   });
 

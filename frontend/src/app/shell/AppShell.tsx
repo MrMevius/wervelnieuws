@@ -4316,6 +4316,36 @@ function AdminQueryStatus({
   return null;
 }
 
+function normalizeModelOptionList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(value.filter((option): option is string => typeof option === "string" && option.length > 0))
+  );
+}
+
+function normalizeGenAIModelOptions(value: unknown): GenAIModelOptions {
+  const options = value && typeof value === "object"
+    ? value as Partial<Record<keyof GenAIModelOptions, unknown>>
+    : {};
+
+  return {
+    text_models: normalizeModelOptionList(options.text_models),
+    image_models: normalizeModelOptionList(options.image_models),
+    transcription_models: normalizeModelOptionList(options.transcription_models)
+  };
+}
+
+function getHttpErrorStatus(error: unknown): number | null {
+  if (!error || typeof error !== "object" || !("status" in error)) {
+    return null;
+  }
+
+  return typeof error.status === "number" ? error.status : null;
+}
+
 function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   type AdminTab = "users" | "boardRights" | "projects" | "themes" | "ai" | "scheduler" | "workHoursHistory" | "workHoursAudit" | "activity";
 
@@ -4412,11 +4442,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     enabled: currentUser?.is_admin === true
   });
 
-  const modelOptions: GenAIModelOptions = modelOptionsQuery.data ?? {
-    text_models: [],
-    image_models: [],
-    transcription_models: []
-  };
+  const modelOptions = normalizeGenAIModelOptions(modelOptionsQuery.data);
   const textModelOptions = modelOptions.text_models;
   const imageModelOptions = modelOptions.image_models;
   const transcriptionModelOptions = modelOptions.transcription_models;
@@ -4712,8 +4738,16 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : "";
-      if (message.includes("422")) {
+      const status = getHttpErrorStatus(error);
+      if (status === 422 || (status === null && message.includes("422"))) {
         setFeedback("Wachtwoord moet minimaal 4 tekens bevatten.");
+        return;
+      }
+      if (
+        (status === 403 || status === null) &&
+        message.includes("Request origin is not allowed")
+      ) {
+        setFeedback("De beveiligingscontrole heeft deze wijziging geblokkeerd. Neem contact op met de beheerder.");
         return;
       }
       setFeedback("Wachtwoord wijzigen is mislukt.");
@@ -5004,7 +5038,9 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             feedback.includes("mislukt") ||
             feedback.includes("laatste") ||
             feedback.includes("niet") ||
-            feedback.includes("bestaat")
+            feedback.includes("bestaat") ||
+            feedback.includes("geblokkeerd") ||
+            feedback.includes("minimaal")
               ? "error"
               : "success"
           }
