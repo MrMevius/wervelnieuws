@@ -78,3 +78,8 @@ class BoardColumn(str, Enum):
     todo = "todo"
     doing = "doing"
     done = "done"
+
+
+class BoardUrgency(str, Enum):
+    normal = "normal"
+    urgent = "urgent"

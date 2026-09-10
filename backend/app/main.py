@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import admin, auth, boards, content, database, health, meta, topics, work_hours
+from app.api import admin, auth, boards, content, database, health, meta, topics, work_hours, participation
 from app.core.logging import configure_logging
+from app.core.http_security import HttpSecurityMiddleware
 from app.core.settings import (
     get_settings,
     parse_allowed_origins,
@@ -37,7 +37,10 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
                 }
             },
         )
-    return await request_validation_exception_handler(request, exc)
+    # Pydantic's default response includes the submitted input (including secrets).
+    return JSONResponse(status_code=422, content={
+        "detail": [{"loc": error["loc"], "msg": error["msg"], "type": error["type"]} for error in exc.errors()]
+    })
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
@@ -45,6 +48,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(HttpSecurityMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router, prefix="/api")
@@ -55,3 +59,4 @@ app.include_router(database.router, prefix="/api")
 app.include_router(meta.router, prefix="/api")
 app.include_router(boards.router, prefix="/api")
 app.include_router(work_hours.router, prefix="/api")
+app.include_router(participation.router, prefix="/api")

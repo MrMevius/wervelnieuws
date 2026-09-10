@@ -1,31 +1,6 @@
-const configuredApiBase = import.meta.env.VITE_API_BASE_URL?.trim();
+import { resolveApiBase } from "./baseUrl";
 
-function resolveApiBase(): string {
-  const fallback = `${window.location.protocol}//${window.location.hostname}:8001/api`;
-  if (!configuredApiBase) {
-    return fallback;
-  }
-
-  try {
-    const url = new URL(configuredApiBase);
-    const isConfiguredLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-    const currentHost = window.location.hostname;
-    const isCurrentLocal = currentHost === "localhost" || currentHost === "127.0.0.1";
-    if (isConfiguredLocal && !isCurrentLocal) {
-      if (window.location.protocol === "https:") {
-        return `${window.location.origin}/api`;
-      }
-      url.protocol = window.location.protocol;
-      url.hostname = currentHost;
-      return url.toString().replace(/\/$/, "");
-    }
-    return configuredApiBase.replace(/\/$/, "");
-  } catch {
-    return configuredApiBase.replace(/\/$/, "");
-  }
-}
-
-const API_BASE = resolveApiBase();
+const API_BASE = resolveApiBase(import.meta.env.VITE_API_BASE_URL, window.location, import.meta.env.DEV);
 
 export type Topic = {
   id: string;
@@ -253,6 +228,7 @@ export type BoardCard = {
   title: string;
   description: string;
   column: "todo" | "doing" | "done";
+  urgency: "normal" | "urgent";
   position: number;
   is_archived?: boolean;
   assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string; has_avatar?: boolean; avatar_url?: string | null }>;
@@ -278,6 +254,13 @@ export type BoardProjectDetail = {
   cards: BoardCard[];
   archived_cards: BoardCard[];
   is_read_only?: boolean;
+};
+
+export type BoardTrelloImportResult = {
+  imported: Array<{ source_id: string | null; title: string; reason: string | null }>;
+  skipped: Array<{ source_id: string | null; title: string; reason: string | null }>;
+  failed: Array<{ source_id: string | null; title: string; reason: string | null }>;
+  not_selected_count: number;
 };
 
 export type BoardRecycleBinCard = BoardCard & {
@@ -407,6 +390,7 @@ export type GenAIConfig = {
 export type GenAIModelOptions = {
   text_models: string[];
   image_models: string[];
+  transcription_models: string[];
 };
 
 export type UpdateGenAIConfigPayload = Partial<{
@@ -474,7 +458,7 @@ export function setToken(value: string) {
   token = value;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const isFormData = init?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -491,7 +475,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
+export async function requestBlob(path: string, init?: RequestInit): Promise<Blob> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: "include",
@@ -658,7 +642,26 @@ export function getBoardProject(projectId: string) {
   return request<BoardProjectDetail>(`/boards/projects/${projectId}`);
 }
 
-export function createBoardCard(projectId: string, payload: { title: string; description: string; column: "todo" | "doing" | "done"; assignment_user_ids: string[] }) {
+export function importTrelloBoard(projectId: string, file: File, selectedListIds: string[]) {
+  const fd = new FormData();
+  fd.append("file", file, file.name || "trello-export.json");
+  fd.append("selected_list_ids", JSON.stringify(selectedListIds));
+  return request<BoardTrelloImportResult>(`/boards/projects/${projectId}/import/trello`, { method: "POST", body: fd });
+}
+
+export function clearBoardCards(projectId: string) {
+  return request<{ cleared: number }>(`/boards/projects/${projectId}/cards`, { method: "DELETE" });
+}
+
+export function downloadBoardJson(projectId: string) {
+  return requestBlob(`/boards/projects/${projectId}/export.json`);
+}
+
+export function downloadBoardMarkdown(projectId: string) {
+  return requestBlob(`/boards/projects/${projectId}/export-markdown.zip`);
+}
+
+export function createBoardCard(projectId: string, payload: { title: string; description: string; column: "todo" | "doing" | "done"; urgency: "normal" | "urgent"; assignment_user_ids: string[] }) {
   return request<BoardCard>(`/boards/projects/${projectId}/cards`, { method: "POST", body: JSON.stringify(payload) });
 }
 
@@ -694,6 +697,14 @@ export function updateBoardCardDescription(cardId: string, payload: { descriptio
   return request<BoardCard>(`/boards/cards/${cardId}/description`, { method: "PATCH", body: JSON.stringify(payload) });
 }
 
+export function updateBoardCardUrgency(cardId: string, payload: { urgency: "normal" | "urgent" }) {
+  return request<BoardCard>(`/boards/cards/${cardId}/urgency`, { method: "PATCH", body: JSON.stringify(payload) });
+}
+
+export function updateBoardCardAssignments(cardId: string, assignment_user_ids: string[]) {
+  return request<BoardCard>(`/boards/cards/${cardId}/assignments`, { method: "PATCH", body: JSON.stringify({ assignment_user_ids }) });
+}
+
 export function getBoardCard(cardId: string) {
   return request<BoardCardDetail>(`/boards/cards/${cardId}`);
 }
@@ -721,6 +732,26 @@ export function uploadBoardRecording(cardId: string, blob: Blob, duration?: numb
     fd.append("duration", String(Math.round(duration)));
   }
   return request<{ id: string }>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
+export function transcribeBoardAudioChunk(blob: Blob) {
+  const fd = new FormData();
+  fd.append("file", blob, "live-dictaat.webm");
+  return request<{ text: string }>("/boards/transcribe", { method: "POST", body: fd });
+}
+
+export function reviewBoardTranscript(text: string, allowContentChanges = false) {
+  return request<{ text: string }>("/boards/transcribe/review", {
+    method: "POST",
+    body: JSON.stringify({ text, allow_content_changes: allowContentChanges })
+  });
+}
+
+export function suggestBoardCardTitle(description: string) {
+  return request<{ title: string }>("/boards/title-suggestion", {
+    method: "POST",
+    body: JSON.stringify({ description })
+  });
 }
 
 export function uploadBoardCardAttachment(cardId: string, file: File) {
@@ -1097,12 +1128,14 @@ export type WorkHourParticipant = {
 export type WorkHourGroup = {
   id: string;
   work_date: string;
+  start_time?: string | null;
   project_id: string;
   project_name: string;
-  post_id: string;
+  post_id: string | null;
   post_name: string;
   description: string;
-  duration_half_hours: number;
+  duration_minutes?: number;
+  duration_half_hours: number | null;
   duration_hours: number;
   person_count: number;
   person_hours: number;
@@ -1190,10 +1223,12 @@ export function listWorkHourGroups(params: WorkHourQueryParams) {
 
 export function createWorkHourGroup(payload: {
   work_date: string;
+  start_time?: string | null;
   project_id: string;
-  post_id: string;
+  post_id?: string | null;
   description: string;
-  duration_half_hours: number;
+  duration_minutes?: number;
+  duration_half_hours?: number;
   participants: Array<{
     participant_kind: "live_user" | "external_person" | "historical_identity";
     user_id?: string | null;

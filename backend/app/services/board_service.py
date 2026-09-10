@@ -112,7 +112,11 @@ class BoardService:
         suffix = Path(file.filename or "opname.webm").suffix or ".webm"
         file_name = f"{uuid4()}{suffix}"
         target = root / file_name
-        content = file.file.read()
+        content = file.file.read(settings.upload_max_bytes + 1)
+        if not content:
+            raise HTTPException(status_code=400, detail="Lege opname is niet toegestaan.")
+        if len(content) > settings.upload_max_bytes:
+            raise HTTPException(status_code=400, detail="Opname is te groot.")
         target.write_bytes(content)
         original_name = (file.filename or "opname.webm").strip() or "opname.webm"
         return str(target), len(content), mime_type, original_name
@@ -122,7 +126,7 @@ class BoardService:
         root = settings.storage_root / settings.uploads_dir / "board-attachments" / card.project_id / card.id
         root.mkdir(parents=True, exist_ok=True)
 
-        content = file.file.read()
+        content = file.file.read(settings.upload_max_bytes + 1)
         if not content:
             raise HTTPException(status_code=400, detail="Lege upload is niet toegestaan.")
         if len(content) > settings.upload_max_bytes:
@@ -152,9 +156,11 @@ class BoardService:
         root = settings.storage_root / settings.uploads_dir / "board-updates" / card.project_id / card.id
         root.mkdir(parents=True, exist_ok=True)
         target = root / f"{uuid4()}{allowed[mime_type]}"
-        content = file.file.read()
+        content = file.file.read(settings.upload_max_bytes + 1)
         if not content:
             raise HTTPException(status_code=400, detail="Lege upload is niet toegestaan.")
+        if len(content) > settings.upload_max_bytes:
+            raise HTTPException(status_code=400, detail="Afbeelding is te groot.")
         target.write_bytes(content)
         return str(target)
 

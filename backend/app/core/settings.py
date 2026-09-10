@@ -1,5 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,13 +18,13 @@ class Settings(BaseSettings):
     app_name: str = "Wervelnieuws API"
     env: str = "development"
     secret_key: str = Field(default="change-me", min_length=8)
-    access_token_expire_minutes: int | None = None
+    access_token_expire_minutes: int | None = Field(default=None, gt=0)
     auth_cookie_name: str = "wervel_session"
-    auth_cookie_ttl_days: int = 30
+    auth_cookie_ttl_days: int = Field(default=30, gt=0)
     auth_cookie_secure: bool = False
-    auth_cookie_samesite: str = "lax"
+    auth_cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     remember_cookie_name: str = "wervel_remember"
-    remember_cookie_max_age_days: int = 400
+    remember_cookie_max_age_days: int = Field(default=400, gt=0)
 
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -102,13 +104,13 @@ def parse_allowed_origins(raw: str) -> list[str]:
 
 def validate_runtime_security(settings: Settings) -> None:
     env = settings.env.lower().strip()
-    if env != "production":
+    if env not in {"production", "prod"}:
         return
 
     insecure_secret_values = {"", "change-me", "change-this-secret-key"}
-    if settings.secret_key.strip() in insecure_secret_values:
+    if settings.secret_key.strip() in insecure_secret_values or len(settings.secret_key.strip()) < 32:
         raise RuntimeError(
-            "Unsafe SECRET_KEY for production. Set a strong, unique SECRET_KEY."
+            "Unsafe SECRET_KEY for production. Set a random, unique SECRET_KEY of at least 32 characters."
         )
 
     origins = parse_allowed_origins(settings.allowed_origins)
@@ -116,6 +118,14 @@ def validate_runtime_security(settings: Settings) -> None:
         raise RuntimeError(
             "Unsafe ALLOWED_ORIGINS for production. Use explicit origins only."
         )
+
+    for origin in origins:
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.path or parsed.query or parsed.fragment
+        ):
+            raise RuntimeError("Unsafe ALLOWED_ORIGINS for production. Use HTTPS origins without paths or credentials.")
 
     if not settings.auth_cookie_secure:
         raise RuntimeError(

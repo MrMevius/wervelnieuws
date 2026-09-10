@@ -29,6 +29,151 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "123",
+                "date": "2026-09-10",
+                "title": "Urenregistratie met een helder overzicht en los formulier",
+                "highlights": [
+                    "Registreer in een apart, mobielvriendelijk venster met datum, begintijd, één project en één of meer personen. Een post is optioneel.",
+                    "Voer een exacte duur in minuten of uren in, gebruik snelkeuzes en zie direct de totale persoon-uren.",
+                    "Zoek en filter het compacte overzicht; exporteer de volledige selectie met begintijden en exacte minuten naar CSV.",
+                    "Bestaande uren zijn zonder afronding omgezet. Historische deelnemers blijven behouden en niet-opgeslagen invoer wordt beschermd.",
+                ],
+            },
+            {
+                "iteration": "122",
+                "date": "2026-09-09",
+                "title": "Participatiegesprekken vastleggen en exporteren",
+                "highlights": [
+                    "Leg korte en lange gesprekken vast met meerdere uitvoerders en projecten, gesprekspartners, een verslag en afspraken. Een tijdsduur is niet verplicht.",
+                    "Zoek op inhoud en filter op periode, project of uitvoerder. Bekijk en bewerk het volledige verslag in een mobielvriendelijk zijpaneel.",
+                    "Exporteer de hele selectie als CSV voor Excel, Markdown voor verslaglegging of JSON met alle gegevens.",
+                    "Projecttoegang beschermt de verslagen. Archiveren is herstelbaar en versiecontrole voorkomt dat gelijktijdige wijzigingen elkaar ongemerkt overschrijven.",
+                ],
+            },
+            {
+                "iteration": "121",
+                "date": "2026-09-09",
+                "title": "Veiliger inloggen en betrouwbaardere verwerking",
+                "highlights": [
+                    "Uitgeschakelde accounts verliezen toegang en oude sessies worden ongeldig na een wachtwoordwijziging; onthouden sessies verlopen ook op de server.",
+                    "Inloggen bevat geen vooraf ingevuld wachtwoord en gevoelige invoer verschijnt niet meer in validatiefouten.",
+                    "Nieuwsvoorbeelden en tekstvelden behouden opmaak, maar filteren onveilige HTML bij het weergeven en plakken.",
+                    "Uploads worden begrensd en transcriptie blokkeert andere API-verzoeken niet tijdens het wachten.",
+                    "Een mislukte herindexering bewaart de eerdere bronindex; productie-instellingen en databasecontroles zijn aangescherpt.",
+                ],
+            },
+            {
+                "iteration": "120",
+                "date": "2026-09-09",
+                "title": "De hele applicatie beter bruikbaar op mobiel",
+                "highlights": [
+                    "Een compact mobiel menu geeft toegang tot alle modules en vergaderborden, zonder hover of bedekte paginatitels.",
+                    "Veeg tussen kaartkolommen en scrol per kolom; kaartdetails en nieuwe kaarten benutten het volledige telefoonscherm.",
+                    "Planning, bronbestanden en beheertabellen tonen op telefoons overzichtelijke records met veldnamen en bereikbare acties.",
+                    "Formulieren, filters en pop-ups passen op smalle schermen, met grotere aanraakvlakken en ruimte rond opslaan en sluiten.",
+                ],
+            },
+            {
+                "iteration": "119",
+                "date": "2026-09-09",
+                "title": "Namen van bordleden duidelijk zichtbaar bij hover",
+                "highlights": [
+                    "Namen verschijnen direct in een los paneeltje, zonder te worden afgeknipt door de avatar.",
+                    "De +badge toont overige bordleden onder elkaar; de namen zijn ook met het toetsenbord te bekijken.",
+                ],
+            },
+            {
+                "iteration": "118",
+                "date": "2026-09-09",
+                "title": "Update-opnames stoppen en opslaan betrouwbaarder",
+                "highlights": [
+                    "De opnameknop wacht nu op de laatste audiochunk voordat de opname wordt opgeslagen en getranscribeerd.",
+                    "Lege opnames worden afgewezen en uploadfouten tonen een duidelijke melding zonder transcriptie te starten.",
+                ],
+            },
+            {
+                "iteration": "117",
+                "date": "2026-09-09",
+                "title": "Teamleden wijzigen op bestaande kaartjes",
+                "highlights": [
+                    "Onder de kaarttitel kun je via Teamleden betrokkenen toevoegen en verwijderen.",
+                    "Na opslaan worden de avatars en het filter Mijn kaarten direct bijgewerkt.",
+                ],
+            },
+            {
+                "iteration": "116",
+                "date": "2026-09-09",
+                "title": "Kaartpopup met heldere kolommen en goed uitgelijnde knoppen",
+                "highlights": [
+                    "Een compacte actiebalk met sluitkruis blijft bovenaan; titel, beschrijving en bijlagen staan links, updates rechts.",
+                    "Beide kolommen scrollen zelfstandig en op kleine schermen staan ze netjes onder elkaar.",
+                    "Material-knoppen hebben consistente afmetingen en iconen naast hun tekst; opnemen en plaatsen staan op één regel.",
+                ],
+            },
+            {
+                "iteration": "115",
+                "date": "2026-09-09",
+                "title": "Kaartdetails krijgen een rustigere indeling",
+                "highlights": [
+                    "Beschrijving en bijlagen staan op een rustig werkvlak naast reacties met herkenbare tekstballonnen.",
+                    "Kaartacties, opnemen en updates plaatsen gebruiken nu Material-knoppen.",
+                ],
+            },
+            {
+                "iteration": "114",
+                "date": "2026-09-09",
+                "title": "Kolomkoppen blijven zichtbaar tijdens het scrollen",
+                "highlights": [
+                    "De kolomtitel en Kaart toevoegen staan compact naast elkaar.",
+                    "Op het schermvullende bord scrol je alleen door de kaarten; de kolomkop blijft staan.",
+                ],
+            },
+            {
+                "iteration": "113",
+                "date": "2026-09-09",
+                "title": "Trello-import kiest nu eerst je kolommen",
+                "highlights": [
+                    "Na het kiezen van een Trello-export zie je alle gevonden kolommen met het aantal kaarten en hun bestemming op het vergaderbord.",
+                    "Vink alleen de kolommen aan die je wilt meenemen; niet-geselecteerde kaarten worden niet geïmporteerd en staan apart in het overzicht.",
+                ],
+            },
+            {
+                "iteration": "112",
+                "date": "2026-09-09",
+                "title": "Bordkop geeft meer ruimte aan je kaarten",
+                "highlights": [
+                    "De bordtitel en filters sluiten nu compact aan onder de hoofdnavigatie, zodat er meer kaarten tegelijk in beeld zijn.",
+                    "Beweeg over een avatar voor de naam; de +badge toont direct de volledige lijst met overige bordleden.",
+                ],
+            },
+            {
+                "iteration": "111",
+                "date": "2026-09-09",
+                "title": "Vergaderbord gebruikt een consistente Material-knopset",
+                "highlights": [
+                    "De belangrijkste acties op het vergaderbord gebruiken nu één herkenbare set Material-knoppen.",
+                    "Primaire, secundaire, geselecteerde en destructieve acties volgen dezelfde Groene Noabers-kleuren en duidelijke interactiestaten.",
+                ],
+            },
+            {
+                "iteration": "110",
+                "date": "2026-09-09",
+                "title": "Vergaderbord scrolt nu per statuskolom",
+                "highlights": [
+                    "Op een ruim scherm blijft het vergaderbord als één werkvlak staan; de pagina zelf scrolt niet meer tijdens het werken op het bord.",
+                    "Te doen, Bezig en Klaar benutten de beschikbare schermhoogte en hebben elk een eigen kaartlijst die kan scrollen.",
+                ],
+            },
+            {
+                "iteration": "109",
+                "date": "2026-09-09",
+                "title": "Vergaderbord veilig leegmaken voor een nieuwe import",
+                "highlights": [
+                    "Import & export heeft nu een duidelijke rode zone om de inhoud van een bord in één keer leeg te maken.",
+                    "Na een extra bevestiging worden actieve én gearchiveerde kaarten naar de prullenbak verplaatst, zodat een beheerder ze kan herstellen.",
+                ],
+            },
+            {
                 "iteration": "108",
                 "date": "2026-08-13",
                 "title": "Nieuwe urenregistraties gebruiken alleen WindWilly-personen",

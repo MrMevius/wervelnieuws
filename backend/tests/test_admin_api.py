@@ -605,8 +605,10 @@ def test_admin_can_get_genai_model_options(client):
     payload = response.json()
     assert "text_models" in payload
     assert "image_models" in payload
+    assert "transcription_models" in payload
     assert "gpt-4.1-mini" in payload["text_models"]
     assert "gpt-image-1" in payload["image_models"]
+    assert "gpt-transcribe" in payload["transcription_models"]
 
 
 def test_admin_can_update_whisper_settings(client):
@@ -615,7 +617,7 @@ def test_admin_can_update_whisper_settings(client):
     initial = client.get("/api/admin/genai-config", headers=admin_headers)
     assert initial.status_code == 200
     assert initial.json()["whisper_language"] == "nl"
-    assert initial.json()["whisper_model"] == "whisper-1"
+    assert initial.json()["whisper_model"] == "gpt-transcribe"
 
     updated = client.patch(
         "/api/admin/genai-config",

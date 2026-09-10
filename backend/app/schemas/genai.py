@@ -47,6 +47,7 @@ class GenAIConfigResponse(BaseModel):
 class GenAIModelOptionsResponse(BaseModel):
     text_models: list[str]
     image_models: list[str]
+    transcription_models: list[str]
 
 
 class UpdateGenAIConfigRequest(BaseModel):

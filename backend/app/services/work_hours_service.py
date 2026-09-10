@@ -172,16 +172,18 @@ class WorkHoursService:
             )
         ]
         person_count = len(participants)
-        duration_hours = group.duration_half_hours / 2
+        duration_hours = group.duration_minutes / 60
         return WorkHourGroupResponse(
             id=group.id,
             work_date=_work_date(group.work_date),
+            start_time=group.start_time,
             project_id=group.project_id,
             project_name=group.project.name if group.project else "",
             post_id=group.post_id,
             post_name=group.post.name if group.post else "",
             description=group.description,
             duration_half_hours=group.duration_half_hours,
+            duration_minutes=group.duration_minutes,
             duration_hours=duration_hours,
             person_count=person_count,
             person_hours=duration_hours * person_count,
@@ -240,29 +242,31 @@ class WorkHoursService:
         return {
             **self._row_state(group),
             "work_date": _work_date(group.work_date),
+            "start_time": group.start_time,
             "project_id": group.project_id,
             "project_name_snapshot": group.project.name if group.project else "",
             "post_id": group.post_id,
             "post_name_snapshot": group.post.name if group.post else "",
             "description": group.description,
             "duration_half_hours": group.duration_half_hours,
+            "duration_minutes": group.duration_minutes,
             "participants": [
                 self._full_participant_snapshot(participant)
                 for participant in sorted(group.participants, key=lambda item: (item.sort_order, item.id))
             ],
         }
 
-    def _validate_project_post(self, project_id: str, post_id: str, *, allow_unchanged: tuple[str, str] | None = None) -> tuple[Project, WorkPost]:
+    def _validate_project_post(self, project_id: str, post_id: str | None, *, allow_unchanged: tuple[str, str | None] | None = None) -> tuple[Project, WorkPost | None]:
         project = self.repo.get_project(project_id)
         if not project:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project niet gevonden")
-        post = self.repo.get_post(post_id)
-        if not post:
+        post = self.repo.get_post(post_id) if post_id is not None else None
+        if post_id is not None and not post:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Post niet gevonden")
         historical_unchanged = allow_unchanged == (project_id, post_id)
         if not historical_unchanged and (
             not project.is_active or project.is_archived or not project.is_visible_in_work_hours
-            or post.deleted_at is not None or not post.is_active or post.is_archived
+            or (post is not None and (post.deleted_at is not None or not post.is_active or post.is_archived))
         ):
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Project of post is niet actief/selecteerbaar")
         return project, post
@@ -541,11 +545,11 @@ class WorkHoursService:
         start = (query.page - 1) * query.page_size
         groups = self.repo.list_groups(filters, offset=start, limit=query.page_size)
         items = [self._group_to_admin_response(group) if current and current.is_admin else self._group_to_response(group) for group in groups]
-        total_groups, total_people, duration_half_hours, person_hours = self.repo.aggregate_totals(filters)
+        total_groups, total_people, duration_minutes, person_hours = self.repo.aggregate_totals(filters)
         totals = WorkHourTotalsResponse(
             total_groups=total_groups,
             total_people=total_people,
-            total_duration_hours=duration_half_hours / 2,
+            total_duration_hours=duration_minutes / 60,
             total_person_hours=person_hours,
         )
         project_totals = self.repo.aggregate_project_totals(filters)
@@ -562,13 +566,13 @@ class WorkHoursService:
         )
 
     def _build_totals(self, groups: list[WorkHourGroup]) -> WorkHourTotalsResponse:
-        duration_half_hours = sum(group.duration_half_hours for group in groups)
+        duration_minutes = sum(group.duration_minutes for group in groups)
         total_people = sum(len([p for p in group.participants if p.deleted_at is None]) for group in groups)
-        total_person_hours = sum((group.duration_half_hours / 2) * len([p for p in group.participants if p.deleted_at is None]) for group in groups)
+        total_person_hours = sum(group.duration_minutes * len([p for p in group.participants if p.deleted_at is None]) for group in groups) / 60
         return WorkHourTotalsResponse(
             total_groups=len(groups),
             total_people=total_people,
-            total_duration_hours=duration_half_hours / 2,
+            total_duration_hours=duration_minutes / 60,
             total_person_hours=total_person_hours,
         )
 
@@ -586,7 +590,7 @@ class WorkHoursService:
             if sort_key == "type_person":
                 return primary_participant.display_type_snapshot if primary_participant else ""
             if sort_key == "duration_half_hours":
-                return group.duration_half_hours
+                return group.duration_minutes
             if sort_key == "created_at":
                 return group.created_at
             if sort_key == "updated_at":
@@ -604,10 +608,11 @@ class WorkHoursService:
         participants = [self._participant_entity(p, current) for p in payload.participants]
         group = WorkHourGroup(
             work_date=payload.work_date,
+            start_time=payload.start_time,
             project_id=project.id,
-            post_id=post.id,
+            post_id=post.id if post else None,
             description=payload.description,
-            duration_half_hours=payload.duration_half_hours,
+            duration_minutes=payload.duration_minutes if payload.duration_minutes is not None else payload.duration_half_hours * 30,
             created_by_user_id=current.id,
             updated_by_user_id=current.id,
         )
@@ -721,7 +726,7 @@ class WorkHoursService:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Herstel de registratie eerst voordat je deze wijzigt")
         before = self._full_group_snapshot(group)
         project_id = payload.project_id or group.project_id
-        post_id = payload.post_id or group.post_id
+        post_id = payload.post_id if "post_id" in payload.model_fields_set else group.post_id
         self._validate_project_post(
             project_id,
             post_id,
@@ -736,13 +741,17 @@ class WorkHoursService:
 
         if payload.work_date is not None:
             group.work_date = payload.work_date
-        if payload.project_id or payload.post_id:
+        if "start_time" in payload.model_fields_set:
+            group.start_time = payload.start_time
+        if payload.project_id or "post_id" in payload.model_fields_set:
             group.project_id = project_id
             group.post_id = post_id
         if payload.description is not None:
             group.description = payload.description.strip()
         if payload.duration_half_hours is not None:
             group.duration_half_hours = payload.duration_half_hours
+        if payload.duration_minutes is not None:
+            group.duration_minutes = payload.duration_minutes
         pending_audits: list[tuple[str, WorkHourGroupParticipant]] = []
         if validated_participants is not None:
             added_participants: list[WorkHourGroupParticipant] = []
@@ -1309,6 +1318,8 @@ class WorkHoursService:
             "aangemaakt op",
             "laatst gewijzigd door",
             "laatst gewijzigd op",
+            "begintijd (Europe/Amsterdam)",
+            "duur in minuten",
         ])
         for group in groups:
             created_by = _display_name_for_user(group.created_by)
@@ -1330,12 +1341,14 @@ class WorkHoursService:
                     self._safe_csv(participant.display_type_snapshot),
                     self._safe_csv(group.project.name if group.project else ""),
                     self._safe_csv(group.post.name if group.post else ""),
-                    f"{group.duration_half_hours / 2:g}",
+                    f"{group.duration_minutes / 60:g}",
                     self._safe_csv(group.description),
                     self._safe_csv(created_by),
                     created_at,
                     self._safe_csv(updated_by),
                     updated_at,
+                    group.start_time or "",
+                    group.duration_minutes,
                 ])
         return ("\ufeff" + buffer.getvalue()).encode("utf-8")
 

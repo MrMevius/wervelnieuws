@@ -31,7 +31,12 @@ from app.models.entities import (
     User,
 )
 
+from app.models.participation import ParticipationMoment, ParticipationParticipant, ParticipationProject
+
 __all__ = [
+    "ParticipationMoment",
+    "ParticipationParticipant",
+    "ParticipationProject",
     "User",
     "Topic",
     "TopicSourceDocument",

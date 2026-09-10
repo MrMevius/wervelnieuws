@@ -23,6 +23,7 @@ from app.core.db import Base
 from app.models.enums import (
     AudioTranscriptionStatus,
     BoardColumn,
+    BoardUrgency,
     ChannelName,
     ChannelPublishState,
     ContentApprovalState,
@@ -171,6 +172,10 @@ class BoardCard(Base, TimestampMixin):
     column: Mapped[BoardColumn] = mapped_column(
         Enum(BoardColumn), default=BoardColumn.todo, nullable=False
     )
+    urgency: Mapped[BoardUrgency] = mapped_column(
+        Enum(BoardUrgency), default=BoardUrgency.normal, nullable=False
+    )
+    trello_card_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -221,6 +226,7 @@ class CardUpdate(Base):
     author_user_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=False
     )
+    external_author_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     edited_from_update_id: Mapped[str | None] = mapped_column(
@@ -864,17 +870,28 @@ class WorkHourGroup(Base, TimestampMixin):
         Index("ix_work_hour_groups_created_at", "created_at"),
         Index("ix_work_hour_groups_updated_at", "updated_at"),
         CheckConstraint(
-            "duration_half_hours >= 1 AND duration_half_hours <= 48",
-            name="ck_work_hour_groups_duration_half_hours",
+            "duration_minutes >= 1 AND duration_minutes <= 1440",
+            name="ck_work_hour_groups_duration_minutes",
         ),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     work_date: Mapped[date] = mapped_column(Date, nullable=False)
     project_id: Mapped[str] = mapped_column(String(36), ForeignKey("projects.id"), nullable=False)
-    post_id: Mapped[str] = mapped_column(String(36), ForeignKey("work_posts.id"), nullable=False)
+    post_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("work_posts.id"), nullable=True)
     description: Mapped[str] = mapped_column(Text, default="", nullable=False)
-    duration_half_hours: Mapped[int] = mapped_column(Integer, nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
+    start_time: Mapped[str | None] = mapped_column(String(5), nullable=True)
+
+    @property
+    def duration_half_hours(self) -> int | None:
+        """Legacy read/write adapter; minute registrations are never rounded."""
+        return self.duration_minutes // 30 if self.duration_minutes % 30 == 0 else None
+
+    @duration_half_hours.setter
+    def duration_half_hours(self, value: int) -> None:
+        self.duration_minutes = value * 30
+
     created_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
@@ -888,7 +905,7 @@ class WorkHourGroup(Base, TimestampMixin):
     row_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     project: Mapped[Project] = relationship(back_populates="work_hour_groups")
-    post: Mapped[WorkPost] = relationship(back_populates="groups")
+    post: Mapped[WorkPost | None] = relationship(back_populates="groups")
     created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     updated_by: Mapped[User | None] = relationship(foreign_keys=[updated_by_user_id])
     deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])

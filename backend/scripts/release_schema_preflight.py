@@ -14,7 +14,7 @@ from sqlalchemy import create_engine, inspect
 from app.core.settings import get_settings
 
 
-EXPECTED_HEAD = "20260811_0030"
+EXPECTED_HEAD = "20260910_0032"
 REQUIRED_PROJECT_COLUMNS = {
     "is_visible_in_boards",
     "is_visible_in_work_hours",

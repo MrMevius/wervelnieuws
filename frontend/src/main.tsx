@@ -3,7 +3,9 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { App } from "./app/App";
+import "./design-system/material";
 import "./styles.css";
+import "./responsive.css";
 
 const queryClient = new QueryClient();
 
