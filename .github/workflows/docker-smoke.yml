@@ -3,19 +3,14 @@ name: Docker Smoke Build
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   docker-compose-build:
     name: Docker compose build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Prepare environment file
-        run: cp .env.example .env
-
-      - name: Validate development Compose configuration
-        run: docker compose -f docker-compose.dev.yml config >/dev/null
-
-      - name: Build Docker services
-        run: docker compose build backend frontend worker
+    uses: MrMevius/github-workflows/.github/workflows/reusable-compose-smoke.yml@v1
+    with:
+      compose-file: docker-compose.dev.yml
+      env-example: .env.example
+      services: "backend frontend worker"
