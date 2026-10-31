@@ -9,7 +9,7 @@ import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./vergaderbordenProject
 const api = vi.hoisted(() => ({
   listBoardProjects: vi.fn(),
   listAdminUsers: vi.fn(),
-  getAdminUserAvatarUrl: vi.fn((userId: string) => `http://localhost:8001/api/admin/users/${userId}/avatar`),
+  getBoardUserAvatarUrl: vi.fn((userId: string) => `http://localhost:8001/api/boards/users/${userId}/avatar`),
   getBoardProject: vi.fn(),
   getBoardCard: vi.fn(),
   getCurrentUser: vi.fn(),
@@ -1209,7 +1209,7 @@ describe("Vergaderborden drag/drop", () => {
     expect(within(elsTile).getByText("EV", { selector: ".vergaderborden-member-tile-initials" })).toBeInTheDocument();
     const adminAvatar = adminTile.querySelector("img.vergaderborden-member-tile-avatar") as HTMLImageElement | null;
     expect(adminAvatar).not.toBeNull();
-    expect(adminAvatar?.src).toContain("/api/admin/users/u1/avatar");
+    expect(adminAvatar?.src).toContain("/api/boards/users/u1/avatar");
 
     fireEvent.click(adminTile);
     fireEvent.click(elsTile);
@@ -1550,7 +1550,7 @@ describe("Vergaderborden drag/drop", () => {
     expect(screen.getByText(/→/)).toBeInTheDocument();
     expect(within(moveMessage as HTMLElement).queryByRole("button", { name: "Bewerken" })).not.toBeInTheDocument();
     expect(within(moveMessage as HTMLElement).queryByRole("button", { name: "Verwijderen" })).not.toBeInTheDocument();
-    expect(screen.getAllByTitle("Admin Gebruiker").some((el) => el.querySelector("img.assignment-avatar-image")?.getAttribute("src")?.includes("/api/admin/users/u1/avatar"))).toBe(true);
+    expect(screen.getAllByTitle("Admin Gebruiker").some((el) => el.querySelector("img.assignment-avatar-image")?.getAttribute("src")?.includes("/api/boards/users/u1/avatar"))).toBe(true);
     expect(screen.getByText("Te doen", { selector: "strong" })).toBeInTheDocument();
     expect(screen.getByText("Bezig", { selector: "strong" })).toBeInTheDocument();
     expect(await screen.findByText("Admin Gebruiker")).toBeInTheDocument();

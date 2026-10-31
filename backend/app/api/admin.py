@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -37,6 +36,7 @@ from app.schemas.genai import (
     GenAIModelOptionsResponse,
     UpdateGenAIConfigRequest,
 )
+from app.services.avatar_service import avatar_file_response
 from app.services.genai_config_service import GenAIConfigService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -112,16 +112,6 @@ def _validate_avatar_upload(content: bytes, content_type: str | None) -> str:
             detail="Avatar content does not match the selected image type",
         )
     return str(avatar_type["extension"])
-
-
-def _avatar_media_type(path: Path) -> str:
-    return {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-    }.get(path.suffix.lower(), "image/png")
 
 
 def _slugify_theme_id(name: str) -> str:
@@ -538,13 +528,7 @@ def get_admin_user_avatar(
     db: Session = Depends(get_db),
 ) -> FileResponse:
     del current
-    user = db.get(User, user_id)
-    if not user or not user.avatar_path:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
-    avatar = Path(user.avatar_path)
-    if not avatar.exists() or not avatar.is_file():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Avatar not found")
-    return FileResponse(path=avatar, media_type=_avatar_media_type(avatar))
+    return avatar_file_response(db.get(User, user_id))
 
 
 @router.post("/users/{user_id}/avatar", response_model=AdminUserResponse)

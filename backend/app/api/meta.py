@@ -29,6 +29,14 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "126",
+                "date": "2026-10-31",
+                "title": "Profielfoto's zichtbaar voor alle bordleden",
+                "highlights": [
+                    "Op vergaderborden zie je nu de profielfoto's van teamleden, ook als je geen beheerder bent.",
+                ],
+            },
+            {
                 "iteration": "125",
                 "date": "2026-10-31",
                 "title": "Klikbare links in vergaderbordkaartjes",

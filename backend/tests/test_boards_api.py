@@ -1655,3 +1655,27 @@ def test_edit_update_supports_image_upload_and_remove(client):
     )
     assert remove.status_code == 200
     assert remove.json()["image_url"] is None
+
+
+def test_non_admin_can_fetch_board_member_avatars(client):
+    from tests.test_admin_api import PNG_1X1
+
+    admin_headers = _login(client)
+    upload = client.post(
+        "/api/auth/me/avatar",
+        headers=admin_headers,
+        files={"file": ("avatar.png", BytesIO(PNG_1X1), "image/png")},
+    )
+    assert upload.status_code == 200
+    admin_id = client.get("/api/auth/me", headers=admin_headers).json()["id"]
+
+    editor_headers = _login(client, "editor", "editor12345")
+    assert client.get(f"/api/admin/users/{admin_id}/avatar", headers=editor_headers).status_code == 403
+
+    image = client.get(f"/api/boards/users/{admin_id}/avatar", headers=editor_headers)
+    assert image.status_code == 200
+    assert image.headers["content-type"].startswith("image/png")
+
+    assert client.get("/api/boards/users/unknown/avatar", headers=editor_headers).status_code == 404
+    client.cookies.clear()
+    assert client.get(f"/api/boards/users/{admin_id}/avatar").status_code == 401

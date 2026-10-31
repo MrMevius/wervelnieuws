@@ -553,8 +553,8 @@ export function listAdminUsers() {
   return request<AdminUser[]>("/admin/users");
 }
 
-export function getAdminUserAvatarUrl(userId: string) {
-  return `${API_BASE}/admin/users/${encodeURIComponent(userId)}/avatar`;
+export function getBoardUserAvatarUrl(userId: string) {
+  return `${API_BASE}/boards/users/${encodeURIComponent(userId)}/avatar`;
 }
 
 export function createAdminUser(username: string, password: string) {
