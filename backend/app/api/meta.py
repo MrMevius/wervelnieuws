@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "128",
+                "date": "2026-10-31",
+                "title": "Snel zoeken op een vergaderbord",
+                "highlights": [
+                    "Met één zoekveld boven het bord vind je kaartjes op titel, beschrijving, updates, opnametranscripties en bijlagenamen.",
+                    "Titels en beschrijvingen filteren direct tijdens het typen; treffers in updates verschijnen een moment later.",
+                    "Je ziet hoeveel kaartjes er gevonden zijn. Met Esc of 'Wis filters' zie je weer het hele bord.",
+                ],
+            },
+            {
                 "iteration": "127",
                 "date": "2026-10-31",
                 "title": "Nieuwe kaartjes bovenaan de kolom",

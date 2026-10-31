@@ -645,6 +645,10 @@ export function archiveBoardProject(projectId: string) {
   return request<BoardProjectSummary>(`/boards/admin/projects/${projectId}`, { method: "DELETE" });
 }
 
+export function searchBoardProject(projectId: string, query: string) {
+  return request<{ card_ids: string[] }>(`/boards/projects/${projectId}/search?q=${encodeURIComponent(query)}`);
+}
+
 export function getBoardProject(projectId: string) {
   return request<BoardProjectDetail>(`/boards/projects/${projectId}`);
 }

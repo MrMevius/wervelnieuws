@@ -1708,3 +1708,72 @@ def test_new_card_is_placed_at_top_of_its_column(client):
     todo = sorted((card for card in cards if card["column"] == "todo"), key=lambda card: card["position"])
     assert [(card["title"], card["position"]) for card in todo] == [("Derde", 0), ("Tweede", 1), ("Eerste", 2)]
     assert [card["position"] for card in cards if card["column"] == "doing"] == [0]
+
+
+def test_board_search_matches_titles_descriptions_updates_transcripts_and_attachments(client):
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models.entities import Recording
+
+    headers = _login(client)
+    project_id = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Zoeken", "description": "", "invited_user_ids": []},
+    ).json()["id"]
+    other_project_id = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Ander bord", "description": "", "invited_user_ids": []},
+    ).json()["id"]
+
+    def create(title: str, description: str = "", project: str = project_id) -> str:
+        response = client.post(
+            f"/api/boards/projects/{project}/cards",
+            headers=headers,
+            json={"title": title, "description": description, "column": "todo"},
+        )
+        assert response.status_code == 200
+        return response.json()["id"]
+
+    by_title = create("Vergunning Windpark")
+    by_description = create("Overleg", "Bel de VERGUNNING-afdeling")
+    by_update = create("Planning")
+    by_transcript = create("Opname")
+    by_attachment = create("Bijlage")
+    archived = create("Vergunning archief")
+    deleted_update = create("Verwijderde update")
+    create("Niets")
+    create("Vergunning elders", project=other_project_id)
+    percent = create("Korting 100% zeker")
+
+    client.post(f"/api/boards/cards/{by_update}/updates", headers=headers, json={"message": "Vergunning is binnen"})
+    removed = client.post(f"/api/boards/cards/{deleted_update}/updates", headers=headers, json={"message": "vergunning oud"}).json()
+    assert client.delete(f"/api/boards/cards/{deleted_update}/updates/{removed['id']}", headers=headers).status_code in (200, 204)
+    client.post(
+        f"/api/boards/cards/{by_attachment}/attachments",
+        headers=headers,
+        files={"file": ("vergunning-aanvraag.pdf", BytesIO(b"pdf"), "application/pdf")},
+    )
+    client.patch(f"/api/boards/cards/{archived}/archive", headers=headers)
+    recording = client.post(
+        f"/api/boards/cards/{by_transcript}/recordings",
+        headers=headers,
+        data={"duration": "3"},
+        files={"file": ("opname.webm", BytesIO(b"RIFF....WEBM"), "audio/webm")},
+    ).json()
+    db = next(app.dependency_overrides[get_db]())
+    db.get(Recording, recording["id"]).transcription_text = "We wachten op de vergunning."
+    db.commit()
+    db.close()
+
+    result = client.get(f"/api/boards/projects/{project_id}/search", headers=headers, params={"q": " vergunning "})
+    assert result.status_code == 200
+    assert set(result.json()["card_ids"]) == {by_title, by_description, by_update, by_transcript, by_attachment}
+
+    assert client.get(f"/api/boards/projects/{project_id}/search", headers=headers, params={"q": "%"}).json()["card_ids"] == [percent]
+    assert client.get(f"/api/boards/projects/{project_id}/search", headers=headers, params={"q": "_"}).json()["card_ids"] == []
+    assert client.get(f"/api/boards/projects/{project_id}/search", headers=headers, params={"q": ""}).status_code == 422
+
+    editor_headers = _login(client, "editor", "editor12345")
+    assert client.get(f"/api/boards/projects/{project_id}/search", headers=editor_headers, params={"q": "vergunning"}).status_code in (403, 404)

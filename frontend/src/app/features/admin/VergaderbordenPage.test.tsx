@@ -11,6 +11,7 @@ const api = vi.hoisted(() => ({
   listAdminUsers: vi.fn(),
   getBoardUserAvatarUrl: vi.fn((userId: string) => `http://localhost:8001/api/boards/users/${userId}/avatar`),
   getBoardProject: vi.fn(),
+  searchBoardProject: vi.fn(async () => ({ card_ids: [] as string[] })),
   getBoardCard: vi.fn(),
   getCurrentUser: vi.fn(),
   createBoardProject: vi.fn(),
@@ -283,6 +284,38 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => {
       expect(api.moveBoardCard).toHaveBeenCalledWith("c1", { column: "doing", position: 1 });
     });
+  });
+
+  it("zoekt op het bord in titels en beschrijvingen direct en in updates via de server", async () => {
+    const base = { project_id: "p1", column: "todo", assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({
+      project_id: "p1",
+      project_name: "Project A",
+      invited_user_ids: ["u1"],
+      cards: [
+        { ...base, id: "c1", title: "Vergunning aanvragen", description: "", position: 0 },
+        { ...base, id: "c2", title: "Overleg", description: "Bel over de VERGUNNING", position: 1 },
+        { ...base, id: "c3", title: "Planning", description: "", position: 2 },
+        { ...base, id: "c4", title: "Niets", description: "", position: 3 }
+      ]
+    });
+    api.searchBoardProject.mockResolvedValue({ card_ids: ["c1", "c3"] });
+
+    renderPage();
+    await screen.findByTestId("board-card-c4");
+    fireEvent.change(screen.getByLabelText("Zoeken op dit bord"), { target: { value: "vergunning" } });
+
+    expect(screen.getByTestId("board-card-c1")).toBeInTheDocument();
+    expect(screen.getByTestId("board-card-c2")).toBeInTheDocument();
+    expect(screen.queryByTestId("board-card-c4")).not.toBeInTheDocument();
+
+    expect(await screen.findByTestId("board-card-c3")).toBeInTheDocument();
+    expect(api.searchBoardProject).toHaveBeenCalledWith("p1", "vergunning");
+    expect(await screen.findByText("3 kaarten gevonden")).toBeInTheDocument();
+    expect(screen.getByTestId("board-card-c1")).toHaveAttribute("draggable", "false");
+
+    fireEvent.keyDown(screen.getByLabelText("Zoeken op dit bord"), { key: "Escape" });
+    expect(await screen.findByTestId("board-card-c4")).toBeInTheDocument();
   });
 
   it("maakt links in beschrijving en updates klikbaar zonder de bewerkmodus te openen", async () => {
