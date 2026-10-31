@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.entities import (
@@ -116,6 +116,35 @@ class BoardRepository:
                 )
                 .order_by(BoardCard.deleted_at.desc(), BoardCard.created_at.desc())
             ).unique().all()
+        )
+
+    def search_active_card_ids(self, project_id: str, term: str) -> list[str]:
+        """Ids of the project's active cards whose title, description, updates,
+        recording transcripts or attachment names contain ``term`` (case-insensitive)."""
+        escaped = term.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+
+        def contains(column):
+            return func.lower(column).like(pattern, escape="\\")
+
+        update_match = select(CardUpdate.card_id).where(CardUpdate.deleted_at.is_(None), contains(CardUpdate.message))
+        recording_match = select(Recording.card_id).where(contains(Recording.transcription_text))
+        attachment_match = select(BoardCardAttachment.card_id).where(contains(BoardCardAttachment.filename))
+        return list(
+            self.db.scalars(
+                select(BoardCard.id).where(
+                    BoardCard.project_id == project_id,
+                    BoardCard.is_archived.is_(False),
+                    BoardCard.deleted_at.is_(None),
+                    or_(
+                        contains(BoardCard.title),
+                        contains(BoardCard.description),
+                        BoardCard.id.in_(update_match),
+                        BoardCard.id.in_(recording_match),
+                        BoardCard.id.in_(attachment_match),
+                    ),
+                )
+            ).all()
         )
 
     def count_updates(self, card_id: str) -> int:

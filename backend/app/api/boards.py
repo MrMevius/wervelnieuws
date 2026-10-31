@@ -6,7 +6,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -37,6 +37,7 @@ from app.schemas.boards import (
     BoardProjectRightsUpdateRequest,
     BoardProjectSummaryResponse,
     BoardRecycleBinCardResponse,
+    BoardSearchResponse,
     BoardRightsOverviewResponse,
     BoardRightsUserResponse,
     CardAssignmentResponse,
@@ -389,6 +390,19 @@ def create_project(payload: BoardProjectCreateRequest, current: User = Depends(r
     project = repo.create_project(payload.name, payload.description, invited)
     AuditService(db).log("board.project.created", actor_user_id=current.id, details_json=service.audit_details(project_id=project.id))
     return BoardProjectSummaryResponse(id=project.id, name=project.name, description=project.description, invited_user_ids=project.invited_user_ids, card_count=0, last_activity_at=project.last_activity_at)
+
+
+@router.get("/projects/{project_id}/search", response_model=BoardSearchResponse)
+def search_project_board(
+    project_id: str,
+    q: str = Query(min_length=1, max_length=200),
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BoardSearchResponse:
+    repo = BoardRepository(db)
+    project = BoardService(repo).ensure_project_access(repo.get_project(project_id), current)
+    term = q.strip()
+    return BoardSearchResponse(card_ids=repo.search_active_card_ids(project.id, term) if term else [])
 
 
 @router.get("/projects/{project_id}", response_model=ProjectBoardResponse)

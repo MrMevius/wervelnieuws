@@ -238,6 +238,10 @@ class BoardCardResponse(BaseModel):
     attachments_count: int
 
 
+class BoardSearchResponse(BaseModel):
+    card_ids: list[str]
+
+
 class ProjectBoardResponse(BaseModel):
     project_id: str
     project_name: str

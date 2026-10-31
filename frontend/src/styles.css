@@ -684,6 +684,25 @@ button:disabled {
   margin: 0;
 }
 
+.board-search-field {
+  display: flex;
+  flex: 0 1 280px;
+  min-width: 180px;
+}
+
+.board-search-field input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.board-search-status {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 .board-filter-bar .material-button {
   --md-text-button-label-text-color: var(--text-muted);
   --md-text-button-hover-label-text-color: var(--text);
@@ -2751,6 +2770,10 @@ button:disabled {
     width: 100%;
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .board-search-field {
+    flex: 1 1 100%;
   }
 
   .vergaderborden-header-access-row {

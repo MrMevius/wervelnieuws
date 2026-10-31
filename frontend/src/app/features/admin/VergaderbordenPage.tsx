@@ -18,6 +18,7 @@ import {
   getBoardCard,
   getCurrentUser,
   getBoardProject,
+  searchBoardProject,
   importTrelloBoard,
   downloadBoardJson,
   downloadBoardMarkdown,
@@ -49,6 +50,7 @@ import {
 import { formatAmsterdamDateTime } from "../../../lib/datetime";
 
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
+const BOARD_SEARCH_DEBOUNCE_MS = 250;
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
 const URGENTIE_TITEL: Record<"normal" | "urgent", string> = { normal: "Normaal", urgent: "Urgent" };
 const BOARD_ACCESS_BADGE_LIMIT = 5;
@@ -924,6 +926,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [boardView, setBoardView] = useState<"active" | "archive" | "recycle">("active");
   const [showMyCardsOnly, setShowMyCardsOnly] = useState(false);
   const [showUrgentOnly, setShowUrgentOnly] = useState(false);
+  const [boardSearch, setBoardSearch] = useState("");
+  const [debouncedBoardSearch, setDebouncedBoardSearch] = useState("");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [activeRecordingCardId, setActiveRecordingCardId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
@@ -1106,6 +1110,20 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     queryKey: ["board-project", resolvedProjectId],
     queryFn: () => getBoardProject(resolvedProjectId || ""),
     enabled: Boolean(resolvedProjectId)
+  });
+  const boardSearchTerm = boardSearch.trim();
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedBoardSearch(boardSearchTerm), BOARD_SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [boardSearchTerm]);
+  useEffect(() => {
+    setBoardSearch("");
+  }, [resolvedProjectId]);
+  // Title and description filter locally right away; the server adds matches in updates, transcripts and attachments.
+  const boardSearchQuery = useQuery({
+    queryKey: ["board-search", resolvedProjectId, debouncedBoardSearch, boardQuery.dataUpdatedAt],
+    queryFn: () => searchBoardProject(resolvedProjectId || "", debouncedBoardSearch),
+    enabled: Boolean(resolvedProjectId) && debouncedBoardSearch.length > 0
   });
   useEffect(() => {
     if (boardQuery.isError && requestedProjectId && resolvedProjectId === requestedProjectId) {
@@ -1447,20 +1465,33 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const activeCards = boardQuery.data?.cards ?? [];
   const myCardCount = activeCards.filter((card) => card.assignments.some((assignment) => assignment.user_id === currentUserQuery.data?.id)).length;
   const urgentCardCount = activeCards.filter((card) => cardUrgencyValue(card) === "urgent").length;
-  const hasActiveBoardFilters = showMyCardsOnly || showUrgentOnly;
+  const hasActiveBoardFilters = showMyCardsOnly || showUrgentOnly || boardSearchTerm !== "";
+  const serverSearchMatches = useMemo(
+    () => (debouncedBoardSearch === boardSearchTerm ? new Set(boardSearchQuery.data?.card_ids ?? []) : new Set<string>()),
+    [boardSearchQuery.data, boardSearchTerm, debouncedBoardSearch]
+  );
 
-  const cardsByColumn = useMemo(() => {
-    const cards = activeCards.filter((card) => {
+  const filteredActiveCards = useMemo(() => {
+    const needle = boardSearchTerm.toLocaleLowerCase("nl");
+    return activeCards.filter((card) => {
       if (showMyCardsOnly && !card.assignments.some((assignment) => assignment.user_id === currentUserQuery.data?.id)) return false;
       if (showUrgentOnly && cardUrgencyValue(card) !== "urgent") return false;
+      if (needle) {
+        const localMatch = `${card.title}\n${card.description}`.toLocaleLowerCase("nl").includes(needle);
+        if (!localMatch && !serverSearchMatches.has(card.id)) return false;
+      }
       return true;
     });
+  }, [activeCards, boardSearchTerm, currentUserQuery.data?.id, serverSearchMatches, showMyCardsOnly, showUrgentOnly]);
+
+  const cardsByColumn = useMemo(() => {
+    const cards = filteredActiveCards;
     return {
       todo: cards.filter((c) => c.column === "todo").sort((a, b) => a.position - b.position),
       doing: cards.filter((c) => c.column === "doing").sort((a, b) => a.position - b.position),
       done: cards.filter((c) => c.column === "done").sort((a, b) => a.position - b.position)
     };
-  }, [activeCards, currentUserQuery.data?.id, showMyCardsOnly, showUrgentOnly]);
+  }, [filteredActiveCards]);
 
   const activeCardCount = activeCards.length;
 
@@ -2091,6 +2122,23 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             )}
             {boardView === "active" && (
               <div className="board-filter-bar" role="group" aria-label="Kaarten filteren">
+                <label className="board-search-field">
+                  <input
+                    type="search"
+                    value={boardSearch}
+                    placeholder="Zoek in titels, beschrijvingen, updates…"
+                    aria-label="Zoeken op dit bord"
+                    maxLength={200}
+                    onChange={(evt) => setBoardSearch(evt.target.value)}
+                    onKeyDown={(evt) => {
+                      if (evt.key === "Escape" && boardSearch) {
+                        evt.preventDefault();
+                        evt.stopPropagation();
+                        setBoardSearch("");
+                      }
+                    }}
+                  />
+                </label>
                 <MaterialButton
                   variant={showMyCardsOnly ? "tonal" : "text"}
                   size="compact"
@@ -2109,10 +2157,18 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 >
                   Urgent ({urgentCardCount})
                 </MaterialButton>
+                {boardSearchTerm && (
+                  <span className="board-search-status" role="status">
+                    {filteredActiveCards.length === 1 ? "1 kaart gevonden" : `${filteredActiveCards.length} kaarten gevonden`}
+                    {(debouncedBoardSearch !== boardSearchTerm || boardSearchQuery.isFetching) && " · zoeken in updates…"}
+                    {boardSearchQuery.isError && " · zoeken in updates is mislukt"}
+                  </span>
+                )}
                 {hasActiveBoardFilters && (
                   <MaterialButton variant="text" size="compact" className="board-filter-clear" onClick={() => {
                     setShowMyCardsOnly(false);
                     setShowUrgentOnly(false);
+                    setBoardSearch("");
                   }}>
                     Wis filters
                   </MaterialButton>
