@@ -50,6 +50,7 @@ from app.schemas.boards import (
     RecordingResponse,
 )
 from app.services.audit_service import AuditService
+from app.services.avatar_service import avatar_file_response
 from app.services.board_service import BoardService
 from app.services.genai_config_service import GenAIConfigService
 
@@ -608,6 +609,13 @@ def export_board_markdown(project_id: str, current: User = Depends(get_current_u
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/users/{user_id}/avatar")
+def get_board_user_avatar(user_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> FileResponse:
+    # Boards show avatars of members and assignees to every signed-in user, not only admins.
+    del current
+    return avatar_file_response(db.get(User, user_id))
 
 
 @router.post("/projects/{project_id}/cards", response_model=BoardCardResponse)

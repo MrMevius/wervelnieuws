@@ -22,7 +22,7 @@ import {
   downloadBoardJson,
   downloadBoardMarkdown,
   listAdminUsers,
-  getAdminUserAvatarUrl,
+  getBoardUserAvatarUrl,
   listBoardProjects,
   listBoardRecycleBin,
   moveBoardCard,
@@ -257,17 +257,17 @@ function displayNameForUser(user: Pick<AdminUser, "full_name" | "username">): st
 function avatarUrlForUser(user: AdminUser): string | null {
   const maybeUrl = user.avatar_url?.trim();
   if (maybeUrl) return maybeUrl;
-  return user.has_avatar ? getAdminUserAvatarUrl(user.id) : null;
+  return user.has_avatar ? getBoardUserAvatarUrl(user.id) : null;
 }
 
 function avatarUrlForAssignment(assignment: BoardAssignment): string | null {
   const maybeUrl = assignment.avatar_url?.trim();
   if (maybeUrl) return maybeUrl;
-  return assignment.has_avatar ? getAdminUserAvatarUrl(assignment.user_id) : null;
+  return assignment.has_avatar ? getBoardUserAvatarUrl(assignment.user_id) : null;
 }
 
 function avatarUrlForAccessUser(user: Pick<BoardAccessUser, "id" | "has_avatar">): string | null {
-  return user.has_avatar ? getAdminUserAvatarUrl(user.id) : null;
+  return user.has_avatar ? getBoardUserAvatarUrl(user.id) : null;
 }
 
 function AvatarBadge({

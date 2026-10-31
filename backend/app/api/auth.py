@@ -1,6 +1,5 @@
 from datetime import UTC, datetime
 import logging
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from fastapi.responses import FileResponse
@@ -28,6 +27,7 @@ from app.schemas.auth import (
     UpdateCurrentUserRequest,
 )
 from app.services.auth_service import AuthService
+from app.services.avatar_service import avatar_file_response
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -215,12 +215,7 @@ async def upload_my_avatar(
 
 @router.get("/me/avatar")
 def get_my_avatar(current: User = Depends(get_current_user)) -> FileResponse:
-    if not current.avatar_path:
-        raise HTTPException(status_code=404, detail="Avatar not found")
-    avatar = Path(current.avatar_path)
-    if not avatar.exists() or not avatar.is_file():
-        raise HTTPException(status_code=404, detail="Avatar not found")
-    return FileResponse(path=avatar, media_type="image/png")
+    return avatar_file_response(current)
 
 
 @router.patch("/me/password")
