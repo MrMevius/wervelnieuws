@@ -1679,3 +1679,32 @@ def test_non_admin_can_fetch_board_member_avatars(client):
     assert client.get("/api/boards/users/unknown/avatar", headers=editor_headers).status_code == 404
     client.cookies.clear()
     assert client.get(f"/api/boards/users/{admin_id}/avatar").status_code == 401
+
+
+def test_new_card_is_placed_at_top_of_its_column(client):
+    headers = _login(client)
+    project_id = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Volgorde", "description": "", "invited_user_ids": []},
+    ).json()["id"]
+
+    def create(title: str, column: str = "todo") -> dict:
+        response = client.post(
+            f"/api/boards/projects/{project_id}/cards",
+            headers=headers,
+            json={"title": title, "description": "", "column": column},
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    create("Eerste")
+    create("Tweede")
+    create("Ander kolom", "doing")
+    newest = create("Derde")
+    assert newest["position"] == 0
+
+    cards = client.get(f"/api/boards/projects/{project_id}", headers=headers).json()["cards"]
+    todo = sorted((card for card in cards if card["column"] == "todo"), key=lambda card: card["position"])
+    assert [(card["title"], card["position"]) for card in todo] == [("Derde", 0), ("Tweede", 1), ("Eerste", 2)]
+    assert [card["position"] for card in cards if card["column"] == "doing"] == [0]

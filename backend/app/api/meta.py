@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "127",
+                "date": "2026-10-31",
+                "title": "Nieuwe kaartjes bovenaan de kolom",
+                "highlights": [
+                    "Een nieuw kaartje op een vergaderbord verschijnt nu bovenaan de kolom, zodat je het direct ziet.",
+                    "De volgorde van de bestaande kaartjes blijft daaronder gelijk.",
+                ],
+            },
+            {
                 "iteration": "126",
                 "date": "2026-10-31",
                 "title": "Profielfoto's zichtbaar voor alle bordleden",

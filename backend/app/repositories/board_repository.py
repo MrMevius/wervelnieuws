@@ -156,15 +156,24 @@ class BoardRepository:
         trello_card_id: str | None = None,
         is_archived: bool = False,
         created_by_user_id: str | None = None,
+        at_top: bool = False,
     ) -> BoardCard:
-        max_position = self.db.scalar(
-            select(func.max(BoardCard.position)).where(
-                BoardCard.project_id == project_id,
-                BoardCard.column == column,
-                BoardCard.is_archived.is_(is_archived),
-                BoardCard.deleted_at.is_(None),
-            )
+        in_column = (
+            BoardCard.project_id == project_id,
+            BoardCard.column == column,
+            BoardCard.is_archived.is_(is_archived),
+            BoardCard.deleted_at.is_(None),
         )
+        if at_top:
+            siblings = self.db.scalars(
+                select(BoardCard).where(*in_column).order_by(BoardCard.position.asc(), BoardCard.created_at.asc())
+            ).all()
+            for index, sibling in enumerate(siblings, start=1):
+                sibling.position = index
+            position = 0
+        else:
+            max_position = self.db.scalar(select(func.max(BoardCard.position)).where(*in_column))
+            position = 0 if max_position is None else max_position + 1
         card = BoardCard(
             project_id=project_id,
             title=title.strip(),
@@ -173,7 +182,7 @@ class BoardRepository:
             urgency=urgency,
             trello_card_id=trello_card_id,
             is_archived=is_archived,
-            position=int(max_position or -1) + 1,
+            position=position,
             created_by_user_id=created_by_user_id,
         )
         self.db.add(card)
