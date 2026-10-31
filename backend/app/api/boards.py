@@ -52,6 +52,10 @@ from app.schemas.boards import (
 )
 from app.services.audit_service import AuditService
 from app.services.avatar_service import avatar_file_response
+from app.services.board_recording_transcription_service import (
+    RECORDING_TRANSCRIPTION_DONE,
+    BoardRecordingTranscriptionService,
+)
 from app.services.board_service import BoardService
 from app.services.genai_config_service import GenAIConfigService
 
@@ -248,6 +252,26 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         updates_count=repo.count_updates(card.id),
         recordings_count=repo.count_recordings(card.id),
         attachments_count=repo.count_attachments(card.id),
+    )
+
+
+def _recording_response(repo: BoardRepository, row: Recording) -> RecordingResponse:
+    uploader = repo.get_user(row.uploaded_by_user_id)
+    return RecordingResponse(
+        id=row.id,
+        uploaded_by_user_id=row.uploaded_by_user_id,
+        uploaded_by_username=uploader.username if uploader else None,
+        uploaded_by_display_name=_display_name(uploader),
+        filename=row.filename,
+        file_path=row.file_path,
+        duration=row.duration,
+        recorded_at=row.recorded_at,
+        transcription_status=row.transcription_status,
+        transcription_text=row.transcription_text,
+        mime_type=row.mime_type,
+        size_bytes=row.size_bytes,
+        created_at=row.created_at,
+        download_url=f"/api/boards/recordings/{row.id}/download",
     )
 
 
@@ -798,25 +822,7 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
             )
             for row in updates
         ],
-        recordings=[
-            RecordingResponse(
-                id=row.id,
-                uploaded_by_user_id=row.uploaded_by_user_id,
-                uploaded_by_username=recording_user.username if (recording_user := repo.get_user(row.uploaded_by_user_id)) else None,
-                uploaded_by_display_name=_display_name(recording_user),
-                filename=row.filename,
-                file_path=row.file_path,
-                duration=row.duration,
-                recorded_at=row.recorded_at,
-                transcription_status=row.transcription_status,
-                transcription_text=row.transcription_text,
-                mime_type=row.mime_type,
-                size_bytes=row.size_bytes,
-                created_at=row.created_at,
-                download_url=f"/api/boards/recordings/{row.id}/download",
-            )
-            for row in recordings
-        ],
+        recordings=[_recording_response(repo, row) for row in recordings],
         attachments=[_attachment_response(repo, row) for row in attachments],
     )
 
@@ -1057,22 +1063,30 @@ def upload_recording(
     row = repo.create_recording(card.id, current.id, filename, file_path, normalized_duration, mime_type, size_bytes)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.recording.created", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, recording_id=row.id))
-    return RecordingResponse(
-        id=row.id,
-        uploaded_by_user_id=row.uploaded_by_user_id,
-        uploaded_by_username=current.username,
-        uploaded_by_display_name=_display_name(current),
-        filename=row.filename,
-        file_path=row.file_path,
-        duration=row.duration,
-        recorded_at=row.recorded_at,
-        transcription_status=row.transcription_status,
-        transcription_text=row.transcription_text,
-        mime_type=row.mime_type,
-        size_bytes=row.size_bytes,
-        created_at=row.created_at,
-        download_url=f"/api/boards/recordings/{row.id}/download",
-    )
+    return _recording_response(repo, row)
+
+
+@router.post("/recordings/{recording_id}/transcribe", response_model=RecordingResponse)
+def transcribe_recording(recording_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> RecordingResponse:
+    """Transcribe a stored recording and keep the text on it; returns the recording
+    with status ``done`` or ``failed``. Already transcribed recordings are returned as-is."""
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    recording = db.get(Recording, recording_id)
+    if not recording:
+        raise HTTPException(status_code=404, detail="Opname niet gevonden.")
+    service.ensure_card_writable(repo.get_card(recording.card_id), current)
+    if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
+        transcription = BoardRecordingTranscriptionService(db)
+        if not transcription.is_configured:
+            raise HTTPException(status_code=503, detail="Transcriptie is niet geconfigureerd.")
+        recording = transcription.transcribe(recording)
+        AuditService(db).log(
+            "board.recording.transcribed",
+            actor_user_id=current.id,
+            details_json=service.audit_details(card_id=recording.card_id, recording_id=recording.id, status=recording.transcription_status),
+        )
+    return _recording_response(repo, recording)
 
 
 @router.post("/cards/{card_id}/attachments", response_model=BoardAttachmentResponse)

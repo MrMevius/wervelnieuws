@@ -222,6 +222,23 @@ export type BoardRightsOverview = {
   projects: BoardProjectSummary[];
 };
 
+export type BoardRecording = {
+  id: string;
+  uploaded_by_user_id?: string | null;
+  uploaded_by_username?: string | null;
+  uploaded_by_display_name?: string | null;
+  filename: string;
+  file_path: string;
+  duration?: number | null;
+  recorded_at: string;
+  transcription_status: "pending" | "done" | "failed";
+  transcription_text: string;
+  mime_type: string;
+  size_bytes?: number | null;
+  created_at: string;
+  download_url: string;
+};
+
 export type BoardCard = {
   id: string;
   project_id: string;
@@ -279,22 +296,7 @@ export type BoardRecycleBinCard = BoardCard & {
 export type BoardCardDetail = {
   card: BoardCard;
   updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; created_at: string }>;
-  recordings: Array<{
-    id: string;
-    uploaded_by_user_id?: string | null;
-    uploaded_by_username?: string | null;
-    uploaded_by_display_name?: string | null;
-    filename: string;
-    file_path: string;
-    duration?: number | null;
-    recorded_at: string;
-    transcription_status: "pending" | "done" | "failed";
-    transcription_text: string;
-    mime_type: string;
-    size_bytes?: number | null;
-    created_at: string;
-    download_url: string;
-  }>;
+  recordings: BoardRecording[];
   attachments: Array<{
     id: string;
     uploaded_by_user_id: string;
@@ -742,7 +744,11 @@ export function uploadBoardRecording(cardId: string, blob: Blob, duration?: numb
   if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
     fd.append("duration", String(Math.round(duration)));
   }
-  return request<{ id: string }>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+  return request<BoardRecording>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
+export function transcribeBoardRecording(recordingId: string) {
+  return request<BoardRecording>(`/boards/recordings/${encodeURIComponent(recordingId)}/transcribe`, { method: "POST" });
 }
 
 export function transcribeBoardAudioChunk(blob: Blob) {
