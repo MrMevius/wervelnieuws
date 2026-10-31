@@ -145,6 +145,7 @@ class BoardCardDescriptionUpdateRequest(BaseModel):
 
 class CardUpdateCreateRequest(BaseModel):
     message: str = Field(min_length=1)
+    recording_id: str | None = None
 
 
 class CardAssignmentResponse(BaseModel):
@@ -153,17 +154,6 @@ class CardAssignmentResponse(BaseModel):
     username: str
     user_display_name: str
     has_avatar: bool = False
-
-
-class CardUpdateResponse(BaseModel):
-    id: str
-    author_user_id: str
-    author_username: str
-    author_display_name: str
-    message: str
-    image_url: str | None = None
-    edited_from_update_id: str | None = None
-    created_at: datetime
 
 
 class RecordingResponse(BaseModel):
@@ -181,6 +171,23 @@ class RecordingResponse(BaseModel):
     size_bytes: int
     created_at: datetime
     download_url: str
+
+
+class CardUpdateResponse(BaseModel):
+    id: str
+    author_user_id: str
+    author_username: str
+    author_display_name: str
+    message: str
+    image_url: str | None = None
+    edited_from_update_id: str | None = None
+    recording: RecordingResponse | None = None
+    created_at: datetime
+
+
+class RecordingSummaryResponse(BaseModel):
+    summary: str
+    transcript: str
 
 
 class LiveTranscriptionResponse(BaseModel):

@@ -56,3 +56,24 @@ def test_creator_migration_backfills_from_audit_trail_and_roundtrips(tmp_path, m
         assert connection.scalar(text("SELECT COUNT(*) FROM board_cards")) == 5
     engine.dispose()
     get_settings.cache_clear()
+
+
+def test_update_recording_migration_roundtrips(tmp_path, monkeypatch):
+    database_path = tmp_path / "update-recording.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+
+    command.upgrade(config, "20261031_0034")
+    engine = create_engine(f"sqlite:///{database_path}")
+    with engine.connect() as connection:
+        inspector = inspect(connection)
+        assert "recording_id" in {column["name"] for column in inspector.get_columns("card_updates")}
+        assert "ix_card_updates_recording_id" in {index["name"] for index in inspector.get_indexes("card_updates")}
+
+    command.downgrade(config, CREATOR_REVISION)
+    with engine.connect() as connection:
+        assert "recording_id" not in {column["name"] for column in inspect(connection).get_columns("card_updates")}
+    engine.dispose()
+    get_settings.cache_clear()

@@ -295,7 +295,7 @@ export type BoardRecycleBinCard = BoardCard & {
 
 export type BoardCardDetail = {
   card: BoardCard;
-  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; created_at: string }>;
+  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; recording?: BoardRecording | null; created_at: string }>;
   recordings: BoardRecording[];
   attachments: Array<{
     id: string;
@@ -722,8 +722,11 @@ export function getBoardCard(cardId: string) {
   return request<BoardCardDetail>(`/boards/cards/${cardId}`);
 }
 
-export function postBoardCardUpdate(cardId: string, message: string) {
-  return request<{ id: string }>(`/boards/cards/${cardId}/updates`, { method: "POST", body: JSON.stringify({ message }) });
+export function postBoardCardUpdate(cardId: string, message: string, recordingId?: string | null) {
+  return request<{ id: string }>(`/boards/cards/${cardId}/updates`, {
+    method: "POST",
+    body: JSON.stringify(recordingId ? { message, recording_id: recordingId } : { message })
+  });
 }
 
 export function editBoardCardUpdate(cardId: string, updateId: string, payload: { message: string; remove_image?: boolean; image?: Blob | null }) {
@@ -745,6 +748,10 @@ export function uploadBoardRecording(cardId: string, blob: Blob, duration?: numb
     fd.append("duration", String(Math.round(duration)));
   }
   return request<BoardRecording>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
+export function summarizeBoardRecording(recordingId: string) {
+  return request<{ summary: string; transcript: string }>(`/boards/recordings/${encodeURIComponent(recordingId)}/summary`, { method: "POST" });
 }
 
 export function transcribeBoardRecording(recordingId: string) {

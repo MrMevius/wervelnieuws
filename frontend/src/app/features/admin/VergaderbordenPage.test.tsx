@@ -34,6 +34,7 @@ const api = vi.hoisted(() => ({
   uploadBoardRecording: vi.fn(),
   transcribeBoardAudioChunk: vi.fn(),
   transcribeBoardRecording: vi.fn(),
+  summarizeBoardRecording: vi.fn(),
   reviewBoardTranscript: vi.fn(),
   suggestBoardCardTitle: vi.fn(),
   uploadBoardCardAttachment: vi.fn(),
@@ -147,9 +148,10 @@ describe("Vergaderborden drag/drop", () => {
     api.postBoardCardUpdate.mockResolvedValue({ id: "u2" });
     api.editBoardCardUpdate.mockResolvedValue({ id: "u3" });
     api.deleteBoardCardUpdate.mockResolvedValue(undefined);
-    api.uploadBoardRecording.mockResolvedValue({ id: "r1" });
+    api.uploadBoardRecording.mockResolvedValue({ id: "r1", duration: 7 });
     api.transcribeBoardAudioChunk.mockResolvedValue({ text: "" });
     api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "" });
+    api.summarizeBoardRecording.mockResolvedValue({ summary: "", transcript: "" });
     api.reviewBoardTranscript.mockResolvedValue({ text: "" });
     api.suggestBoardCardTitle.mockResolvedValue({ title: "Titelvoorstel" });
     api.uploadBoardCardAttachment.mockResolvedValue({ id: "a1" });
@@ -872,7 +874,7 @@ describe("Vergaderborden drag/drop", () => {
     fireEvent.change(within(activity).getByPlaceholderText("Beschrijf kort de voortgang"), { target: { value: "Een nieuwe update" } });
     expect(submit).not.toBeDisabled();
     fireEvent.click(submit);
-    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "Een nieuwe update"));
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "Een nieuwe update", null));
     expect(api.postBoardCardUpdate).toHaveBeenCalledTimes(1);
     expect(within(activity).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveFocus();
   });
@@ -1751,7 +1753,7 @@ describe("Vergaderborden drag/drop", () => {
     });
 
     await waitFor(() => {
-      expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", expect.stringContaining("**regel**"));
+      expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", expect.stringContaining("**regel**"), null);
     });
 
     fireEvent.click(screen.getByRole("button", { name: "Bewerken" }));
@@ -2152,7 +2154,7 @@ describe("Vergaderborden drag/drop", () => {
     expect(within(dialog).getByRole("button", { name: "Start opname" })).toBeInTheDocument();
   });
 
-  it("neemt een nieuwe update op, transcribeert en verbetert de tekst achteraf", async () => {
+  it("neemt een update op, vat de opname samen en plaatst de opname in dezelfde update", async () => {
     const card = { id: "c1", project_id: "p1", title: "Kaart 1", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
@@ -2167,8 +2169,7 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
 
-    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "ik heb de aannemer gebeld" });
-    api.reviewBoardTranscript.mockResolvedValue({ text: "Ik heb de aannemer gebeld." });
+    api.summarizeBoardRecording.mockResolvedValue({ summary: "- Aannemer is gebeld.", transcript: "ik heb de aannemer gebeld" });
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Start opname" }));
@@ -2180,11 +2181,59 @@ describe("Vergaderborden drag/drop", () => {
       expect(api.uploadBoardRecording).toHaveBeenCalledWith("c1", expect.any(Blob), expect.any(Number));
     });
     await waitFor(() => {
-      expect(api.transcribeBoardRecording).toHaveBeenCalledWith("r1");
-      expect(api.reviewBoardTranscript).toHaveBeenCalledWith("ik heb de aannemer gebeld", true);
+      expect(api.summarizeBoardRecording).toHaveBeenCalledWith("r1");
     });
-    expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("Ik heb de aannemer gebeld.");
+    expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("- Aannemer is gebeld.");
+    expect(within(dialog).getByText("Audio-opname (0:07) wordt bij deze update geplaatst.")).toBeInTheDocument();
     expect(api.transcribeBoardAudioChunk).not.toHaveBeenCalled();
+    expect(api.reviewBoardTranscript).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update plaatsen" }));
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "- Aannemer is gebeld.", "r1"));
+    await waitFor(() => expect(within(dialog).queryByText(/wordt bij deze update geplaatst/)).not.toBeInTheDocument());
+  });
+
+  it("valt terug op de transcriptie als samenvatten mislukt en kan de opname loskoppelen", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
+    api.summarizeBoardRecording.mockRejectedValue(new Error("502"));
+    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "volledige tekst" });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start opname" }));
+    await waitFor(() => expect(mediaRecorderInstances).toHaveLength(1));
+    mediaRecorderInstances[0].requestData();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Stop opname/ }));
+
+    await waitFor(() => expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("volledige tekst"));
+    expect(within(dialog).getByText("Samenvatten is mislukt; de volledige transcriptie is ingevoegd.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Niet toevoegen" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Update plaatsen" }));
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "volledige tekst", null));
+  });
+
+  it("toont de opname met transcriptie binnen de update", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 1 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [{
+        id: "u1", author_user_id: "u1", author_username: "mark", author_display_name: "Mark", message: "- Scan is klaar", image_url: null, edited_from_update_id: null, created_at: "2026-10-31T09:00:00Z",
+        recording: { id: "r1", filename: "opname.webm", file_path: "x", duration: 5, recorded_at: "2026-10-31T09:00:00Z", created_at: "2026-10-31T09:00:00Z", transcription_status: "done", transcription_text: "de scan is klaar", mime_type: "audio/webm", size_bytes: 10, download_url: "/api/boards/recordings/r1/download" }
+      }],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    const items = await screen.findAllByRole("listitem");
+    const update = items.find((item) => item.textContent?.includes("Scan is klaar"))!;
+    expect(update.querySelector("audio")).toHaveAttribute("src", "/api/boards/recordings/r1/download");
+    expect(within(update).getByText("de scan is klaar")).toBeInTheDocument();
+    expect(screen.queryByText("Audio-opname")).not.toBeInTheDocument();
   });
 
   it("toont de transcriptie bij opnames en laat een mislukte transcriptie opnieuw proberen", async () => {
@@ -2222,8 +2271,7 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
 
-    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "dit is de aanvulling" });
-    api.reviewBoardTranscript.mockResolvedValue({ text: "Dit is de aanvulling." });
+    api.summarizeBoardRecording.mockResolvedValue({ summary: "- Dit is de aanvulling.", transcript: "dit is de aanvulling" });
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     const dialog = await screen.findByRole("dialog");
     const message = within(dialog).getByPlaceholderText("Beschrijf kort de voortgang");
@@ -2233,7 +2281,7 @@ describe("Vergaderborden drag/drop", () => {
     mediaRecorderInstances[0].requestData();
     fireEvent.click(within(dialog).getByRole("button", { name: /Stop opname/ }));
 
-    await waitFor(() => expect(message).toHaveValue("Eerste regel.\n\nDit is de aanvulling."));
+    await waitFor(() => expect(message).toHaveValue("Eerste regel.\n\n- Dit is de aanvulling."));
   });
 
   it("wacht op de laatste audiochunk en stopt transcriptie wanneer opname-upload mislukt", async () => {
@@ -2261,7 +2309,7 @@ describe("Vergaderborden drag/drop", () => {
     const uploadedBlob = api.uploadBoardRecording.mock.calls[0][1] as Blob;
     expect(uploadedBlob.size).toBeGreaterThan(0);
     expect(uploadedBlob.type).toBe("audio/webm;codecs=opus");
-    expect(api.transcribeBoardRecording).not.toHaveBeenCalled();
+    expect(api.summarizeBoardRecording).not.toHaveBeenCalled();
     expect(await screen.findByText("Uploaden van de opname is mislukt. Probeer het opnieuw.")).toBeInTheDocument();
   });
 

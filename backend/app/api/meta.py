@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "130",
+                "date": "2026-10-31",
+                "title": "Opnames worden samengevat in de update",
+                "highlights": [
+                    "Een audio-opname bij een kaartje wordt nu getranscribeerd en samengevat in korte bullets met afspraken en actiepunten.",
+                    "De samenvatting gebruikt eerdere updates en de andere kaartjes op het bord om namen en verwijzingen goed te krijgen, zonder er feiten bij te verzinnen.",
+                    "De opname staat samen met de samenvatting in één update; de volledige transcriptie is daar uit te klappen. Je controleert de tekst voordat je de update plaatst.",
+                ],
+            },
+            {
                 "iteration": "129",
                 "date": "2026-10-31",
                 "title": "Transcripties blijven bij de opname bewaard",
