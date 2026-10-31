@@ -231,6 +231,11 @@ export type BoardCard = {
   urgency: "normal" | "urgent";
   position: number;
   is_archived?: boolean;
+  is_trello_import?: boolean;
+  created_at?: string | null;
+  created_by_user_id?: string | null;
+  created_by_username?: string | null;
+  created_by_display_name?: string | null;
   assignments: Array<{ id: string; user_id: string; username: string; user_display_name: string; has_avatar?: boolean; avatar_url?: string | null }>;
   updates_count: number;
   recordings_count: number;

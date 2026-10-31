@@ -142,7 +142,15 @@ def test_board_project_card_update_and_recording_flow(client):
     )
     assert create_card.status_code == 200
     assert create_card.json()["urgency"] == "urgent"
+    assert create_card.json()["created_by_username"] == "admin"
+    assert create_card.json()["created_by_display_name"]
+    assert create_card.json()["created_at"]
+    assert create_card.json()["is_trello_import"] is False
     card_id = create_card.json()["id"]
+
+    editor_board = client.get(f"/api/boards/projects/{project_id}", headers=_login(client, "editor", "editor12345"))
+    assert editor_board.status_code == 200
+    assert editor_board.json()["cards"][0]["created_by_username"] == "admin"
 
     urgency = client.patch(f"/api/boards/cards/{card_id}/urgency", headers=headers, json={"urgency": "normal"})
     assert urgency.status_code == 200
@@ -240,6 +248,9 @@ def test_trello_import_skips_known_ids_and_exports_json_and_markdown(client):
     assert "Trello-checklists" in board["cards"][0]["description"]
     assert "Graag deze week." not in board["cards"][0]["description"]
     assert board["archived_cards"][0]["urgency"] == "urgent"
+    assert board["cards"][0]["is_trello_import"] is True
+    assert board["cards"][0]["created_by_user_id"] is None
+    assert board["cards"][0]["created_by_display_name"] is None
 
     detail = client.get(f"/api/boards/cards/{board['cards'][0]['id']}", headers=headers).json()
     assert detail["updates"] == [

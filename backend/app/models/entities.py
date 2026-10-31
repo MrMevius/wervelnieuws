@@ -161,6 +161,7 @@ class BoardCard(Base, TimestampMixin):
         Index("ix_board_cards_project_column_position", "project_id", "column", "position"),
         Index("ix_board_cards_deleted_at", "deleted_at"),
         Index("ix_board_cards_deleted_by_user_id", "deleted_by_user_id"),
+        Index("ix_board_cards_created_by_user_id", "created_by_user_id"),
     )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -182,9 +183,14 @@ class BoardCard(Base, TimestampMixin):
     deleted_by_user_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("users.id"), nullable=True
     )
+    # Null for Trello imports and for legacy cards without a creation audit event.
+    created_by_user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id"), nullable=True
+    )
 
     project: Mapped[Project] = relationship(back_populates="board_cards")
     deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    created_by: Mapped[User | None] = relationship(foreign_keys=[created_by_user_id])
     assignments: Mapped[list["CardAssignment"]] = relationship(
         back_populates="card", cascade="all,delete"
     )
