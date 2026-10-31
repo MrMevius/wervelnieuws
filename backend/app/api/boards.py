@@ -625,7 +625,7 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     project = service.ensure_project_access(repo.get_project(project_id), current)
     service.ensure_project_writable(project)
     assignment_user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
-    card = repo.create_card(project.id, payload.title, payload.description, payload.column, payload.urgency, created_by_user_id=current.id)
+    card = repo.create_card(project.id, payload.title, payload.description, payload.column, payload.urgency, created_by_user_id=current.id, at_top=True)
     repo.replace_assignments(card, assignment_user_ids)
     card = service.ensure_card_access(repo.get_card(card.id), current)
     service.touch_activity(project)
