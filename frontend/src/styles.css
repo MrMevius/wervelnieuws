@@ -2202,6 +2202,27 @@ button:disabled {
   font-size: 0.75rem;
 }
 
+.board-recording-transcript summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.board-recording-transcript p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+}
+
+.board-recording-transcript-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
 .board-recording-summary strong {
   color: var(--text);
   font-size: 0.85rem;

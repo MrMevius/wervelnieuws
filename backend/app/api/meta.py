@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "129",
+                "date": "2026-10-31",
+                "title": "Transcripties blijven bij de opname bewaard",
+                "highlights": [
+                    "De uitgeschreven tekst van een audio-opname wordt nu bij de opname zelf bewaard en is onder de opname uit te klappen.",
+                    "Opnames zijn daardoor ook te vinden met de zoekfunctie van het bord.",
+                    "Lukt een transcriptie niet, dan kun je het opnieuw proberen. Oudere opnames krijgen automatisch alsnog een transcriptie.",
+                ],
+            },
+            {
                 "iteration": "128",
                 "date": "2026-10-31",
                 "title": "Snel zoeken op een vergaderbord",

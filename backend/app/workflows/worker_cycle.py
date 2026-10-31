@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.services.board_recording_transcription_service import BoardRecordingTranscriptionService
 from app.services.worker_lease_service import WorkerLeaseService
 from app.services.notification_service import NotificationService
 from app.services.transcription_service import TranscriptionService
@@ -11,6 +12,7 @@ WORKER_CYCLE_LOCK_KEY = "publish_worker_cycle"
 
 def run_worker_cycle(db: Session) -> None:
     TranscriptionService(db).process_pending_transcriptions()
+    BoardRecordingTranscriptionService(db).process_pending()
 
     workflow = PublishingWorkflow(db)
     workflow.publish_due()

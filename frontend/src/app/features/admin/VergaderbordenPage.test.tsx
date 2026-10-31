@@ -33,6 +33,7 @@ const api = vi.hoisted(() => ({
   deleteBoardCardUpdate: vi.fn(),
   uploadBoardRecording: vi.fn(),
   transcribeBoardAudioChunk: vi.fn(),
+  transcribeBoardRecording: vi.fn(),
   reviewBoardTranscript: vi.fn(),
   suggestBoardCardTitle: vi.fn(),
   uploadBoardCardAttachment: vi.fn(),
@@ -148,6 +149,7 @@ describe("Vergaderborden drag/drop", () => {
     api.deleteBoardCardUpdate.mockResolvedValue(undefined);
     api.uploadBoardRecording.mockResolvedValue({ id: "r1" });
     api.transcribeBoardAudioChunk.mockResolvedValue({ text: "" });
+    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "" });
     api.reviewBoardTranscript.mockResolvedValue({ text: "" });
     api.suggestBoardCardTitle.mockResolvedValue({ title: "Titelvoorstel" });
     api.uploadBoardCardAttachment.mockResolvedValue({ id: "a1" });
@@ -1638,7 +1640,8 @@ describe("Vergaderborden drag/drop", () => {
     const cards = document.querySelectorAll(".board-update-item");
     expect(cards[0]).toHaveTextContent("Audio-opname");
     expect(cards[0]).toHaveTextContent("Duur: 0:07 · Grootte: 1,2 KB");
-    expect(cards[0].querySelector(".board-update-message")?.children).toHaveLength(2);
+    expect(cards[0].querySelector(".board-update-message")?.children).toHaveLength(3);
+    expect(cards[0]).toHaveTextContent("Transcriptie wordt gemaakt…");
     expect(cards[0].querySelector(".board-recording-summary")).toBeInTheDocument();
     expect(cards[1]).toHaveTextContent("Tekstupdate");
     expect(screen.queryByText("Download opname")).not.toBeInTheDocument();
@@ -2164,7 +2167,7 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
 
-    api.transcribeBoardAudioChunk.mockResolvedValue({ text: "ik heb de aannemer gebeld" });
+    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "ik heb de aannemer gebeld" });
     api.reviewBoardTranscript.mockResolvedValue({ text: "Ik heb de aannemer gebeld." });
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     const dialog = await screen.findByRole("dialog");
@@ -2177,10 +2180,34 @@ describe("Vergaderborden drag/drop", () => {
       expect(api.uploadBoardRecording).toHaveBeenCalledWith("c1", expect.any(Blob), expect.any(Number));
     });
     await waitFor(() => {
-      expect(api.transcribeBoardAudioChunk).toHaveBeenCalledWith(expect.any(Blob));
+      expect(api.transcribeBoardRecording).toHaveBeenCalledWith("r1");
       expect(api.reviewBoardTranscript).toHaveBeenCalledWith("ik heb de aannemer gebeld", true);
     });
     expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("Ik heb de aannemer gebeld.");
+    expect(api.transcribeBoardAudioChunk).not.toHaveBeenCalled();
+  });
+
+  it("toont de transcriptie bij opnames en laat een mislukte transcriptie opnieuw proberen", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 3 };
+    const recording = { uploaded_by_username: "mark", filename: "opname.webm", file_path: "x", duration: 5, mime_type: "audio/webm", size_bytes: 10, download_url: "/api/boards/recordings/r/download" };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [],
+      recordings: [
+        { ...recording, id: "r1", recorded_at: "2026-10-31T09:00:00Z", created_at: "2026-10-31T09:00:00Z", transcription_status: "done", transcription_text: "Afspraak met de gemeente" },
+        { ...recording, id: "r2", recorded_at: "2026-10-31T10:00:00Z", created_at: "2026-10-31T10:00:00Z", transcription_status: "failed", transcription_text: "" },
+        { ...recording, id: "r3", recorded_at: "2026-10-31T11:00:00Z", created_at: "2026-10-31T11:00:00Z", transcription_status: "pending", transcription_text: "" }
+      ]
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    expect(await screen.findByText("Afspraak met de gemeente")).toBeInTheDocument();
+    expect(screen.getByText("Transcriptie wordt gemaakt…")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Opnieuw transcriberen" }));
+    await waitFor(() => expect(api.transcribeBoardRecording).toHaveBeenCalledWith("r2"));
   });
 
   it("voegt transcriptie toe aan bestaande update-tekst", async () => {
@@ -2195,7 +2222,7 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage();
 
-    api.transcribeBoardAudioChunk.mockResolvedValue({ text: "dit is de aanvulling" });
+    api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "dit is de aanvulling" });
     api.reviewBoardTranscript.mockResolvedValue({ text: "Dit is de aanvulling." });
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     const dialog = await screen.findByRole("dialog");
@@ -2234,7 +2261,7 @@ describe("Vergaderborden drag/drop", () => {
     const uploadedBlob = api.uploadBoardRecording.mock.calls[0][1] as Blob;
     expect(uploadedBlob.size).toBeGreaterThan(0);
     expect(uploadedBlob.type).toBe("audio/webm;codecs=opus");
-    expect(api.transcribeBoardAudioChunk).not.toHaveBeenCalled();
+    expect(api.transcribeBoardRecording).not.toHaveBeenCalled();
     expect(await screen.findByText("Uploaden van de opname is mislukt. Probeer het opnieuw.")).toBeInTheDocument();
   });
 

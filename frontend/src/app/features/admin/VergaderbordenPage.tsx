@@ -5,6 +5,7 @@ import {
   AdminUser,
   BoardAccessUser,
   BoardCard,
+  BoardRecording,
   BoardRecycleBinCard,
   BoardTrelloImportResult,
   archiveBoardCard,
@@ -37,6 +38,7 @@ import {
   uploadBoardRecording,
   uploadBoardCardAttachment,
   transcribeBoardAudioChunk,
+  transcribeBoardRecording,
   reviewBoardTranscript,
   suggestBoardCardTitle
 } from "../../../lib/api/client";
@@ -152,22 +154,7 @@ type CardActivityItem =
     id: string;
     sortTs: number;
     createdAt: string;
-    recording: {
-      id: string;
-      uploaded_by_user_id?: string | null;
-      uploaded_by_username?: string | null;
-      uploaded_by_display_name?: string | null;
-      filename: string;
-      file_path: string;
-      duration?: number | null;
-      recorded_at: string;
-      transcription_status: "pending" | "done" | "failed";
-      transcription_text: string;
-      mime_type: string;
-      size_bytes?: number | null;
-      created_at: string;
-      download_url: string;
-    };
+    recording: BoardRecording;
   };
 
 type CardAttachmentItem = {
@@ -536,6 +523,47 @@ function RichTextRenderer({ text, emptyFallback }: { text: string; emptyFallback
     );
   }
   return <>{nodes.length ? nodes : emptyFallback}</>;
+}
+
+function RecordingTranscript({ recording, canRetry, onRetry }: { recording: BoardRecording; canRetry: boolean; onRetry: () => Promise<void> }) {
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [retryFailed, setRetryFailed] = useState(false);
+  if (recording.transcription_status === "done" && recording.transcription_text.trim()) {
+    return (
+      <details className="board-recording-transcript">
+        <summary>Transcriptie</summary>
+        <p>{recording.transcription_text}</p>
+      </details>
+    );
+  }
+  if (recording.transcription_status === "failed") {
+    return (
+      <p className="board-recording-transcript-status">
+        {retryFailed ? "Transcriptie is opnieuw mislukt." : "Transcriptie is mislukt."}
+        {canRetry && (
+          <MaterialButton
+            variant="text"
+            size="compact"
+            disabled={isRetrying}
+            onClick={async () => {
+              setIsRetrying(true);
+              setRetryFailed(false);
+              try {
+                await onRetry();
+              } catch {
+                setRetryFailed(true);
+              } finally {
+                setIsRetrying(false);
+              }
+            }}
+          >
+            {isRetrying ? "Bezig…" : "Opnieuw transcriberen"}
+          </MaterialButton>
+        )}
+      </p>
+    );
+  }
+  return <p className="board-recording-transcript-status">Transcriptie wordt gemaakt…</p>;
 }
 
 function UpdateMessageRenderer({ message }: { message: string }) {
@@ -1901,9 +1929,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         const blob = new Blob(chunks, { type: recordingMimeType });
         if (blob.size > 0) {
           setIsUpdateTranscribing(true);
+          let storedRecording: BoardRecording;
           try {
             setUpdateRecordingProgress("Opname wordt opgeslagen…");
-            await uploadRecordingMutation.mutateAsync({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
+            storedRecording = await uploadRecordingMutation.mutateAsync({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
           } catch {
             setUpdateError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
             setIsUpdateTranscribing(false);
@@ -1914,8 +1943,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           }
           try {
             setUpdateRecordingProgress("Opname wordt getranscribeerd…");
-            const { text: transcript } = await transcribeBoardAudioChunk(blob);
-            const normalizedTranscript = transcript.trim();
+            const transcribed = await transcribeBoardRecording(storedRecording.id);
+            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
+            const normalizedTranscript = transcribed.transcription_status === "done" ? transcribed.transcription_text.trim() : "";
             if (!normalizedTranscript) {
               setUpdateError("Er is geen tekst uit de opname gekomen. Probeer het opnieuw.");
               return;
@@ -2914,6 +2944,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         <div className="board-update-message">
                           <p className="board-recording-summary"><strong>Audio-opname</strong><span> · Duur: {formatRecordingDuration(r.duration)} · Grootte: {formatRecordingSize(r.size_bytes)}</span></p>
                           <audio controls src={r.download_url} />
+                          <RecordingTranscript
+                            recording={r}
+                            canRetry={!isReadOnly}
+                            onRetry={async () => {
+                              await transcribeBoardRecording(r.id);
+                              await queryClient.invalidateQueries({ queryKey: ["board-card", cardQuery.data!.card.id] });
+                            }}
+                          />
                         </div>
                       </article>
                     );

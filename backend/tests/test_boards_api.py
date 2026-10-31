@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -1777,3 +1778,117 @@ def test_board_search_matches_titles_descriptions_updates_transcripts_and_attach
 
     editor_headers = _login(client, "editor", "editor12345")
     assert client.get(f"/api/boards/projects/{project_id}/search", headers=editor_headers, params={"q": "vergunning"}).status_code in (403, 404)
+
+
+def _configure_transcription(monkeypatch, transcribe):
+    monkeypatch.setattr(
+        "app.services.board_recording_transcription_service.GenAIConfigService.get_effective_config",
+        lambda _self: SimpleNamespace(
+            openai_api_key="test-key",
+            text_model="gpt-4o-mini",
+            image_model="gpt-image-1",
+            whisper_model="gpt-4o-transcribe",
+            whisper_language="nl",
+        ),
+    )
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.transcribe_audio", transcribe)
+
+
+def _card_with_recording(client, headers, project_name: str = "Opnames") -> tuple[str, str, dict]:
+    project_id = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": project_name, "description": "", "invited_user_ids": []},
+    ).json()["id"]
+    card_id = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Overleg", "description": "", "column": "todo"},
+    ).json()["id"]
+    recording = client.post(
+        f"/api/boards/cards/{card_id}/recordings",
+        headers=headers,
+        data={"duration": "5"},
+        files={"file": ("opname.webm", BytesIO(b"RIFF....WEBM"), "audio/webm")},
+    ).json()
+    return project_id, card_id, recording
+
+
+def test_stored_recording_is_transcribed_once_and_searchable(client, monkeypatch):
+    headers = _login(client)
+    project_id, card_id, recording = _card_with_recording(client, headers)
+    assert recording["transcription_status"] == "pending"
+    calls: list[str] = []
+
+    def transcribe(_self, file_path: str, *, model: str, language: str | None = None):
+        calls.append(file_path)
+        assert Path(file_path).exists()
+        assert (model, language) == ("gpt-4o-transcribe", "nl")
+        return {"text": "  We wachten op de netaansluiting.  "}
+
+    _configure_transcription(monkeypatch, transcribe)
+    first = client.post(f"/api/boards/recordings/{recording['id']}/transcribe", headers=headers)
+    assert first.status_code == 200
+    assert first.json()["transcription_status"] == "done"
+    assert first.json()["transcription_text"] == "We wachten op de netaansluiting."
+
+    again = client.post(f"/api/boards/recordings/{recording['id']}/transcribe", headers=headers)
+    assert again.json()["transcription_status"] == "done"
+    assert len(calls) == 1
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert detail["recordings"][0]["transcription_text"] == "We wachten op de netaansluiting."
+    found = client.get(f"/api/boards/projects/{project_id}/search", headers=headers, params={"q": "netaansluiting"}).json()
+    assert found["card_ids"] == [card_id]
+
+    editor_headers = _login(client, "editor", "editor12345")
+    assert client.post(f"/api/boards/recordings/{recording['id']}/transcribe", headers=editor_headers).status_code in (403, 404)
+    assert client.post("/api/boards/recordings/unknown/transcribe", headers=headers).status_code == 404
+
+
+def test_failed_recording_transcription_is_marked_and_can_be_retried(client, monkeypatch):
+    headers = _login(client)
+    _, _, recording = _card_with_recording(client, headers)
+
+    def failing(_self, *_args, **_kwargs):
+        raise RuntimeError("upstream down")
+
+    _configure_transcription(monkeypatch, failing)
+    failed = client.post(f"/api/boards/recordings/{recording['id']}/transcribe", headers=headers)
+    assert failed.status_code == 200
+    assert failed.json()["transcription_status"] == "failed"
+    assert failed.json()["transcription_text"] == ""
+
+    _configure_transcription(monkeypatch, lambda _self, *_a, **_k: {"text": "Tweede poging"})
+    retried = client.post(f"/api/boards/recordings/{recording['id']}/transcribe", headers=headers)
+    assert retried.json()["transcription_status"] == "done"
+    assert retried.json()["transcription_text"] == "Tweede poging"
+
+
+def test_worker_transcribes_only_recordings_left_pending(client, monkeypatch):
+    from datetime import timedelta
+
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models.entities import Recording
+    from app.services.board_recording_transcription_service import BoardRecordingTranscriptionService
+
+    headers = _login(client)
+    _, _, old = _card_with_recording(client, headers)
+    _, _, recent = _card_with_recording(client, headers, "Recente opnames")
+    db = next(app.dependency_overrides[get_db]())
+    db.get(Recording, old["id"]).created_at = datetime.now(UTC) - timedelta(minutes=30)
+    db.commit()
+
+    monkeypatch.setattr(
+        "app.services.board_recording_transcription_service.GenAIConfigService.get_effective_config",
+        lambda _self: SimpleNamespace(openai_api_key="", text_model="", image_model="", whisper_model="", whisper_language="nl"),
+    )
+    assert BoardRecordingTranscriptionService(db).process_pending() == 0
+
+    _configure_transcription(monkeypatch, lambda _self, *_a, **_k: {"text": "Achteraf getranscribeerd"})
+    assert BoardRecordingTranscriptionService(db).process_pending() == 1
+    db.expire_all()
+    assert db.get(Recording, old["id"]).transcription_text == "Achteraf getranscribeerd"
+    assert db.get(Recording, recent["id"]).transcription_status == "pending"
+    db.close()
