@@ -49,6 +49,7 @@ from app.schemas.boards import (
     LiveTranscriptionResponse,
     ProjectBoardResponse,
     RecordingResponse,
+    RecordingSummaryResponse,
 )
 from app.services.audit_service import AuditService
 from app.services.avatar_service import avatar_file_response
@@ -272,6 +273,21 @@ def _recording_response(repo: BoardRepository, row: Recording) -> RecordingRespo
         size_bytes=row.size_bytes,
         created_at=row.created_at,
         download_url=f"/api/boards/recordings/{row.id}/download",
+    )
+
+
+def _update_response(repo: BoardRepository, row) -> CardUpdateResponse:
+    author = repo.get_user(row.author_user_id)
+    return CardUpdateResponse(
+        id=row.id,
+        author_user_id=row.author_user_id,
+        author_username=author.username if author else "onbekend",
+        author_display_name=row.external_author_name or _display_name(author),
+        message=row.message,
+        image_url=_update_image_url(row.id, row.image_path),
+        edited_from_update_id=row.edited_from_update_id,
+        recording=_recording_response(repo, row.recording) if row.recording else None,
+        created_at=row.created_at,
     )
 
 
@@ -805,23 +821,13 @@ def get_card_detail(card_id: str, current: User = Depends(get_current_user), db:
     service = BoardService(repo)
     card = service.ensure_card_access(repo.get_card(card_id), current)
     updates = repo.list_updates(card.id)
-    recordings = repo.list_recordings(card.id)
+    # Recordings placed in a visible update are shown there, not as separate activity.
+    linked_recording_ids = {row.recording_id for row in updates if row.recording_id}
+    recordings = [row for row in repo.list_recordings(card.id) if row.id not in linked_recording_ids]
     attachments = repo.list_attachments(card.id)
     return CardDetailResponse(
         card=_card_response(repo, card),
-        updates=[
-            CardUpdateResponse(
-                id=row.id,
-                author_user_id=row.author_user_id,
-                author_username=author.username if (author := repo.get_user(row.author_user_id)) else "onbekend",
-                author_display_name=row.external_author_name or _display_name(author),
-                message=row.message,
-                image_url=_update_image_url(row.id, row.image_path),
-                edited_from_update_id=row.edited_from_update_id,
-                created_at=row.created_at,
-            )
-            for row in updates
-        ],
+        updates=[_update_response(repo, row) for row in updates],
         recordings=[_recording_response(repo, row) for row in recordings],
         attachments=[_attachment_response(repo, row) for row in attachments],
     )
@@ -832,19 +838,16 @@ def post_update(card_id: str, payload: CardUpdateCreateRequest, current: User = 
     repo = BoardRepository(db)
     service = BoardService(repo)
     card = service.ensure_card_writable(repo.get_card(card_id), current)
-    row = repo.create_update(card.id, current.id, payload.message)
+    if payload.recording_id:
+        recording = db.get(Recording, payload.recording_id)
+        if not recording or recording.card_id != card.id:
+            raise HTTPException(status_code=422, detail="Opname hoort niet bij deze kaart.")
+        if repo.is_recording_linked(recording.id):
+            raise HTTPException(status_code=409, detail="Deze opname staat al in een andere update.")
+    row = repo.create_update(card.id, current.id, payload.message, recording_id=payload.recording_id)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
-    AuditService(db).log("board.card.updated", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=row.id))
-    return CardUpdateResponse(
-        id=row.id,
-        author_user_id=row.author_user_id,
-        author_username=current.username,
-        author_display_name=_display_name(current),
-        message=row.message,
-        image_url=_update_image_url(row.id, row.image_path),
-        edited_from_update_id=row.edited_from_update_id,
-        created_at=row.created_at,
-    )
+    AuditService(db).log("board.card.updated", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=row.id, recording_id=row.recording_id))
+    return _update_response(repo, row)
 
 
 @router.patch("/cards/{card_id}/updates/{update_id}", response_model=CardUpdateResponse)
@@ -879,16 +882,7 @@ def edit_own_update(
     revised = repo.create_update_revision(update, normalized, image_path)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.card.update_edited", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, update_id=revised.id, edited_from_update_id=update.id))
-    return CardUpdateResponse(
-        id=revised.id,
-        author_user_id=revised.author_user_id,
-        author_username=current.username,
-        author_display_name=_display_name(current),
-        message=revised.message,
-        image_url=_update_image_url(revised.id, revised.image_path),
-        edited_from_update_id=revised.edited_from_update_id,
-        created_at=revised.created_at,
-    )
+    return _update_response(repo, revised)
 
 
 @router.delete("/cards/{card_id}/updates/{update_id}")
@@ -1087,6 +1081,35 @@ def transcribe_recording(recording_id: str, current: User = Depends(get_current_
             details_json=service.audit_details(card_id=recording.card_id, recording_id=recording.id, status=recording.transcription_status),
         )
     return _recording_response(repo, recording)
+
+
+@router.post("/recordings/{recording_id}/summary", response_model=RecordingSummaryResponse)
+def summarize_recording(recording_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> RecordingSummaryResponse:
+    """Transcribe the recording if needed and summarize it into bullets for a card update,
+    using the card's updates and the board's other cards as context."""
+    repo = BoardRepository(db)
+    service = BoardService(repo)
+    recording = db.get(Recording, recording_id)
+    if not recording:
+        raise HTTPException(status_code=404, detail="Opname niet gevonden.")
+    card = service.ensure_card_writable(repo.get_card(recording.card_id), current)
+    transcription = BoardRecordingTranscriptionService(db)
+    if not transcription.is_configured:
+        raise HTTPException(status_code=503, detail="Samenvatten is niet geconfigureerd.")
+    if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
+        recording = transcription.transcribe(recording)
+        if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
+            raise HTTPException(status_code=502, detail="Transcriberen van de opname is mislukt.")
+    try:
+        summary = transcription.summarize(recording, card, repo)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Samenvatten van de opname is mislukt.") from exc
+    AuditService(db).log(
+        "board.recording.summarized",
+        actor_user_id=current.id,
+        details_json=service.audit_details(card_id=card.id, recording_id=recording.id),
+    )
+    return RecordingSummaryResponse(summary=summary, transcript=recording.transcription_text)
 
 
 @router.post("/cards/{card_id}/attachments", response_model=BoardAttachmentResponse)

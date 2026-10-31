@@ -39,6 +39,7 @@ import {
   uploadBoardCardAttachment,
   transcribeBoardAudioChunk,
   transcribeBoardRecording,
+  summarizeBoardRecording,
   reviewBoardTranscript,
   suggestBoardCardTitle
 } from "../../../lib/api/client";
@@ -146,6 +147,7 @@ type CardActivityItem =
       message: string;
       image_url: string | null;
       edited_from_update_id: string | null;
+      recording?: BoardRecording | null;
       created_at: string;
     };
   }
@@ -963,6 +965,8 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [isUpdateTranscribing, setIsUpdateTranscribing] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
+  // Recording that will be placed in the next update posted on that card.
+  const [pendingUpdateRecording, setPendingUpdateRecording] = useState<{ cardId: string; recording: BoardRecording } | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentResults, setAttachmentResults] = useState<AttachmentBatchItem[]>([]);
   const [attachmentStatusMessage, setAttachmentStatusMessage] = useState<string | null>(null);
@@ -1320,7 +1324,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     }
   });
   const postUpdateMutation = useMutation({
-    mutationFn: ({ cardId, message }: { cardId: string; message: string }) => postBoardCardUpdate(cardId, message),
+    mutationFn: ({ cardId, message, recordingId }: { cardId: string; message: string; recordingId?: string | null }) => postBoardCardUpdate(cardId, message, recordingId),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["board-card", selectedCardId] }),
@@ -1328,6 +1332,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       ]);
       setUpdateMessage("");
       setUpdateError(null);
+      setPendingUpdateRecording(null);
     }
   });
   const editUpdateMutation = useMutation({
@@ -1933,6 +1938,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           try {
             setUpdateRecordingProgress("Opname wordt opgeslagen…");
             storedRecording = await uploadRecordingMutation.mutateAsync({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
+            setPendingUpdateRecording({ cardId: finishedCardId, recording: storedRecording });
           } catch {
             setUpdateError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
             setIsUpdateTranscribing(false);
@@ -1942,21 +1948,26 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             return;
           }
           try {
-            setUpdateRecordingProgress("Opname wordt getranscribeerd…");
-            const transcribed = await transcribeBoardRecording(storedRecording.id);
-            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
-            const normalizedTranscript = transcribed.transcription_status === "done" ? transcribed.transcription_text.trim() : "";
-            if (!normalizedTranscript) {
-              setUpdateError("Er is geen tekst uit de opname gekomen. Probeer het opnieuw.");
-              return;
+            setUpdateRecordingProgress("Opname wordt getranscribeerd en samengevat…");
+            let nextText = "";
+            let notice: string | null = null;
+            try {
+              nextText = (await summarizeBoardRecording(storedRecording.id)).summary.trim();
+            } catch {
+              // Fall back to the plain transcript when only the summary step fails.
+              const transcribed = await transcribeBoardRecording(storedRecording.id);
+              nextText = transcribed.transcription_status === "done" ? transcribed.transcription_text.trim() : "";
+              notice = "Samenvatten is mislukt; de volledige transcriptie is ingevoegd.";
             }
-            setUpdateRecordingProgress("Tekst wordt verbeterd…");
-            const { text: reviewedTranscript } = await reviewBoardTranscript(normalizedTranscript, true);
-            const nextText = reviewedTranscript.trim() || normalizedTranscript;
-            setUpdateMessage((current) => [current.trim(), nextText].filter(Boolean).join(current.trim() ? "\n\n" : ""));
-            setUpdateError(null);
+            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
+            if (nextText) {
+              setUpdateMessage((current) => [current.trim(), nextText].filter(Boolean).join(current.trim() ? "\n\n" : ""));
+              setUpdateError(notice);
+            } else {
+              setUpdateError("Er is geen tekst uit de opname gekomen. De opname wordt wel aan de update toegevoegd.");
+            }
           } catch {
-            setUpdateError("Transcriptie of tekstverbetering is mislukt. Probeer het opnieuw.");
+            setUpdateError("Transcriberen van de opname is mislukt. De opname wordt wel aan de update toegevoegd.");
           } finally {
             setIsUpdateTranscribing(false);
             setUpdateRecordingProgress(null);
@@ -2872,7 +2883,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 // Disabling the submit component must not drop focus outside the dialog.
                 newUpdateTextareaRef.current?.focus({ preventScroll: true });
                 setIsNewUpdateToolbarVisible(false);
-                postUpdateMutation.mutate({ cardId: cardQuery.data!.card.id, message });
+                const cardId = cardQuery.data!.card.id;
+                postUpdateMutation.mutate({
+                  cardId,
+                  message,
+                  recordingId: pendingUpdateRecording?.cardId === cardId ? pendingUpdateRecording.recording.id : null
+                });
               }}
               >
               <div className="board-detail-section-heading">
@@ -2914,6 +2930,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   {postUpdateMutation.isPending ? "Update plaatsen…" : "Update plaatsen"}
                 </MaterialButton>
               </div>
+              {pendingUpdateRecording?.cardId === cardQuery.data.card.id && (
+                <p className="board-update-pending-recording">
+                  <span>Audio-opname ({formatRecordingDuration(pendingUpdateRecording.recording.duration)}) wordt bij deze update geplaatst.</span>
+                  <MaterialButton variant="text" size="compact" type="button" onClick={() => setPendingUpdateRecording(null)}>
+                    Niet toevoegen
+                  </MaterialButton>
+                </p>
+              )}
               {updateRecordingProgress && <p className="board-detail-recording-progress" role="status">{updateRecordingProgress}</p>}
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
             </form>}
@@ -3040,6 +3064,19 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                         <>
                           <div className="board-update-message">{renderBoardUpdateMessage(u.message)}</div>
                           {u.image_url && <img src={u.image_url} alt="Update-afbeelding" className="board-update-image" />}
+                          {u.recording && (
+                            <div className="board-update-recording">
+                              <audio controls src={u.recording.download_url} aria-label="Audio-opname bij update" />
+                              <RecordingTranscript
+                                recording={u.recording}
+                                canRetry={!isReadOnly}
+                                onRetry={async () => {
+                                  await transcribeBoardRecording(u.recording!.id);
+                                  await queryClient.invalidateQueries({ queryKey: ["board-card", cardQuery.data!.card.id] });
+                                }}
+                              />
+                            </div>
+                          )}
                           {!isReadOnly && !isMoveUpdate && u.author_user_id === currentUserQuery.data?.id && (
                             <div className="board-update-actions">
                               <MaterialButton variant="text" size="compact"

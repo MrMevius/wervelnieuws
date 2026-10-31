@@ -263,6 +263,7 @@ def test_trello_import_skips_known_ids_and_exports_json_and_markdown(client):
             "message": "Graag deze week.",
             "image_url": None,
             "edited_from_update_id": None,
+            "recording": None,
             "created_at": "2026-09-09T10:00:00",
         }
     ]
@@ -1892,3 +1893,74 @@ def test_worker_transcribes_only_recordings_left_pending(client, monkeypatch):
     assert db.get(Recording, old["id"]).transcription_text == "Achteraf getranscribeerd"
     assert db.get(Recording, recent["id"]).transcription_status == "pending"
     db.close()
+
+
+def test_recording_summary_uses_card_and_board_context_and_lands_in_update(client, monkeypatch):
+    headers = _login(client)
+    project_id, card_id, recording = _card_with_recording(client, headers)
+    client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Netaansluiting Enexis", "description": "Aanvraag loopt", "column": "doing"},
+    )
+    client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Gemeente wil eerst de flora-en-faunascan."})
+    _configure_transcription(monkeypatch, lambda _self, *_a, **_k: {"text": "eh ja de scan is klaar en Jan belt enexis volgende week"})
+    prompts: list[str] = []
+
+    def generate_text(_self, prompt: str, **kwargs):
+        prompts.append(prompt)
+        assert not kwargs.get("websearch_enabled")
+        return "```\n* De flora-en-faunascan is klaar.\n2. Jan belt volgende week met Enexis.\n```", []
+
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", generate_text)
+    summary = client.post(f"/api/boards/recordings/{recording['id']}/summary", headers=headers)
+    assert summary.status_code == 200
+    assert summary.json() == {
+        "summary": "- De flora-en-faunascan is klaar.\n- Jan belt volgende week met Enexis.",
+        "transcript": "eh ja de scan is klaar en Jan belt enexis volgende week",
+    }
+    prompt = prompts[0]
+    assert "Voeg geen feiten toe uit de context" in prompt
+    assert "Kaartje: Overleg" in prompt
+    assert "Gemeente wil eerst de flora-en-faunascan." in prompt
+    assert "[Bezig] Netaansluiting Enexis: Aanvraag loopt" in prompt
+    assert prompt.rstrip().endswith("eh ja de scan is klaar en Jan belt enexis volgende week")
+
+    posted = client.post(
+        f"/api/boards/cards/{card_id}/updates",
+        headers=headers,
+        json={"message": summary.json()["summary"], "recording_id": recording["id"]},
+    )
+    assert posted.status_code == 200
+    assert posted.json()["recording"]["id"] == recording["id"]
+    assert posted.json()["recording"]["transcription_status"] == "done"
+
+    again = client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Nogmaals", "recording_id": recording["id"]})
+    assert again.status_code == 409
+
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert detail["recordings"] == []
+    linked = next(item for item in detail["updates"] if item["recording"])
+    assert linked["message"].startswith("- De flora-en-faunascan")
+
+    edited = client.patch(f"/api/boards/cards/{card_id}/updates/{posted.json()['id']}", headers=headers, data={"message": "- Scan klaar"})
+    assert edited.json()["recording"]["id"] == recording["id"]
+
+    client.delete(f"/api/boards/cards/{card_id}/updates/{posted.json()['id']}", headers=headers)
+    client.delete(f"/api/boards/cards/{card_id}/updates/{edited.json()['id']}", headers=headers)
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert [item["id"] for item in detail["recordings"]] == [recording["id"]]
+
+
+def test_recording_from_other_card_cannot_be_linked_and_failed_transcript_blocks_summary(client, monkeypatch):
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    _, _, foreign = _card_with_recording(client, headers, "Ander bord")
+    linked = client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "x", "recording_id": foreign["id"]})
+    assert linked.status_code == 422
+
+    def failing(_self, *_args, **_kwargs):
+        raise RuntimeError("corrupt")
+
+    _configure_transcription(monkeypatch, failing)
+    assert client.post(f"/api/boards/recordings/{foreign['id']}/summary", headers=headers).status_code == 502

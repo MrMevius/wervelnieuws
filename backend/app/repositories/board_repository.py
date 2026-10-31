@@ -346,11 +346,13 @@ class BoardRepository:
         *,
         created_at: datetime | None = None,
         external_author_name: str | None = None,
+        recording_id: str | None = None,
     ) -> CardUpdate:
         row = CardUpdate(
             card_id=card_id,
             author_user_id=author_user_id,
             external_author_name=external_author_name,
+            recording_id=recording_id,
             message=message.strip(),
             created_at=created_at or datetime.now(UTC),
         )
@@ -377,11 +379,17 @@ class BoardRepository:
             message=message.strip(),
             image_path=image_path,
             edited_from_update_id=source.id,
+            recording_id=source.recording_id,
         )
         self.db.add(row)
         self.db.commit()
         self.db.refresh(row)
         return row
+
+    def is_recording_linked(self, recording_id: str) -> bool:
+        return self.db.scalar(
+            select(func.count(CardUpdate.id)).where(CardUpdate.recording_id == recording_id, CardUpdate.deleted_at.is_(None))
+        ) > 0
 
     def list_recordings(self, card_id: str) -> list[Recording]:
         return list(self.db.scalars(select(Recording).where(Recording.card_id == card_id).order_by(Recording.created_at.desc())).all())

@@ -43,6 +43,10 @@ Showing who created a board card requires migration `20261031_0033` (parent `202
 
 Verification: 381 backend tests (1 skipped) and 230 frontend tests pass, plus TypeScript, the Vite production build and the release schema preflight. No production or development database upgrade was performed.
 
+### Recording summaries in card updates (October 2026)
+
+Placing a recording inside a card update requires migration `20261031_0034` (parent `20261031_0033`). It adds the nullable `card_updates.recording_id` column with an index and rewrites no data. A downgrade drops only that column; recordings stay on their card and show as standalone activity again.
+
 ### Production checklist
 
 Before a production release:

@@ -223,7 +223,10 @@ class CardAssignment(Base, TimestampMixin):
 
 class CardUpdate(Base):
     __tablename__ = "card_updates"
-    __table_args__ = (Index("ix_card_updates_card_created", "card_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_card_updates_card_created", "card_id", "created_at"),
+        Index("ix_card_updates_recording_id", "recording_id"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     card_id: Mapped[str] = mapped_column(
@@ -238,6 +241,10 @@ class CardUpdate(Base):
     edited_from_update_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("card_updates.id"), nullable=True
     )
+    # Audio recording shown inside this update; revisions keep the same recording.
+    recording_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("recordings.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
@@ -249,6 +256,7 @@ class CardUpdate(Base):
     card: Mapped[BoardCard] = relationship(back_populates="updates")
     author: Mapped[User] = relationship(foreign_keys=[author_user_id])
     deleted_by: Mapped[User | None] = relationship(foreign_keys=[deleted_by_user_id])
+    recording: Mapped["Recording | None"] = relationship(foreign_keys=[recording_id])
 
 
 class Recording(Base):
