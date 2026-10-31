@@ -2019,6 +2019,13 @@ button:disabled {
 }
 
 .board-card-description-rich,
+.board-card-description-preview a,
+.board-update-message a {
+  color: var(--brand);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
 .board-card-description-preview {
   display: grid;
   gap: 6px;

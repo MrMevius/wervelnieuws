@@ -417,7 +417,46 @@ function isAutomaticMoveUpdate(message: string | null | undefined): boolean {
   return MOVE_UPDATE_MESSAGE_REGEX.test(message?.trim() || "");
 }
 
+// Markdown links (also Trello's `[url](url "smartCard-inline")`), bare http(s) URLs and www. hosts.
+const LINK_REGEX = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)|\b((?:https?:\/\/|www\.)[^\s<>]+)/gi;
+const TRAILING_URL_PUNCTUATION = /[.,;:!?)\]'"*+]+$/;
+
+function BoardLink({ href, children }: { href: string; children: ReactNode }) {
+  // Links live inside click-to-edit areas and draggable cards; keep the click on the link.
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" onClick={(evt) => evt.stopPropagation()} onKeyDown={(evt) => evt.stopPropagation()}>
+      {children}
+    </a>
+  );
+}
+
 function applyInlineTokens(text: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  LINK_REGEX.lastIndex = 0;
+  while ((match = LINK_REGEX.exec(text)) !== null) {
+    const [, label, markdownUrl, bareUrl] = match;
+    const full = bareUrl ? bareUrl.replace(TRAILING_URL_PUNCTUATION, "") : match[0];
+    if (match.index > lastIndex) {
+      nodes.push(...applyFormattingTokens(text.slice(lastIndex, match.index), lastIndex));
+    }
+    if (markdownUrl) {
+      nodes.push(<BoardLink key={`a-${match.index}`} href={markdownUrl}>{applyFormattingTokens(label, match.index)}</BoardLink>);
+    } else {
+      const href = /^www\./i.test(full) ? `https://${full}` : full;
+      nodes.push(<BoardLink key={`a-${match.index}`} href={href}>{full}</BoardLink>);
+    }
+    lastIndex = match.index + full.length;
+    LINK_REGEX.lastIndex = lastIndex;
+  }
+  if (lastIndex < text.length) {
+    nodes.push(...applyFormattingTokens(text.slice(lastIndex), lastIndex));
+  }
+  return nodes;
+}
+
+function applyFormattingTokens(text: string, offset: number): ReactNode[] {
   const tokens: ReactNode[] = [];
   const regex = /(\*\*[^*]+\*\*|\*[^*]+\*|\+\+[^+]+\+\+)/g;
   let lastIndex = 0;
@@ -428,11 +467,11 @@ function applyInlineTokens(text: string): ReactNode[] {
     }
     const full = match[0];
     if (full.startsWith("**") && full.endsWith("**")) {
-      tokens.push(<strong key={`b-${match.index}`}>{full.slice(2, -2)}</strong>);
+      tokens.push(<strong key={`b-${offset + match.index}`}>{full.slice(2, -2)}</strong>);
     } else if (full.startsWith("*") && full.endsWith("*")) {
-      tokens.push(<em key={`i-${match.index}`}>{full.slice(1, -1)}</em>);
+      tokens.push(<em key={`i-${offset + match.index}`}>{full.slice(1, -1)}</em>);
     } else if (full.startsWith(UNDERLINE_MARKER) && full.endsWith(UNDERLINE_MARKER)) {
-      tokens.push(<u key={`u-${match.index}`}>{full.slice(UNDERLINE_MARKER.length, -UNDERLINE_MARKER.length)}</u>);
+      tokens.push(<u key={`u-${offset + match.index}`}>{full.slice(UNDERLINE_MARKER.length, -UNDERLINE_MARKER.length)}</u>);
     } else {
       tokens.push(full);
     }

@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "125",
+                "date": "2026-10-31",
+                "title": "Klikbare links in vergaderbordkaartjes",
+                "highlights": [
+                    "Webadressen in kaartbeschrijvingen en updates zijn nu klikbare links en openen in een nieuw tabblad.",
+                    "Links uit een Trello-import werken ook, en klikken op een link opent niet meer per ongeluk de bewerkmodus.",
+                ],
+            },
+            {
                 "iteration": "124",
                 "date": "2026-10-31",
                 "title": "Zien wie een kaartje heeft aangemaakt",

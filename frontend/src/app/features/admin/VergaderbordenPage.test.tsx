@@ -285,6 +285,31 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
+  it("maakt links in beschrijving en updates klikbaar zonder de bewerkmodus te openen", async () => {
+    const card = { id: "c1", project_id: "p1", title: "Links", description: "Zie https://windwilly.nl/nieuws. en [het plan](https://example.org/plan \"smartCard-inline\")\n**Vet** www.example.com", column: "todo", position: 0, assignments: [], updates_count: 1, recordings_count: 0 };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+    api.getBoardCard.mockResolvedValue({
+      card,
+      updates: [{ id: "u1", author_user_id: "u1", author_username: "mark", author_display_name: "Mark", message: "Verslag: http://example.net/a?b=1", created_at: "2026-10-31T09:00:00Z" }],
+      recordings: []
+    });
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+
+    const bare = await screen.findByRole("link", { name: "https://windwilly.nl/nieuws" });
+    expect(bare).toHaveAttribute("href", "https://windwilly.nl/nieuws");
+    expect(bare).toHaveAttribute("target", "_blank");
+    expect(bare).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("link", { name: "het plan" })).toHaveAttribute("href", "https://example.org/plan");
+    expect(screen.getByRole("link", { name: "www.example.com" })).toHaveAttribute("href", "https://www.example.com");
+    expect(screen.getByRole("link", { name: "http://example.net/a?b=1" })).toHaveAttribute("href", "http://example.net/a?b=1");
+    expect(screen.getByText("Vet").tagName).toBe("STRONG");
+
+    fireEvent.click(bare);
+    expect(screen.queryByRole("textbox", { name: "Beschrijving" })).not.toBeInTheDocument();
+  });
+
   it("toont wie een kaart heeft aangemaakt in het kaartdetail", async () => {
     const created = { id: "c1", project_id: "p1", title: "Eigen kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, created_at: "2026-10-31T09:15:00Z", created_by_user_id: "u1", created_by_username: "mark", created_by_display_name: "Mark Mevius" };
     const imported = { ...created, id: "c2", title: "Trellokaart", position: 1, is_trello_import: true, created_by_user_id: null, created_by_username: null, created_by_display_name: null };
