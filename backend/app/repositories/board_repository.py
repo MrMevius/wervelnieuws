@@ -85,7 +85,7 @@ class BoardRepository:
                     BoardCard.is_archived.is_(False),
                     BoardCard.deleted_at.is_(None),
                 )
-                .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user))
+                .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user), joinedload(BoardCard.created_by))
                 .order_by(BoardCard.column.asc(), BoardCard.position.asc(), BoardCard.created_at.asc())
             ).unique().all()
         )
@@ -99,7 +99,7 @@ class BoardRepository:
                     BoardCard.is_archived.is_(True),
                     BoardCard.deleted_at.is_(None),
                 )
-                .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user))
+                .options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user), joinedload(BoardCard.created_by))
                 .order_by(BoardCard.position.asc(), BoardCard.created_at.asc())
             ).unique().all()
         )
@@ -155,6 +155,7 @@ class BoardRepository:
         *,
         trello_card_id: str | None = None,
         is_archived: bool = False,
+        created_by_user_id: str | None = None,
     ) -> BoardCard:
         max_position = self.db.scalar(
             select(func.max(BoardCard.position)).where(
@@ -173,6 +174,7 @@ class BoardRepository:
             trello_card_id=trello_card_id,
             is_archived=is_archived,
             position=int(max_position or -1) + 1,
+            created_by_user_id=created_by_user_id,
         )
         self.db.add(card)
         self.db.flush()
@@ -182,7 +184,7 @@ class BoardRepository:
         stmt = select(BoardCard).where(BoardCard.id == card_id)
         if not include_deleted:
             stmt = stmt.where(BoardCard.deleted_at.is_(None))
-        return self.db.scalar(stmt.options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user)))
+        return self.db.scalar(stmt.options(joinedload(BoardCard.assignments).joinedload(CardAssignment.user), joinedload(BoardCard.created_by)))
 
     def archive_card(self, card: BoardCard) -> BoardCard:
         card.is_archived = True

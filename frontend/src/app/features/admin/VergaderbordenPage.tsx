@@ -70,6 +70,13 @@ function cardUrgencyValue(card: Pick<BoardCard, "urgency">): "normal" | "urgent"
   return card.urgency === "urgent" ? "urgent" : "normal";
 }
 
+function formatCardCreator(card: Pick<BoardCard, "is_trello_import" | "created_at" | "created_by_display_name">): string {
+  const when = card.created_at ? ` op ${formatAmsterdamDateTime(card.created_at)}` : "";
+  if (card.is_trello_import) return `Geïmporteerd uit Trello${when}`;
+  if (card.created_by_display_name) return `Aangemaakt door ${card.created_by_display_name}${when}`;
+  return `Aangemaakt${when} · maker onbekend`;
+}
+
 function suggestCardTitleFromTranscript(value: string) {
   const firstSentence = value
     .replace(/\s+/g, " ")
@@ -2533,6 +2540,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     </h2>
                   </div>
                 )}
+                <p className="board-detail-created-by">{formatCardCreator(cardQuery.data.card)}</p>
                 <div className="board-detail-members"><span>Betrokken</span>
                 <AssignedUserAvatarRow assignments={cardQuery.data.card.assignments} className="board-detail-assignment-avatars" />
                 {!isReadOnly && <BoardMemberSelector key={cardQuery.data.card.id} users={boardAccessUsers} assignments={cardQuery.data.card.assignments} onSave={async (ids) => {

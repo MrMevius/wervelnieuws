@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "124",
+                "date": "2026-10-31",
+                "title": "Zien wie een kaartje heeft aangemaakt",
+                "highlights": [
+                    "In het kaartdetail van een vergaderbord staat nu wie het kaartje heeft aangemaakt en wanneer.",
+                    "Voor bestaande kaartjes is de maker waar mogelijk teruggezocht in de activiteitenhistorie.",
+                    "Kaartjes uit een Trello-import zijn herkenbaar als geïmporteerd; als de maker niet meer te achterhalen is, staat dat er eerlijk bij.",
+                ],
+            },
+            {
                 "iteration": "123",
                 "date": "2026-09-10",
                 "title": "Urenregistratie met een helder overzicht en los formulier",

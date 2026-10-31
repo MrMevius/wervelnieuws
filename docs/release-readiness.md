@@ -37,6 +37,12 @@ Verification: 381 backend tests and 224 frontend tests pass, plus TypeScript and
 
 The local development upgrade was rehearsed on a verified restore copy before applying it to the database. All 53 tables were compared, the 6 existing registrations were preserved exactly (apart from the intended duration transformation), and SQLite integrity and foreign-key checks passed. API and worker were restarted after verification. No production rollout was performed. The existing large-JavaScript-chunk warning remains.
 
+### Board card creator (October 2026)
+
+Showing who created a board card requires migration `20261031_0033` (parent `20260910_0032`). It adds the nullable `board_cards.created_by_user_id` column and backfills it from the earliest `board.card.created` audit event per card, only for users that still exist and never for Trello imports. No other data is rewritten. Stop database writers and verify database/storage backups before upgrading. A downgrade drops only the new column; the creator can be derived again from the audit trail on a later upgrade.
+
+Verification: 381 backend tests (1 skipped) and 230 frontend tests pass, plus TypeScript, the Vite production build and the release schema preflight. No production or development database upgrade was performed.
+
 ### Production checklist
 
 Before a production release:

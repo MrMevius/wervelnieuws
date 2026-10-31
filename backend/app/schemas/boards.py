@@ -227,6 +227,11 @@ class BoardCardResponse(BaseModel):
     urgency: BoardUrgency = BoardUrgency.normal
     position: int
     is_archived: bool = False
+    is_trello_import: bool = False
+    created_at: datetime | None = None
+    created_by_user_id: str | None = None
+    created_by_username: str | None = None
+    created_by_display_name: str | None = None
     assignments: list[CardAssignmentResponse]
     updates_count: int
     recordings_count: int

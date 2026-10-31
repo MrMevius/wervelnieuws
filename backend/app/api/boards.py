@@ -218,6 +218,7 @@ def _build_move_update_message(old_column: str, new_column: str) -> str:
 
 
 def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
+    created_by = card.created_by
     return BoardCardResponse(
         id=card.id,
         project_id=card.project_id,
@@ -227,6 +228,11 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         urgency=card.urgency,
         position=card.position,
         is_archived=card.is_archived,
+        is_trello_import=card.trello_card_id is not None,
+        created_at=card.created_at,
+        created_by_user_id=card.created_by_user_id,
+        created_by_username=created_by.username if created_by else None,
+        created_by_display_name=_display_name(created_by) if created_by else None,
         assignments=[
             CardAssignmentResponse(
                 id=row.id,
@@ -611,7 +617,7 @@ def create_card(project_id: str, payload: BoardCardCreateRequest, current: User 
     project = service.ensure_project_access(repo.get_project(project_id), current)
     service.ensure_project_writable(project)
     assignment_user_ids = service.ensure_active_board_assignment_users(project, payload.assignment_user_ids)
-    card = repo.create_card(project.id, payload.title, payload.description, payload.column, payload.urgency)
+    card = repo.create_card(project.id, payload.title, payload.description, payload.column, payload.urgency, created_by_user_id=current.id)
     repo.replace_assignments(card, assignment_user_ids)
     card = service.ensure_card_access(repo.get_card(card.id), current)
     service.touch_activity(project)

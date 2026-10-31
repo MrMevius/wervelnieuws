@@ -285,6 +285,26 @@ describe("Vergaderborden drag/drop", () => {
     });
   });
 
+  it("toont wie een kaart heeft aangemaakt in het kaartdetail", async () => {
+    const created = { id: "c1", project_id: "p1", title: "Eigen kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, created_at: "2026-10-31T09:15:00Z", created_by_user_id: "u1", created_by_username: "mark", created_by_display_name: "Mark Mevius" };
+    const imported = { ...created, id: "c2", title: "Trellokaart", position: 1, is_trello_import: true, created_by_user_id: null, created_by_username: null, created_by_display_name: null };
+    const legacy = { ...created, id: "c3", title: "Oude kaart", position: 2, created_by_user_id: null, created_by_username: null, created_by_display_name: null };
+    api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [created, imported, legacy] });
+    api.getBoardCard.mockImplementation(async (id: string) => ({ card: [created, imported, legacy].find((item) => item.id === id), updates: [], recordings: [] }));
+
+    renderPage();
+    fireEvent.click(await screen.findByTestId("board-card-c1"));
+    expect(await screen.findByText(/^Aangemaakt door Mark Mevius op 31.+10:15$/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Kaartdetail sluiten"));
+    fireEvent.click(await screen.findByTestId("board-card-c2"));
+    expect(await screen.findByText(/^Geïmporteerd uit Trello op /)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Kaartdetail sluiten"));
+    fireEvent.click(await screen.findByTestId("board-card-c3"));
+    expect(await screen.findByText(/maker onbekend$/)).toBeInTheDocument();
+  });
+
   it("markeert urgente kaarten op het bord en laat de urgentie in het detail aanpassen", async () => {
     const card = { id: "c1", project_id: "p1", title: "Direct handelen", description: "", column: "todo", urgency: "urgent", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
