@@ -2725,18 +2725,15 @@ button:disabled {
   }
 
   .admin-board-rights-header,
-  .admin-board-rights-toolbar,
-  .admin-board-rights-card-header {
+  .admin-board-rights-toolbar {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
 
-  .admin-board-rights-card-actions,
   .admin-board-rights-empty-actions {
     width: 100%;
   }
 
-  .admin-board-rights-card-actions button,
   .admin-board-rights-empty-actions button,
   .admin-board-rights-empty-actions a {
     width: 100%;
@@ -5083,7 +5080,7 @@ tbody tr.row-selected {
 .admin-board-rights-boards-list {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 
 .admin-board-rights-card {
@@ -5091,7 +5088,8 @@ tbody tr.row-selected {
   border-radius: 12px;
   padding: 1rem;
   background: color-mix(in srgb, var(--surface-muted) 70%, transparent 30%);
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   box-shadow: 0 1px 0 color-mix(in srgb, var(--line) 60%, transparent 40%);
 }
@@ -5105,56 +5103,113 @@ tbody tr.row-selected {
   background: color-mix(in srgb, var(--brand-soft) 22%, var(--surface-muted) 78%);
 }
 
-.admin-board-rights-card.tone-empty {
-  background: color-mix(in srgb, var(--brand-soft) 12%, var(--surface-muted) 88%);
-}
-
 .admin-board-rights-card-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
-  align-items: start;
-}
-
-.admin-board-rights-card-header h3 {
-  margin-bottom: 4px;
-}
-
-.admin-board-rights-meta {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
-.admin-board-rights-chip {
+.admin-board-rights-card-title {
+  min-width: 0;
+}
+
+.admin-board-rights-card-title h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.admin-board-rights-card-title p {
+  margin: 4px 0 0;
+  font-size: 0.9rem;
+}
+
+.admin-board-rights-status {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
+  gap: 6px;
+  padding: 3px 10px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--line) 65%, transparent 35%);
-  background: color-mix(in srgb, var(--surface) 78%, var(--brand-soft) 22%);
-  color: var(--text);
-  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-board-rights-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.admin-board-rights-status.tone-active {
+  border-color: var(--status-approved-border);
+  background: var(--status-approved-bg);
+  color: var(--status-approved-fg);
+}
+
+.admin-board-rights-status.tone-empty {
+  border-style: dashed;
+}
+
+.admin-board-rights-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 0;
+  border-block: 1px solid color-mix(in srgb, var(--line) 70%, transparent 30%);
+}
+
+.admin-board-rights-facts > div {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.admin-board-rights-facts dt {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.admin-board-rights-facts dd {
+  margin: 0;
+  font-size: 0.9rem;
   font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-board-rights-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: auto;
 }
 
 .admin-board-rights-helper {
-  margin-top: 8px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
-.admin-board-rights-card-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  align-self: start;
+.admin-board-rights-helper.is-dirty {
+  color: var(--text-accent);
+  font-weight: 600;
 }
 
-.admin-board-rights-card-actions .button-primary,
-.admin-board-rights-card-actions .button-danger {
-  min-height: 40px;
+.admin-board-rights-delete {
+  padding: 6px 12px;
+  font-size: 0.85rem;
 }
 
 .admin-board-rights-users {
