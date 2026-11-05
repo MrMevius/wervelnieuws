@@ -956,7 +956,7 @@ describe("App", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
     });
   });
 
@@ -1003,11 +1003,14 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "WindWilly" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "https://www.groenenoabers.nl/Groene-Noabers-Logo.png");
-      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Samenwerkende coöperaties" })).toBeInTheDocument();
-      expect(screen.getByText(/online vraagbaak\./i)).toBeInTheDocument();
-      expect(screen.getByText(/brengt nieuws naar buiten\./i)).toBeInTheDocument();
-      expect(screen.getByText(/bundelt open acties\./i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Drie coöperaties, één team" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Energiek Daarle" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Duurzaam Daarlerveen" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Noaber & Co" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "noaber.co ↗" })).toHaveAttribute("href", "https://noaber.co/");
+      expect(screen.getByRole("link", { name: "Naar Participatiemomenten" })).toHaveAttribute("href", "/participatiemomenten");
+      expect(screen.getByRole("link", { name: "Naar WindWilly-assistent (binnenkort)" })).toHaveAttribute("href", "/windwilly");
       expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Rustig startpunt" })).not.toBeInTheDocument();
@@ -1018,7 +1021,7 @@ describe("App", () => {
       ).not.toBeInTheDocument();
     });
 
-    expect(container.querySelectorAll(".windwilly-homepage .panel")).toHaveLength(2);
+    expect(container.querySelectorAll(".windwilly-homepage .panel")).toHaveLength(3);
 
     expect(screen.queryByText("Komende chatbotmodule voor snelle beantwoording van projectvragen.")).not.toBeInTheDocument();
     expect(screen.queryByText("Volledige redactie- en publicatieflow voor lokale windparkcommunicatie.")).not.toBeInTheDocument();
@@ -1222,7 +1225,7 @@ describe("App", () => {
     await loginIntoApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Trello" })).not.toBeInTheDocument();
     });
   });
@@ -1250,8 +1253,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("link", { name: "WindWilly landing" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "WindWilly voor vraag, nieuws en acties" })).toBeInTheDocument();
-      expect(screen.getByText("Één rustig startpunt voor wat er speelt.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
+      expect(screen.getByText(/gezamenlijke werkplek van drie energiecoöperaties/)).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Spring naar de belangrijkste onderdelen" })).not.toBeInTheDocument();
