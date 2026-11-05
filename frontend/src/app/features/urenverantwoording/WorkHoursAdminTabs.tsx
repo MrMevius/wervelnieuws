@@ -168,12 +168,100 @@ export function WorkHoursHistoryAdminTab() {
   </section>;
 }
 
+const AUDIT_ENTITY_LABELS: Record<string, string> = {
+  group: "Urenregistratie",
+  post: "Post",
+  project: "Project",
+  external_person: "Externe persoon",
+  historical_identity: "Historische identiteit",
+  authorization: "Toegang"
+};
+
+const AUDIT_VERB_LABELS: Record<string, string> = {
+  created: "aangemaakt",
+  updated: "bijgewerkt",
+  deleted: "verwijderd",
+  restored: "hersteld",
+  archived: "gearchiveerd",
+  merged: "samengevoegd",
+  relinked: "gekoppeld",
+  denied: "geweigerd"
+};
+
+const AUDIT_ACTIONS = [
+  "work_hours.group.created", "work_hours.group.updated", "work_hours.group.deleted", "work_hours.group.restored",
+  "work_hours.post.created", "work_hours.post.updated", "work_hours.post.archived", "work_hours.post.deleted", "work_hours.post.restored",
+  "work_hours.project.created", "work_hours.project.updated", "work_hours.project.archived", "work_hours.project.deleted", "work_hours.project.restored",
+  "work_hours.external_person.created", "work_hours.external_person.updated", "work_hours.external_person.merged", "work_hours.external_person.archived", "work_hours.external_person.restored",
+  "work_hours.historical_identity.relinked",
+  "work_hours.authorization.denied"
+] as const;
+
+const AUDIT_RESULTS: Record<string, { label: string; tone: "active" | "inactive" }> = {
+  success: { label: "Gelukt", tone: "active" },
+  denied: { label: "Geweigerd", tone: "inactive" }
+};
+
+const EMPTY_AUDIT_FILTERS = { actor: "", action: "", result: "", method: "", path: "", from: "", to: "" };
+
+function auditActionLabel(action: string) {
+  const [, entity, verb] = action.split(".");
+  const entityLabel = entity ? AUDIT_ENTITY_LABELS[entity] : undefined;
+  const verbLabel = verb ? AUDIT_VERB_LABELS[verb] : undefined;
+  return entityLabel && verbLabel ? `${entityLabel} ${verbLabel}` : action;
+}
+
 export function WorkHoursAuditAdminTab() {
-  const [filters, setFilters] = useState({ actor: "", action: "", result: "", method: "", path: "", from: "", to: "" });
+  const [filters, setFilters] = useState(EMPTY_AUDIT_FILTERS);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<25 | 50 | 100>(25);
   const auditQuery = useQuery({ queryKey: ["work-hours-audit", filters, page, pageSize], queryFn: () => listWorkHoursAudit({ ...filters, page, page_size: pageSize }) });
+  const metaQuery = useQuery({ queryKey: ["work-hours-meta"], queryFn: listWorkHoursMeta });
   const events = Array.isArray(auditQuery.data) ? auditQuery.data : (auditQuery.data?.items ?? []);
+  const total = auditQuery.data?.total ?? 0;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const hasFilters = Object.values(filters).some(Boolean);
+  const actors = new Map<string, string>();
+  (metaQuery.data?.eligible_users ?? []).forEach((user) => actors.set(user.id, user.full_name || user.display_name || user.username || user.id));
+  events.forEach((event) => { if (event.actor_user_id && !actors.has(event.actor_user_id)) actors.set(event.actor_user_id, event.actor_display_name); });
+  const actorOptions = [...actors].sort((left, right) => left[1].localeCompare(right[1], "nl"));
   const updateFilter = (field: keyof typeof filters, value: string) => { setFilters((current) => ({ ...current, [field]: value })); setPage(1); };
-  return <section aria-labelledby="work-hours-audit-heading"><h2 id="work-hours-audit-heading">Uren-audit</h2><div className="form-grid" aria-label="Auditfilters"><label><span>Actor-ID</span><input value={filters.actor} onChange={(event) => updateFilter("actor", event.target.value)} /></label><label><span>Actie</span><input value={filters.action} onChange={(event) => updateFilter("action", event.target.value)} /></label><label><span>Resultaat</span><input value={filters.result} onChange={(event) => updateFilter("result", event.target.value)} /></label><label><span>HTTP-methode</span><input value={filters.method} onChange={(event) => updateFilter("method", event.target.value)} /></label><label><span>Requestpad</span><input value={filters.path} onChange={(event) => updateFilter("path", event.target.value)} /></label><label><span>Vanaf</span><input type="datetime-local" value={filters.from} onChange={(event) => updateFilter("from", event.target.value)} /></label><label><span>Tot en met</span><input type="datetime-local" value={filters.to} onChange={(event) => updateFilter("to", event.target.value)} /></label><label><span>Auditregels per pagina</span><select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as typeof pageSize); setPage(1); }}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</select></label></div><ul>{events.map((event) => <li key={event.id}>{event.actor_display_name} · {formatAmsterdamDateTime(event.created_at)} · {event.action}{event.project_name ? ` · ${event.project_name}` : ""}{event.post_name ? ` · ${event.post_name}` : ""} · {event.request_method} {event.request_path} · {event.result}</li>)}</ul><div className="section-actions"><button type="button" disabled={page <= 1 || (auditQuery.data?.total ?? 0) === 0} onClick={() => setPage((current) => Math.max(1, current - 1))}>Vorige auditpagina</button><span>Auditpagina {auditQuery.data?.page ?? page} van {Math.max(1, Math.ceil((auditQuery.data?.total ?? 0) / pageSize))} · totaal {auditQuery.data?.total ?? 0}</span><button type="button" disabled={page * pageSize >= (auditQuery.data?.total ?? 0)} onClick={() => setPage((current) => current + 1)}>Volgende auditpagina</button></div></section>;
+  return <section aria-labelledby="work-hours-audit-heading">
+    <header className="admin-users-header">
+      <h2 id="work-hours-audit-heading">Uren-audit</h2>
+      <p className="muted">Wie wat heeft gewijzigd in de urenregistratie, nieuwste eerst.</p>
+    </header>
+    <section className="admin-users-table-section" aria-label="Auditregels">
+      <div className="admin-audit-filters" aria-label="Auditfilters">
+        <label className="admin-field"><span>Uitgevoerd door</span><select value={filters.actor} onChange={(event) => updateFilter("actor", event.target.value)}><option value="">Iedereen</option>{actorOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
+        <label className="admin-field"><span>Actie</span><select value={filters.action} onChange={(event) => updateFilter("action", event.target.value)}><option value="">Alle acties</option>{AUDIT_ACTIONS.map((action) => <option key={action} value={action}>{auditActionLabel(action)}</option>)}</select></label>
+        <label className="admin-field"><span>Resultaat</span><select value={filters.result} onChange={(event) => updateFilter("result", event.target.value)}><option value="">Alle resultaten</option>{Object.entries(AUDIT_RESULTS).map(([value, { label }]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label className="admin-field"><span>HTTP-methode</span><select value={filters.method} onChange={(event) => updateFilter("method", event.target.value)}><option value="">Alle methodes</option>{["POST", "PUT", "PATCH", "DELETE"].map((method) => <option key={method} value={method}>{method}</option>)}</select></label>
+        <label className="admin-field admin-audit-path"><span>Requestpad</span><input type="search" placeholder="Bijv. groepen" value={filters.path} onChange={(event) => updateFilter("path", event.target.value)} /></label>
+        <label className="admin-field"><span>Vanaf</span><input type="datetime-local" value={filters.from} onChange={(event) => updateFilter("from", event.target.value)} /></label>
+        <label className="admin-field"><span>Tot en met</span><input type="datetime-local" value={filters.to} onChange={(event) => updateFilter("to", event.target.value)} /></label>
+        <div className="admin-audit-filter-actions"><button type="button" className="button-neutral admin-user-action-compact" disabled={!hasFilters} onClick={() => { setFilters(EMPTY_AUDIT_FILTERS); setPage(1); }}>Filters wissen</button></div>
+      </div>
+      {events.length ? <div className="table-wrap"><ResponsiveTable className="admin-audit-table"><thead><ResponsiveRow><th>Tijdstip</th><th>Door</th><th>Actie</th><th>Onderwerp</th><th>Request</th><th>Resultaat</th></ResponsiveRow></thead><tbody>
+        {events.map((event) => {
+          const result = AUDIT_RESULTS[event.result];
+          const subject = [event.project_name, event.post_name].filter(Boolean).join(" · ");
+          return <ResponsiveRow key={event.id}>
+            <td className="admin-audit-time">{formatAmsterdamDateTime(event.created_at)}</td>
+            <td>{event.actor_display_name}</td>
+            <td><span className="admin-audit-action" title={event.action}>{auditActionLabel(event.action)}</span></td>
+            <td>{subject || <span className="muted">-</span>}</td>
+            <td><span className="admin-audit-request"><span className="admin-audit-method">{event.request_method || "-"}</span><code title={event.request_path}>{event.request_path}</code></span></td>
+            <td><span className={`status-badge status-badge-${result?.tone ?? "muted"}`}>{result?.label ?? (event.result || "Onbekend")}</span></td>
+          </ResponsiveRow>;
+        })}
+      </tbody></ResponsiveTable></div> : <p className="admin-empty-state muted">{auditQuery.isLoading ? "Auditregels laden..." : hasFilters ? "Geen auditregels gevonden voor deze filters." : "Er zijn nog geen auditregels."}</p>}
+      <div className="admin-pagination admin-audit-pagination">
+        <label className="admin-audit-page-size"><span className="muted">Auditregels per pagina</span><select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as typeof pageSize); setPage(1); }}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+        <button type="button" className="button-neutral admin-user-action-compact" disabled={page <= 1 || total === 0} onClick={() => setPage((current) => Math.max(1, current - 1))}>Vorige auditpagina</button>
+        <span className="muted">Pagina {auditQuery.data?.page ?? page} van {pageCount} · {total} {total === 1 ? "regel" : "regels"}</span>
+        <button type="button" className="button-neutral admin-user-action-compact" disabled={page * pageSize >= total} onClick={() => setPage((current) => current + 1)}>Volgende auditpagina</button>
+      </div>
+    </section>
+  </section>;
 }
