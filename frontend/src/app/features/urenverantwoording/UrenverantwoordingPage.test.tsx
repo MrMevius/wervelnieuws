@@ -72,7 +72,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     ] });
     renderHistoryTab();
     const person = await screen.findByText("Externe Anna");
-    const row = person.closest("li")!;
+    const row = person.closest("tr")!;
     const editTrigger = within(row).getByRole("button", { name: "Bewerk" });
     await userEvent.click(editTrigger);
     const editDialog = await screen.findByRole("dialog", { name: "Externe persoon bewerken" });
@@ -146,7 +146,7 @@ describe("UrenverantwoordingPage compact central management", () => {
       { id: "ep2", display_name: "Externe Piet", email: "piet@example.com", note: "", is_active: true, deleted_at: null, row_version: 2 }
     ] });
     const { queryClient } = renderHistoryTab();
-    const row = (await screen.findByText("Externe Anna")).closest("li")!;
+    const row = (await screen.findByText("Externe Anna")).closest("tr")!;
     await userEvent.click(within(row).getByRole("button", { name: "Samenvoegen" }));
     const dialog = await screen.findByRole("dialog", { name: "Externe personen samenvoegen" });
     await userEvent.selectOptions(within(dialog).getByLabelText("Doelpersoon"), "ep2");
@@ -158,10 +158,12 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(within(dialog).getByRole("button", { name: "Samenvoegen" })).toBeDisabled();
     resolveMerge?.({ id: "ep1" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Externe personen samenvoegen" })).not.toBeInTheDocument());
-    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([
+    await waitFor(() => expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([
       { queryKey: ["work-hours-meta"] },
+      { queryKey: ["work-hours-admin-masterdata"] },
+      { queryKey: ["work-hours-admin-history"] },
       { queryKey: ["work-hours-groups"] }
-    ]);
+    ]));
 
     api.mergeWorkExternalPerson.mockRejectedValueOnce(new Error("Samenvoegen geweigerd"));
     await userEvent.click(within(row).getByRole("button", { name: "Samenvoegen" }));
@@ -171,28 +173,33 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(await within(failedDialog).findByRole("alert")).toHaveTextContent("Samenvoegen geweigerd");
   });
 
-  it("preserves the original query invalidation contract for each external-person mutation", async () => {
-    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [
-      { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", note: "", is_active: true, deleted_at: null, row_version: 1 }
-    ] });
+  it("refreshes the people list, metadata and history after each external-person mutation", async () => {
+    const active = { id: "ep1", display_name: "Externe Anna", email: "anna@example.com", note: "", is_active: true, deleted_at: null, row_version: 1 };
+    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [active] });
     const { queryClient } = renderHistoryTab();
     const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
-    const row = (await screen.findByText("Externe Anna")).closest("li")!;
+    const refreshed = [{ queryKey: ["work-hours-meta"] }, { queryKey: ["work-hours-admin-masterdata"] }, { queryKey: ["work-hours-admin-history"] }];
+    let row = (await screen.findByText("Externe Anna")).closest("tr")!;
+    expect(within(row).getByText("Actief")).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Herstel" })).not.toBeInTheDocument();
 
     await userEvent.click(within(row).getByRole("button", { name: "Bewerk" }));
     await userEvent.click(within(await screen.findByRole("dialog", { name: "Externe persoon bewerken" })).getByRole("button", { name: "Opslaan" }));
     await waitFor(() => expect(api.updateWorkExternalPerson).toHaveBeenCalledWith("ep1", expect.objectContaining({ expected_row_version: 1 })));
-    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+    await waitFor(() => expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual(refreshed));
 
     invalidateQueries.mockClear();
+    api.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [{ ...active, is_active: false, deleted_at: "2026-11-05T09:00:00Z" }] });
     await userEvent.click(within(row).getByRole("button", { name: "Archiveer" }));
     await waitFor(() => expect(api.archiveWorkExternalPerson).toHaveBeenCalledWith("ep1", 1));
-    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+    await waitFor(() => expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual(refreshed));
+    row = (await screen.findByText("Gearchiveerd")).closest("tr")!;
+    expect(within(row).queryByRole("button", { name: "Archiveer" })).not.toBeInTheDocument();
 
     invalidateQueries.mockClear();
     await userEvent.click(within(row).getByRole("button", { name: "Herstel" }));
     await waitFor(() => expect(api.restoreWorkExternalPerson).toHaveBeenCalledWith("ep1", 1));
-    expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual([{ queryKey: ["work-hours-meta"] }]);
+    await waitFor(() => expect(invalidateQueries.mock.calls.map(([filters]) => filters)).toEqual(refreshed));
   });
 
 

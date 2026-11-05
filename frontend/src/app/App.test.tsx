@@ -3491,7 +3491,8 @@ describe("App", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Urenhistorie en identiteiten" }));
     expect(await screen.findByRole("heading", { name: "Urenhistorie en identiteiten" })).toBeInTheDocument();
     await waitFor(() => expect(mockApi.listWorkHoursAdminHistory).toHaveBeenCalledWith(expect.objectContaining({ page: 1, page_size: 25, sort_key: "display_name" })));
-    expect(screen.getByText(/Oude Piet · historical identity/)).toBeInTheDocument();
+    const identityRow = (await screen.findByText("Oude Piet")).closest("tr")!;
+    expect(within(identityRow).getByText("Historische identiteit")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Koppel aan Piet" }));
     await waitFor(() => expect(mockApi.relinkWorkHistoricalIdentity).toHaveBeenCalledWith("hi1", "u2", 3));
     await userEvent.selectOptions(screen.getByLabelText("Type historie"), "historical_identity");
