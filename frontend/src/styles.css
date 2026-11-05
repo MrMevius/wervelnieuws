@@ -4534,6 +4534,115 @@ tbody tr.row-selected {
   line-height: 1.15;
 }
 
+.admin-visibility-fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.admin-visibility-fieldset legend {
+  padding: 0;
+  margin-bottom: 5px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.admin-visibility-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 4px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-visibility-toggle:has(input:checked) {
+  border-color: color-mix(in srgb, var(--brand) 36%, var(--line) 64%);
+  background: var(--brand-soft);
+  color: var(--text);
+}
+
+.admin-visibility-toggle:has(input:focus-visible) {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.admin-visibility-toggle:has(input:disabled) {
+  cursor: progress;
+}
+
+.admin-visibility-toggle input {
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.admin-inline-edit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-inline-edit input {
+  flex: 1 1 200px;
+  min-width: 0;
+  max-width: 340px;
+}
+
+.admin-projects-table td,
+.admin-work-posts-table td {
+  vertical-align: middle;
+}
+
+.admin-projects-table th:first-child {
+  width: 42%;
+}
+
+.admin-work-posts-table th:first-child {
+  width: 24%;
+}
+
+.admin-work-posts-table th:nth-child(2) {
+  width: 44%;
+}
+
+.admin-work-posts-table input,
+.admin-work-posts-table textarea {
+  width: 100%;
+  min-width: 0;
+}
+
+.admin-projects-table tr.is-inactive input[type="text"],
+.admin-work-posts-table tr.is-inactive :is(input, textarea) {
+  color: var(--text-muted);
+}
+
+.admin-work-posts {
+  display: grid;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+
+.status-badge-muted {
+  background: var(--surface-muted);
+  color: var(--text-muted);
+}
+
 .admin-user-profile-modal {
   position: relative;
   display: grid;
