@@ -1011,6 +1011,7 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "noaber.co ↗" })).toHaveAttribute("href", "https://noaber.co/");
       expect(screen.getByRole("link", { name: "Naar Participatiemomenten" })).toHaveAttribute("href", "/participatiemomenten");
       expect(screen.getByRole("link", { name: "Naar WindWilly-assistent (binnenkort)" })).toHaveAttribute("href", "/windwilly");
+      expect(screen.getByRole("link", { name: "Naar Wervelnieuws (binnenkort)" })).toHaveAttribute("href", "/wervelnieuws");
       expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Rustig startpunt" })).not.toBeInTheDocument();

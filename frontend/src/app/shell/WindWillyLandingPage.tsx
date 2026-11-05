@@ -28,8 +28,9 @@ const MODULES: Module[] = [
   {
     title: "Wervelnieuws",
     to: WERVEL_PATHS.base,
-    text: "Van bronstukken naar een bericht voor website, Facebook en nieuwsbrief. AI helpt met schrijven, wij controleren en publiceren.",
-    icon: <svg {...iconProps}><path d="M4 5h13v14H6a2 2 0 0 1-2-2z" /><path d="M17 8h3v9a2 2 0 0 1-2 2" /><path d="M7 9h7M7 12h7M7 15h4" /></svg>
+    text: "Straks van bronstukken naar een bericht voor website, Facebook en nieuwsbrief. AI helpt met schrijven, wij controleren en publiceren.",
+    icon: <svg {...iconProps}><path d="M4 5h13v14H6a2 2 0 0 1-2-2z" /><path d="M17 8h3v9a2 2 0 0 1-2 2" /><path d="M7 9h7M7 12h7M7 15h4" /></svg>,
+    soon: true
   },
   {
     title: "WindWilly-assistent",
