@@ -2185,8 +2185,14 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "admin" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
 
+    const createToggle = await screen.findByRole("button", { name: "+ Nieuwe gebruiker" });
+    expect(createToggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("form", { name: "Nieuwe gebruiker toevoegen" })).not.toBeInTheDocument();
+    fireEvent.click(createToggle);
+
     await waitFor(() => {
       expect(screen.getByRole("form", { name: "Nieuwe gebruiker toevoegen" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Tijdelijk wachtwoord")).toHaveAttribute("autocomplete", "new-password");
       expect(screen.getByLabelText("Gebruikersnaam")).toBeInTheDocument();
       expect(screen.getByLabelText("Tijdelijk wachtwoord")).toBeInTheDocument();
       expect(screen.getByLabelText("Nieuwe gebruikersnaam")).toBeInTheDocument();
@@ -2205,6 +2211,7 @@ describe("App", () => {
       expect(mockApi.createAdminUser).toHaveBeenCalledWith("redacteur", "redacteur123");
       expect(screen.getByText("Nieuwe gebruiker toegevoegd.")).toBeInTheDocument();
       expect(screen.getByText("redacteur")).toBeInTheDocument();
+      expect(screen.queryByRole("form", { name: "Nieuwe gebruiker toevoegen" })).not.toBeInTheDocument();
     });
   });
 
