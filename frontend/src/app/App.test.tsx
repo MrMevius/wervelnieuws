@@ -956,7 +956,7 @@ describe("App", () => {
     renderApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wij draaien mee" })).toBeInTheDocument();
     });
   });
 
@@ -1011,8 +1011,10 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "WindWilly" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "https://www.groenenoabers.nl/Groene-Noabers-Logo.png");
-      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Drie coöperaties, één team" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wij draaien mee" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen zijn we Groene Noabers" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Coöperatie Groene Noabers" })).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "groenenoabers.nl ↗" })).toHaveAttribute("href", "https://www.groenenoabers.nl/");
       expect(screen.getByRole("heading", { name: "Energiek Daarle" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Duurzaam Daarlerveen" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Noaber & Co" })).toBeInTheDocument();
@@ -1234,7 +1236,7 @@ describe("App", () => {
     await loginIntoApp();
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wij draaien mee" })).toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Trello" })).not.toBeInTheDocument();
     });
   });
@@ -1262,7 +1264,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("link", { name: "WindWilly landing" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wij draaien mee" })).toBeInTheDocument();
       expect(screen.getByText(/gezamenlijke werkplek van drie energiecoöperaties/)).toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Naar overzicht" })).not.toBeInTheDocument();
       expect(screen.queryByRole("link", { name: "Open planning" })).not.toBeInTheDocument();
