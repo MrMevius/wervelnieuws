@@ -113,6 +113,12 @@ export function LegacyWorkHoursRedirect() {
 const ADMIN_AVATAR_ALLOWED_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 const ADMIN_AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 
+function userInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : name.trim().slice(0, 2);
+  return letters.toUpperCase();
+}
+
 function validateAdminAvatarFile(file: File | null): string | null {
   if (!file) {
     return null;
@@ -4378,6 +4384,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [newUsername, setNewUsername] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectVisibility, setNewProjectVisibility] = useState({
     is_visible_in_boards: true,
@@ -4570,6 +4577,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       });
       setNewUsername("");
       setNewPassword("");
+      setIsCreateUserOpen(false);
       setFeedback("Nieuwe gebruiker toegevoegd.");
     },
     onError: (error) => {
@@ -5071,13 +5079,27 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
 
       <div hidden={activeAdminTab !== "users"}>
       <AdminQueryStatus resource="Gebruikers" isLoading={usersQuery.isLoading} isError={usersQuery.isError} onRetry={() => void usersQuery.refetch()} />
-      <header className="admin-users-header">
-        <h2>Gebruikers beheren</h2>
-        <p className="muted">Beheer accounts, tijdelijke wachtwoorden, actieve status en adminrechten voor het team.</p>
+      <header className="admin-users-header admin-section-heading-row">
+        <div className="admin-users-table-heading-row">
+          <h2>Gebruikers beheren</h2>
+          <p className="muted">Beheer accounts, tijdelijke wachtwoorden, actieve status en adminrechten voor het team.</p>
+        </div>
+        <button
+          type="button"
+          className="button-neutral admin-create-toggle"
+          aria-expanded={isCreateUserOpen}
+          aria-controls="admin-create-user-form"
+          onClick={() => setIsCreateUserOpen((open) => !open)}
+        >
+          {isCreateUserOpen ? "Annuleren" : "+ Nieuwe gebruiker"}
+        </button>
       </header>
+      {isCreateUserOpen && (
       <form
-        className="admin-create-user admin-create-user-card"
+        id="admin-create-user-form"
+        className="admin-create-inline"
         aria-label="Nieuwe gebruiker toevoegen"
+        autoComplete="off"
         onSubmit={(event) => {
           event.preventDefault();
           setFeedback(null);
@@ -5087,10 +5109,6 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           });
         }}
       >
-        <div className="admin-create-user-intro">
-          <h3>Nieuwe gebruiker toevoegen</h3>
-          <p className="muted">Maak een account met een tijdelijk wachtwoord. De gebruiker kan dit later zelf wijzigen.</p>
-        </div>
         <label className="admin-field">
           <span>Gebruikersnaam</span>
           <input
@@ -5099,9 +5117,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             onChange={(event) => setNewUsername(event.target.value)}
             placeholder="Bijv. redacteur"
             aria-label="Nieuwe gebruikersnaam"
+            name="new-user-username"
+            autoComplete="off"
             minLength={3}
             maxLength={80}
             required
+            autoFocus
           />
         </label>
         <label className="admin-field">
@@ -5112,6 +5133,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
             onChange={(event) => setNewPassword(event.target.value)}
             placeholder="Minimaal 4 tekens"
             aria-label="Tijdelijk wachtwoord"
+            name="new-user-password"
+            autoComplete="new-password"
             minLength={4}
             maxLength={128}
             required
@@ -5124,18 +5147,18 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         >
           Gebruiker toevoegen
         </button>
+        <p className="admin-create-inline-hint muted">De gebruiker kan het tijdelijke wachtwoord later zelf wijzigen.</p>
       </form>
+      )}
       <section className="admin-users-table-section" aria-labelledby="admin-users-table-heading">
         <div className="admin-users-table-heading-row">
-          <h3 id="admin-users-table-heading">Bestaande gebruikers</h3>
-          <p className="muted">Status, rol en accountacties per gebruiker.</p>
+          <h3 id="admin-users-table-heading">Bestaande gebruikers <span className="admin-count">{usersQuery.data?.length ?? 0}</span></h3>
         </div>
       <div className="table-wrap">
-        <ResponsiveTable>
+        <ResponsiveTable className="admin-users-table">
           <thead>
             <ResponsiveRow>
               <th>Gebruiker</th>
-              <th>Naam</th>
               <th>E-mail</th>
               <th>Status</th>
               <th>Rol</th>
@@ -5144,10 +5167,17 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </thead>
           <tbody>
             {(usersQuery.data ?? []).map((user) => (
-              <ResponsiveRow key={user.id}>
-                <td>{user.username}</td>
-                <td>{user.full_name ?? "-"}</td>
-                <td>{user.email ?? "-"}</td>
+              <ResponsiveRow key={user.id} className={user.is_active ? undefined : "is-inactive"}>
+                <td>
+                  <div className="admin-user-identity">
+                    <span className="admin-user-initials" aria-hidden="true">{userInitials(user.full_name || user.username)}</span>
+                    <span className="admin-user-names">
+                      {user.full_name && <span className="admin-user-fullname">{user.full_name}</span>}
+                      <span className={user.full_name ? "admin-user-username muted" : "admin-user-fullname"}>{user.username}</span>
+                    </span>
+                  </div>
+                </td>
+                <td>{user.email ?? <span className="muted">-</span>}</td>
                 <td><span className={`status-badge ${user.is_active ? "status-badge-active" : "status-badge-inactive"}`}>{user.is_active ? "Actief" : "Inactief"}</span></td>
                 <td><span className={`role-badge ${user.is_admin ? "role-badge-admin" : "role-badge-user"}`}>{user.is_admin ? "Admin" : "Gebruiker"}</span></td>
                 <td>

@@ -4643,6 +4643,113 @@ tbody tr.row-selected {
   color: var(--text-muted);
 }
 
+.admin-create-inline {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(180px, 260px) auto;
+  gap: 10px;
+  align-items: end;
+  justify-content: start;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-muted) 60%, var(--surface) 40%);
+}
+
+.admin-create-inline .admin-field span {
+  font-size: 0.85rem;
+}
+
+.admin-create-inline input {
+  padding: 8px 10px;
+}
+
+.admin-create-inline button {
+  padding: 8px 14px;
+}
+
+.admin-create-inline-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 0.82rem;
+}
+
+.admin-create-toggle {
+  padding: 7px 12px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.admin-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.admin-users-table td {
+  vertical-align: middle;
+}
+
+.admin-users-table th:first-child {
+  width: 30%;
+}
+
+.admin-user-identity {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.admin-user-initials {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--text-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.admin-user-names {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.admin-user-fullname {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-username {
+  font-size: 0.82rem;
+}
+
+.admin-users-table tr.is-inactive :is(.admin-user-fullname, .admin-user-initials) {
+  opacity: 0.6;
+}
+
+@media (max-width: 720px) {
+  .admin-create-inline {
+    grid-template-columns: 1fr;
+  }
+}
+
 .admin-section-heading-row {
   display: flex;
   flex-wrap: wrap;
