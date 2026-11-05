@@ -17,6 +17,12 @@ def display_name(user: User) -> str:
     return (user.full_name or "").strip() or user.username
 
 
+def _is_linkable(project: Project) -> bool:
+    # Hiding a project from this module only blocks new links; moments that
+    # already reference it keep that link and stay readable.
+    return project.is_active and not project.is_archived and project.is_visible_in_participation
+
+
 class ParticipationService:
     def __init__(self, repo: ParticipationRepository):
         self.repo = repo
@@ -27,7 +33,7 @@ class ParticipationService:
         return ParticipationMeta(
             current_user_id=current.id,
             participants=[ParticipationOption(id=user.id, name=display_name(user), selectable=user.is_active) for user in users],
-            projects=[ParticipationOption(id=project.id, name=project.name, selectable=project.is_active and not project.is_archived)
+            projects=[ParticipationOption(id=project.id, name=project.name, selectable=_is_linkable(project))
                       for project in self.repo.accessible_projects(current)],
         )
 
@@ -83,7 +89,7 @@ class ParticipationService:
                 project_rows.append(old_projects[project_id])
                 continue
             project = projects.get(project_id)
-            if not project or not project.is_active or project.is_archived:
+            if not project or not _is_linkable(project):
                 raise HTTPException(422, "Selecteer alleen actieve projecten waartoe je toegang hebt.")
             project_rows.append(ParticipationProject(source_project_id=project.id, project_id=project.id, name=project.name))
         return people_rows, project_rows

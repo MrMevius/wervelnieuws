@@ -42,12 +42,14 @@ class DatabaseRepository:
         *,
         is_visible_in_boards: bool = True,
         is_visible_in_work_hours: bool = True,
+        is_visible_in_participation: bool = True,
     ) -> Project:
         project = Project(
             name=name,
             is_active=True,
             is_visible_in_boards=is_visible_in_boards,
             is_visible_in_work_hours=is_visible_in_work_hours,
+            is_visible_in_participation=is_visible_in_participation,
         )
         self.db.add(project)
         self.db.commit()

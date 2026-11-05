@@ -34,7 +34,7 @@ Gespreksverslagen en exports kunnen persoonsgegevens bevatten. Leg alleen releva
 - Beheerders hebben toegang tot alle momenten.
 - Andere gebruikers hebben alleen lees- en exporttoegang wanneer zij toegang hebben tot **alle** gekoppelde projecten, volgens de bestaande projectuitnodigingen.
 - Binnen die projecttoegang mogen de vastlegger, gekoppelde uitvoerders en beheerders een verslag wijzigen of archiveren. Andere lezers kunnen niet wijzigen.
-- Nieuwe koppelingen vereisen actieve gebruikers en actieve, niet-gearchiveerde projecten. Bestaande historische koppelingen blijven behouden bij bewerken.
+- Nieuwe koppelingen vereisen actieve gebruikers en actieve, niet-gearchiveerde projecten die in Admin > Projecten zichtbaar zijn gezet voor Participatiemomenten. Bestaande historische koppelingen blijven behouden bij bewerken; een verborgen project blijft daarom zichtbaar bij momenten die er al aan gekoppeld zijn.
 - Namen en bron-ID's worden bij de koppeling vastgelegd. Het hernoemen of verwijderen van een gebruiker/project wist geen historische verslaginhoud. Een moment met een verwijderd project is uitsluitend voor beheerders toegankelijk.
 - Archiveren vereist bevestiging en is herstelbaar. Er is geen definitieve verwijderactie. Herstel een gearchiveerd moment voordat je het bewerkt.
 - Opslaan gebruikt een versienummer. Bij een conflict blijft de ingevoerde tekst in het paneel staan en volgt een melding; er wordt niets overschreven. Kopieer zo nodig de eigen invoer voordat je het paneel opnieuw opent.

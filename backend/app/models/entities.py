@@ -103,6 +103,7 @@ class Project(Base, TimestampMixin):
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_visible_in_boards: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_visible_in_work_hours: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_visible_in_participation: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     invited_user_ids_json: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     last_activity_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
