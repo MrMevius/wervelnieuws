@@ -208,7 +208,7 @@ function boardRightsAccessLabel(project: BoardRightsOverview["projects"][number]
   if (!sharedCount) {
     return "Alleen admins";
   }
-  return sharedCount === 1 ? "Gedeeld met 1 gebruiker" : `Gedeeld met ${sharedCount} gebruikers`;
+  return sharedCount === 1 ? "1 gebruiker" : `${sharedCount} gebruikers`;
 }
 
 function boardRightsActivityAgeHours(project: BoardRightsOverview["projects"][number]) {
@@ -222,26 +222,33 @@ function boardRightsActivityAgeHours(project: BoardRightsOverview["projects"][nu
   return (Date.now() - timestamp) / (1000 * 60 * 60);
 }
 
-function boardRightsStatusLabel(project: BoardRightsOverview["projects"][number]) {
-  if (project.card_count === 0) {
-    return { label: "Leeg bord", tone: "empty" as const };
-  }
-
+function boardRightsLastActivityLabel(project: BoardRightsOverview["projects"][number]) {
   if (!project.last_activity_at) {
-    return { label: "Nog geen activiteit", tone: "idle" as const };
+    return "Nog geen activiteit";
   }
-
   if (Number.isNaN(new Date(project.last_activity_at).getTime())) {
-    return { label: "Activiteit onbekend", tone: "idle" as const };
+    return "Onbekend";
   }
-
-  const ageLabel = formatRelativeAge(project.last_activity_at);
   const ageHours = boardRightsActivityAgeHours(project);
   if (Number.isFinite(ageHours) && ageHours < 24) {
-    return { label: `Actief · ${ageLabel}`, tone: "active" as const };
+    return formatRelativeAge(project.last_activity_at);
+  }
+  return formatAmsterdamDateTime(project.last_activity_at);
+}
+
+function boardRightsStatusLabel(project: BoardRightsOverview["projects"][number]) {
+  const activity = boardRightsLastActivityLabel(project);
+
+  if (project.card_count === 0) {
+    return { label: "Leeg", activity, tone: "empty" as const };
   }
 
-  return { label: `Stil · ${formatAmsterdamDateTime(project.last_activity_at)}`, tone: "idle" as const };
+  const ageHours = boardRightsActivityAgeHours(project);
+  if (Number.isFinite(ageHours) && ageHours < 24) {
+    return { label: "Actief", activity, tone: "active" as const };
+  }
+
+  return { label: "Stil", activity, tone: "idle" as const };
 }
 
 function boardRightsStatusFilterValue(project: BoardRightsOverview["projects"][number]): Exclude<BoardRightsStatusFilter, "all"> {
@@ -4244,7 +4251,7 @@ function BoardRightsAdminTab() {
               <h3>Vergaderborden beheren</h3>
               <p className="muted">Borden aanmaken en archiveren blijft hier beschikbaar.</p>
             </div>
-            <NavLink to={WERVEL_PATHS.adminVergaderborden}>Nieuw vergaderbord aanmaken</NavLink>
+            <NavLink to={WERVEL_PATHS.adminVergaderborden} className="main-inline-link">Nieuw vergaderbord aanmaken</NavLink>
           </div>
           <div className="admin-board-rights-boards-list">
             {projects.map((project) => {
@@ -4256,26 +4263,38 @@ function BoardRightsAdminTab() {
               return (
                 <article className={`admin-board-rights-card tone-${status.tone}`} key={project.id} aria-busy={isArchiving}>
                   <div className="admin-board-rights-card-header">
-                    <div>
+                    <div className="admin-board-rights-card-title">
                       <h4>{project.name}</h4>
                       {project.description && <p className="muted">{project.description}</p>}
-                      <div className="admin-board-rights-meta" aria-label={`Samenvatting van ${project.name}`}>
-                        <span className="admin-board-rights-chip">Status: {status.label}</span>
-                        <span className="admin-board-rights-chip">Rechten: {boardRightsAccessLabel(project)}</span>
-                        <span className="admin-board-rights-chip">{project.card_count} kaarten</span>
-                      </div>
-                      <p className="admin-board-rights-helper muted">{isDirty ? "Niet-opgeslagen rechten staan nog in de matrix." : "Rechten zijn gesynchroniseerd."}</p>
                     </div>
-                    <div className="admin-board-rights-card-actions">
-                      <button
-                        type="button"
-                        className="button-danger"
-                        onClick={() => deleteProject(project.id, project.name)}
-                        disabled={isArchiving}
-                      >
-                        {isArchiving ? "Verwijderen..." : "Verwijder bord"}
-                      </button>
+                    <span className={`admin-board-rights-status tone-${status.tone}`}>{status.label}</span>
+                  </div>
+                  <dl className="admin-board-rights-facts" aria-label={`Samenvatting van ${project.name}`}>
+                    <div>
+                      <dt>Laatste activiteit</dt>
+                      <dd>{status.activity}</dd>
                     </div>
+                    <div>
+                      <dt>Toegang</dt>
+                      <dd>{boardRightsAccessLabel(project)}</dd>
+                    </div>
+                    <div>
+                      <dt>Kaarten</dt>
+                      <dd>{project.card_count}</dd>
+                    </div>
+                  </dl>
+                  <div className="admin-board-rights-card-footer">
+                    <p className={`admin-board-rights-helper${isDirty ? " is-dirty" : ""}`}>
+                      {isDirty ? "Niet opgeslagen" : "Rechten opgeslagen"}
+                    </p>
+                    <button
+                      type="button"
+                      className="button-danger admin-board-rights-delete"
+                      onClick={() => deleteProject(project.id, project.name)}
+                      disabled={isArchiving}
+                    >
+                      {isArchiving ? "Verwijderen..." : "Verwijder bord"}
+                    </button>
                   </div>
                 </article>
               );
