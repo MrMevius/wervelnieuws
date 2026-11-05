@@ -3489,7 +3489,7 @@ describe("App", () => {
     mockApi.listWorkHoursAdminMasterdata.mockResolvedValue({ projects: [], posts: [], external_people: [externalPerson, activePerson] });
     mockApi.listWorkHoursMeta.mockResolvedValue({ projects: [], posts: [], external_people: [], historical_identities: [], eligible_users: [{ id: "u2", username: "piet", full_name: "Piet", email: "piet@example.com" }], is_admin: true });
     mockApi.listWorkHoursAdminHistory.mockResolvedValue({ items: [{ kind: "historical_identity", id: "hi1", display_name: "Oude Piet", row_version: 3 }], total: 26, page: 1, page_size: 25 });
-    mockApi.listWorkHoursAudit.mockResolvedValue({ items: [{ id: "audit1", actor_display_name: "Admin", created_at: "2026-08-09T10:00:00Z", action: "work_hours_group_updated", request_method: "PUT", request_path: "/api/urenverantwoording/groepen/g1", result: "success" }], total: 26, page: 1, page_size: 25 });
+    mockApi.listWorkHoursAudit.mockResolvedValue({ items: [{ id: "audit1", actor_display_name: "Admin", created_at: "2026-08-09T10:00:00Z", actor_user_id: "u1", action: "work_hours.group.updated", request_method: "PUT", request_path: "/api/urenverantwoording/groepen/g1", result: "success", project_name: "Windpark" }], total: 26, page: 1, page_size: 25 });
     renderApp();
     await loginIntoApp();
     await waitFor(() => expect(screen.getByRole("button", { name: "admin" })).toBeInTheDocument());
@@ -3508,10 +3508,13 @@ describe("App", () => {
     await waitFor(() => expect(mockApi.listWorkHoursAdminHistory).toHaveBeenLastCalledWith(expect.objectContaining({ kind: "historical_identity", query: "Oude", page: 2 })));
     await userEvent.click(screen.getByRole("tab", { name: "Uren-audit" }));
     expect(await screen.findByRole("heading", { name: "Uren-audit" })).toBeInTheDocument();
-    expect(screen.getByText(/work_hours_group_updated/)).toBeInTheDocument();
-    await userEvent.type(screen.getByLabelText("Resultaat"), "success");
+    const auditRow = (await screen.findByText("Urenregistratie bijgewerkt", { selector: ".admin-audit-action" })).closest("tr")!;
+    expect(within(auditRow).getByText("Windpark")).toBeInTheDocument();
+    expect(within(auditRow).getByText("Gelukt")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Resultaat"), "success");
+    await userEvent.selectOptions(screen.getByLabelText("Actie"), "work_hours.group.updated");
     await userEvent.click(screen.getByRole("button", { name: "Volgende auditpagina" }));
-    await waitFor(() => expect(mockApi.listWorkHoursAudit).toHaveBeenLastCalledWith(expect.objectContaining({ result: "success", page: 2, page_size: 25 })));
+    await waitFor(() => expect(mockApi.listWorkHoursAudit).toHaveBeenLastCalledWith(expect.objectContaining({ result: "success", action: "work_hours.group.updated", page: 2, page_size: 25 })));
     await userEvent.click(screen.getByRole("tab", { name: "Admin log" }));
     expect(await screen.findByRole("heading", { name: "Admin log" })).toBeInTheDocument();
     expect(mockApi.listAdminActivity).toHaveBeenCalled();
