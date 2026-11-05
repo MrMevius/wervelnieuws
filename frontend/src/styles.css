@@ -3313,27 +3313,20 @@ button:disabled {
   color: var(--text-muted);
 }
 
-.windwilly-home-windfarm {
-  flex: 0 0 auto;
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  margin: -8px 8px -14px 0;
-}
-
 .windwilly-home-windmills {
+  flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   gap: 6px;
+  margin: -8px 8px -26px 0;
 }
 
-.windwilly-home-slogan,
 .windwilly-groene-noabers-slogan {
   margin: 0;
   color: var(--text-accent);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 800;
-  letter-spacing: 0.28em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
@@ -3549,10 +3542,6 @@ button:disabled {
   max-width: 78ch;
 }
 
-.windwilly-groene-noabers-slogan {
-  font-size: 0.9rem;
-}
-
 .windwilly-groene-noabers h3 {
   margin: 0;
   font-size: 1.15rem;
@@ -3567,16 +3556,6 @@ button:disabled {
 @media (max-width: 720px) {
   .panel.windwilly-home-hero {
     padding: 20px 18px;
-  }
-
-  .panel.windwilly-home-hero {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .windwilly-home-windfarm {
-    margin: 0;
   }
 
   .windwilly-home-windmills {

@@ -91,20 +91,17 @@ export function WindWillyLandingPage() {
       <header className="panel windwilly-home-hero" aria-labelledby="windwilly-home-title">
         <div className="windwilly-home-hero-copy">
           <p className="eyebrow">Groene Noabers · WindWilly</p>
-          <h1 id="windwilly-home-title">Samen werken aan energie van hier</h1>
+          <h1 id="windwilly-home-title">Wij draaien mee</h1>
           <p className="windwilly-home-lead">
             WindWilly is de gezamenlijke werkplek van drie energiecoöperaties uit Daarle, Daarlerveen en de gemeente Hellendoorn.
             Hier plannen we, leggen we vast wat we doen en vertellen we de omgeving wat er speelt.
           </p>
         </div>
-        <figure className="windwilly-home-windfarm">
-          <div className="windwilly-home-windmills" aria-hidden="true">
-            <Windmill tone="sun" />
-            <Windmill tone="leaf" />
-            <Windmill tone="sky" />
-          </div>
-          <figcaption className="windwilly-home-slogan">Wij draaien mee</figcaption>
-        </figure>
+        <div className="windwilly-home-windmills" aria-hidden="true">
+          <Windmill tone="sun" />
+          <Windmill tone="leaf" />
+          <Windmill tone="sky" />
+        </div>
       </header>
 
       <section className="panel windwilly-home-modules" aria-labelledby="windwilly-modules-title">
@@ -136,7 +133,7 @@ export function WindWillyLandingPage() {
         </div>
         <article className="windwilly-groene-noabers" aria-labelledby="windwilly-groene-noabers-title">
           <div className="windwilly-groene-noabers-copy">
-            <p className="windwilly-groene-noabers-slogan">Wij draaien mee.</p>
+            <p className="windwilly-groene-noabers-slogan">Samen houden we de regio in beweging.</p>
             <h3 id="windwilly-groene-noabers-title">Coöperatie Groene Noabers</h3>
             <p>
               De samenwerking van Energiek Daarle, Duurzaam Daarlerveen en Noaber &amp; Co: een groeiende beweging van ondernemers,

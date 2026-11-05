@@ -33,7 +33,7 @@ Inhoud over de coöperaties komt van hun eigen websites (geraadpleegd 2026-11-05
 
 ### Vervolg: slogan en Groene Noabers
 
-- De slogan "Wij draaien mee" van groenenoabers.nl staat onder de draaiende windmolens (op mobiel onder de introductie).
+- De slogan "Wij draaien mee" van groenenoabers.nl is de titel van de startpagina; de kaart van Groene Noabers gebruikt hun ondertitel "Samen houden we de regio in beweging."
 - Groene Noabers heeft een eigen, uitgelichte kaart boven de drie coöperaties, in plaats van de losse regel onderaan. Bron (groenenoabers.nl, geraadpleegd 2026-11-05): "Coöperatie Groene Noabers is een samenwerking van" Energiek Daarle, Noaber & Co en Duurzaam Daarlerveen; "een groeiende beweging van ondernemers, inwoners en lokale organisaties"; "wat hier wordt ontwikkeld, ook van hier moet zijn"; "Groene Noabers is voor 50% mede-eigenaar vanaf de ontwikkelfase" van Energiepark Daarle.
 
 ## Acceptance criteria
