@@ -69,3 +69,32 @@ export function formatAmsterdamDisplayDate(value: string | Date): string {
   }, {});
   return `${parts.day}-${parts.month}-${parts.year}`;
 }
+
+const AMSTERDAM_TIME_FORMATTER = new Intl.DateTimeFormat("nl-NL", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "Europe/Amsterdam"
+});
+
+const AMSTERDAM_DAY_FORMATTER = new Intl.DateTimeFormat("nl-NL", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "Europe/Amsterdam"
+});
+
+export function formatAmsterdamTime(value: string | Date): string {
+  const date = value instanceof Date ? value : parseTimestampAsUtcWhenNaive(value);
+  return Number.isNaN(date.getTime()) ? "--:--" : AMSTERDAM_TIME_FORMATTER.format(date);
+}
+
+/** "Vandaag", "Gisteren" or e.g. "dinsdag 27 oktober" (with year when not the current year). */
+export function formatAmsterdamDayLabel(value: string | Date, now: Date = new Date()): string {
+  const date = value instanceof Date ? value : parseTimestampAsUtcWhenNaive(value);
+  if (Number.isNaN(date.getTime())) return "Datum onbekend";
+  const day = formatAmsterdamDateInput(date);
+  if (day === formatAmsterdamDateInput(now)) return "Vandaag";
+  if (day === formatAmsterdamDateInput(new Date(now.getTime() - 24 * 60 * 60 * 1000))) return "Gisteren";
+  const label = AMSTERDAM_DAY_FORMATTER.format(date);
+  return day.slice(0, 4) === formatAmsterdamDateInput(now).slice(0, 4) ? label : `${label} ${day.slice(0, 4)}`;
+}

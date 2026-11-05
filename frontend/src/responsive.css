@@ -175,6 +175,18 @@
   .responsive-table:not(.admin-board-rights-matrix) > tbody > tr > :is(td:first-child, td:last-child, td[colspan], td[data-label="E-mail"], td[data-label="Bestandsnaam"], td[data-label="Beschrijving"], td[data-label="Melding"], td[data-label="Details"]) { grid-column: 1 / -1; }
   .responsive-table:not(.admin-board-rights-matrix) > tbody > tr > td > input[type="checkbox"] { margin: 8px; }
 
+  /* The admin log stays a dense list on phones instead of one card per event. */
+  .responsive-table.admin-log-table > tbody { gap: 0; }
+  .responsive-table.admin-log-table > tbody > tr.admin-log-day { display: block; padding: 0; border: 0; background: none; }
+  .responsive-table.admin-log-table > tbody > tr.admin-log-day > th { display: block; }
+  .responsive-table.admin-log-table > tbody > tr:not(.admin-log-day) { grid-template-columns: 96px auto minmax(0, 1fr); grid-template-areas: "time action action" ". area door"; column-gap: 8px; row-gap: 2px; padding: 7px 0; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; }
+  .responsive-table.admin-log-table > tbody > tr > td { padding: 0; grid-column: auto; }
+  .responsive-table.admin-log-table:not(.admin-board-rights-matrix) > tbody > tr > td[data-label]:not([data-label=""])::before { content: none; display: none; }
+  .responsive-table.admin-log-table > tbody > tr > td:nth-child(1) { grid-area: time; font-weight: 400; }
+  .responsive-table.admin-log-table > tbody > tr > td:nth-child(2) { grid-area: area; }
+  .responsive-table.admin-log-table > tbody > tr > td:nth-child(3) { grid-area: action; }
+  .responsive-table.admin-log-table > tbody > tr > td:nth-child(4) { grid-area: door; align-self: center; color: var(--text-muted); font-size: 0.8rem; }
+
   /* Full-screen editors keep the close and save controls within reach. */
   .board-create-overlay { padding: 0; z-index: 50; }
   .board-create-sidebar {

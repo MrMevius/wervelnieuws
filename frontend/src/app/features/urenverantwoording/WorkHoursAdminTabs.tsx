@@ -204,7 +204,7 @@ const AUDIT_RESULTS: Record<string, { label: string; tone: "active" | "inactive"
 
 const EMPTY_AUDIT_FILTERS = { actor: "", action: "", result: "", method: "", path: "", from: "", to: "" };
 
-function auditActionLabel(action: string) {
+export function auditActionLabel(action: string) {
   const [, entity, verb] = action.split(".");
   const entityLabel = entity ? AUDIT_ENTITY_LABELS[entity] : undefined;
   const verbLabel = verb ? AUDIT_VERB_LABELS[verb] : undefined;
