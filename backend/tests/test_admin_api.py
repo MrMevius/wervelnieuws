@@ -481,6 +481,7 @@ def test_admin_can_create_and_update_project(client):
     assert created["is_active"] is True
     assert created["is_visible_in_boards"] is True
     assert created["is_visible_in_work_hours"] is True
+    assert created["is_visible_in_participation"] is True
 
     update = client.patch(
         f"/api/admin/projects/{created['id']}",
@@ -508,24 +509,43 @@ def test_admin_can_create_and_update_project(client):
     assert hours_only.json()["is_visible_in_boards"] is False
     assert hours_only.json()["is_visible_in_work_hours"] is True
 
+    hidden_from_participation = client.patch(
+        f"/api/admin/projects/{created['id']}",
+        headers=admin_headers,
+        json={"is_visible_in_participation": False},
+    )
+    assert hidden_from_participation.status_code == 200
+    assert hidden_from_participation.json()["is_visible_in_participation"] is False
+    assert hidden_from_participation.json()["is_visible_in_work_hours"] is True
+
 
 def test_admin_project_visibility_permutations_persist_after_reload(client):
     headers = _login_as(client, "admin", "admin12345")
-    for name, boards, hours in (
-        ("Alleen bord", True, False),
-        ("Alleen uren", False, True),
-        ("Beide modules", True, True),
-        ("Verborgen", False, False),
+    for name, boards, hours, participation in (
+        ("Alleen bord", True, False, False),
+        ("Alleen uren", False, True, False),
+        ("Alleen participatie", False, False, True),
+        ("Alle modules", True, True, True),
+        ("Verborgen", False, False, False),
     ):
         created = client.post(
             "/api/admin/projects",
             headers=headers,
-            json={"name": name, "is_visible_in_boards": boards, "is_visible_in_work_hours": hours},
+            json={
+                "name": name,
+                "is_visible_in_boards": boards,
+                "is_visible_in_work_hours": hours,
+                "is_visible_in_participation": participation,
+            },
         )
         assert created.status_code == 200
         project_id = created.json()["id"]
         reloaded = next(item for item in client.get("/api/admin/projects", headers=headers).json() if item["id"] == project_id)
-        assert (reloaded["is_visible_in_boards"], reloaded["is_visible_in_work_hours"]) == (boards, hours)
+        assert (
+            reloaded["is_visible_in_boards"],
+            reloaded["is_visible_in_work_hours"],
+            reloaded["is_visible_in_participation"],
+        ) == (boards, hours, participation)
 
 
 def test_admin_project_endpoints_require_admin_role(client):

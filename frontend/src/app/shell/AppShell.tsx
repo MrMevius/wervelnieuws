@@ -4381,7 +4381,8 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   const [newProjectName, setNewProjectName] = useState("");
   const [newProjectVisibility, setNewProjectVisibility] = useState({
     is_visible_in_boards: true,
-    is_visible_in_work_hours: true
+    is_visible_in_work_hours: true,
+    is_visible_in_participation: true
   });
   const [newWorkPostName, setNewWorkPostName] = useState("");
   const [newWorkPostDescription, setNewWorkPostDescription] = useState("");
@@ -4586,7 +4587,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   });
 
   const createProjectMutation = useMutation({
-    mutationFn: (payload: { name: string; is_visible_in_boards: boolean; is_visible_in_work_hours: boolean }) => createAdminProject(payload),
+    mutationFn: (payload: { name: string; is_visible_in_boards: boolean; is_visible_in_work_hours: boolean; is_visible_in_participation: boolean }) => createAdminProject(payload),
     onSuccess: (created) => {
       queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
         if (!existing) {
@@ -4595,7 +4596,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
         return [...existing, created].sort((a, b) => a.name.localeCompare(b.name));
       });
       setNewProjectName("");
-      setNewProjectVisibility({ is_visible_in_boards: true, is_visible_in_work_hours: true });
+      setNewProjectVisibility({ is_visible_in_boards: true, is_visible_in_work_hours: true, is_visible_in_participation: true });
       setFeedback("Project toegevoegd.");
     },
     onError: (error) => {
@@ -4609,7 +4610,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
   });
 
   const updateProjectMutation = useMutation({
-    mutationFn: ({ projectId, payload }: { projectId: string; payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean } }) =>
+    mutationFn: ({ projectId, payload }: { projectId: string; payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean; is_visible_in_participation?: boolean } }) =>
       updateAdminProject(projectId, payload),
     onSuccess: (updated) => {
       queryClient.setQueryData(["admin-projects"], (existing: Project[] | undefined) => {
@@ -5405,6 +5406,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           <div className="admin-visibility-toggles">
             <label className="admin-visibility-toggle"><input type="checkbox" aria-label="Nieuw project zichtbaar in Vergaderborden" checked={newProjectVisibility.is_visible_in_boards} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_boards: event.target.checked }))} />Vergaderborden</label>
             <label className="admin-visibility-toggle"><input type="checkbox" aria-label="Nieuw project zichtbaar in Urenregistratie" checked={newProjectVisibility.is_visible_in_work_hours} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_work_hours: event.target.checked }))} />Urenregistratie</label>
+            <label className="admin-visibility-toggle"><input type="checkbox" aria-label="Nieuw project zichtbaar in Participatiemomenten" checked={newProjectVisibility.is_visible_in_participation} onChange={(event) => setNewProjectVisibility((current) => ({ ...current, is_visible_in_participation: event.target.checked }))} />Participatiemomenten</label>
           </div>
         </fieldset>
         <button
@@ -5467,6 +5469,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                     <div className="admin-visibility-toggles">
                       <label className="admin-visibility-toggle"><input type="checkbox" aria-label={`Zichtbaar in Vergaderborden voor ${project.name}`} checked={project.is_visible_in_boards} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_boards: event.target.checked } })} disabled={updateProjectMutation.isPending} />Vergaderborden</label>
                       <label className="admin-visibility-toggle"><input type="checkbox" aria-label={`Zichtbaar in Urenregistratie voor ${project.name}`} checked={project.is_visible_in_work_hours} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_work_hours: event.target.checked } })} disabled={updateProjectMutation.isPending} />Urenregistratie</label>
+                      <label className="admin-visibility-toggle"><input type="checkbox" aria-label={`Zichtbaar in Participatiemomenten voor ${project.name}`} checked={project.is_visible_in_participation} onChange={(event) => updateProjectMutation.mutate({ projectId: project.id, payload: { is_visible_in_participation: event.target.checked } })} disabled={updateProjectMutation.isPending} />Participatiemomenten</label>
                     </div>
                   </td>
                   <td>
@@ -5511,7 +5514,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
           </label>
           <label className="admin-field">
             <span>Beschrijving</span>
-            <textarea aria-label="Beschrijving nieuwe globale post" placeholder="Optioneel" rows={3} style={{ resize: "vertical" }} value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
+            <textarea aria-label="Beschrijving nieuwe globale post" placeholder="Optioneel" rows={1} style={{ resize: "vertical" }} value={newWorkPostDescription} onChange={(event) => setNewWorkPostDescription(event.target.value)} />
           </label>
           <button type="submit" className="button-primary" disabled={createWorkPostMutation.isPending || newWorkPostName.trim().length < 2}>Post toevoegen</button>
         </form>
@@ -5527,7 +5530,7 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
                 : post.is_active
                   ? { label: "Actief", tone: "active" }
                   : { label: "Inactief", tone: "muted" };
-            return <ResponsiveRow key={post.id} className={isRemoved ? "is-inactive" : undefined}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><textarea aria-label={`Beschrijving post ${post.name}`} rows={3} style={{ resize: "vertical" }} placeholder="Geen beschrijving" value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td><span className={`status-badge status-badge-${status.tone}`}>{status.label}</span></td><td><div className="admin-user-actions"><button type="button" className={`${isPostChanged ? "button-primary" : "button-neutral"} admin-user-action-compact`} onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{isRemoved ? <button type="button" className="button-neutral admin-user-action-compact" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" className="button-neutral admin-user-action-compact" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></ResponsiveRow>;
+            return <ResponsiveRow key={post.id} className={isRemoved ? "is-inactive" : undefined}><td><input aria-label={`Naam post ${post.name}`} value={draft.name} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, name: event.target.value } }))} /></td><td><textarea aria-label={`Beschrijving post ${post.name}`} rows={1} style={{ resize: "vertical" }} placeholder="Geen beschrijving" value={draft.description} onChange={(event) => setWorkPostDrafts((current) => ({ ...current, [post.id]: { ...draft, description: event.target.value } }))} /></td><td><span className={`status-badge status-badge-${status.tone}`}>{status.label}</span></td><td><div className="admin-user-actions"><button type="button" className={`${isPostChanged ? "button-primary" : "button-neutral"} admin-user-action-compact`} onClick={() => updateWorkPostMutation.mutate({ post, draft })}>Opslaan</button>{isRemoved ? <button type="button" className="button-neutral admin-user-action-compact" onClick={() => restoreWorkPostMutation.mutate(post)}>Herstellen</button> : <button type="button" className="button-neutral admin-user-action-compact" onClick={() => archiveWorkPostMutation.mutate(post)}>Archiveren</button>}</div></td></ResponsiveRow>;
           })}
         </tbody></ResponsiveTable></div>
       </section>

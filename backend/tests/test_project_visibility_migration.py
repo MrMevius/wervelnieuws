@@ -118,3 +118,28 @@ def test_project_routes_read_visibility_fields_after_upgrade_to_head(tmp_path, m
         app.dependency_overrides.clear()
         engine.dispose()
         get_settings.cache_clear()
+
+
+def test_participation_visibility_migration_defaults_existing_projects_to_visible(tmp_path, monkeypatch):
+    database_path = tmp_path / "participation-visibility.db"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("STORAGE_ROOT", str(tmp_path / "storage"))
+    get_settings.cache_clear()
+    config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+
+    command.upgrade(config, "20261031_0034")
+    engine = create_engine(f"sqlite:///{database_path}")
+    timestamp = "2026-11-05 09:00:00"
+    with engine.begin() as connection:
+        connection.execute(text("INSERT INTO projects (id, name, description, is_active, is_archived, invited_user_ids_json, is_visible_in_boards, is_visible_in_work_hours, created_at, updated_at) VALUES ('p1', 'Bestaand', '', 1, 0, '[]', 0, 1, :ts, :ts)"), {"ts": timestamp})
+
+    command.upgrade(config, "20261105_0035")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT is_visible_in_boards, is_visible_in_work_hours, is_visible_in_participation FROM projects WHERE id='p1'")).one() == (0, 1, 1)
+
+    command.downgrade(config, "20261031_0034")
+    with engine.connect() as connection:
+        assert "is_visible_in_participation" not in {column["name"] for column in inspect(connection).get_columns("projects")}
+        assert connection.execute(text("SELECT is_visible_in_boards, is_visible_in_work_hours FROM projects WHERE id='p1'")).one() == (0, 1)
+    engine.dispose()
+    get_settings.cache_clear()

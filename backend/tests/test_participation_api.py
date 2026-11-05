@@ -176,6 +176,19 @@ def test_archived_projects_and_inactive_people_can_be_retained_but_not_newly_add
     assert client.post("/api/participatiemomenten", headers=headers, json=payload).status_code == 422
 
 
+def test_projects_hidden_from_participation_keep_links_but_cannot_be_newly_added(client, setup):
+    headers, users, projects, payload = setup
+    row = create(client, headers, payload)
+    with session(client) as db:
+        db.get(Project, projects[1]).is_visible_in_participation = False
+        db.commit()
+    meta = client.get("/api/participatiemomenten/meta", headers=headers).json()
+    assert {project["id"]: project["selectable"] for project in meta["projects"]} == {projects[0]: True, projects[1]: False}
+    assert client.put(f"/api/participatiemomenten/{row['id']}", headers=headers, json={**payload, "expected_row_version": 1}).status_code == 200
+    assert client.post("/api/participatiemomenten", headers=headers, json=payload).status_code == 422
+    assert client.post("/api/participatiemomenten", headers=headers, json={**payload, "project_ids": [projects[0]]}).status_code == 201
+
+
 def test_failed_audit_rolls_back_report_version_and_associations(client, setup, monkeypatch):
     headers, users, projects, payload = setup
     row = create(client, headers, payload)

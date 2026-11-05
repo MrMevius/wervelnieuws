@@ -172,7 +172,8 @@ const mockApi = vi.hoisted(() => ({
       name: "Windpark de Boldijk",
       is_active: true,
       is_visible_in_boards: true,
-      is_visible_in_work_hours: true
+      is_visible_in_work_hours: true,
+      is_visible_in_participation: true
     }
   ]),
   createAdminProject: vi.fn().mockResolvedValue({
@@ -180,14 +181,16 @@ const mockApi = vi.hoisted(() => ({
     name: "Project Noord",
     is_active: true,
     is_visible_in_boards: true,
-    is_visible_in_work_hours: true
+    is_visible_in_work_hours: true,
+    is_visible_in_participation: true
   }),
   updateAdminProject: vi.fn().mockResolvedValue({
     id: "p1",
     name: "Windpark de Boldijk Updated",
     is_active: false,
     is_visible_in_boards: false,
-    is_visible_in_work_hours: true
+    is_visible_in_work_hours: true,
+    is_visible_in_participation: true
   }),
   listAdminThemes: vi.fn().mockResolvedValue([
     {
@@ -3250,15 +3253,15 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Project toevoegen" }));
 
     await waitFor(() => {
-      expect(mockApi.createAdminProject).toHaveBeenCalledWith({ name: "Project Noord", is_visible_in_boards: true, is_visible_in_work_hours: true });
+      expect(mockApi.createAdminProject).toHaveBeenCalledWith({ name: "Project Noord", is_visible_in_boards: true, is_visible_in_work_hours: true, is_visible_in_participation: true });
       expect(screen.getByText("Project toegevoegd.")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Posten zoeken")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Beschrijving nieuwe globale post").tagName).toBe("TEXTAREA");
     expect(screen.getByLabelText("Beschrijving post Communicatie").tagName).toBe("TEXTAREA");
-    expect(screen.getByLabelText("Beschrijving nieuwe globale post")).toHaveAttribute("rows", "3");
-    expect(screen.getByLabelText("Beschrijving post Communicatie")).toHaveAttribute("rows", "3");
+    expect(screen.getByLabelText("Beschrijving nieuwe globale post")).toHaveAttribute("rows", "1");
+    expect(screen.getByLabelText("Beschrijving post Communicatie")).toHaveAttribute("rows", "1");
 
     fireEvent.change(screen.getByLabelText("Beschrijving post Communicatie"), { target: { value: "Aangepast\nmet tweede regel" } });
     fireEvent.click(screen.getByRole("button", { name: "Opslaan" }));
@@ -3274,7 +3277,7 @@ describe("App", () => {
   it("persists an existing project's visibility toggle after an Admin reload", async () => {
     let persistedProject = {
       id: "p1", name: "Windpark de Boldijk", is_active: true,
-      is_visible_in_boards: true, is_visible_in_work_hours: true
+      is_visible_in_boards: true, is_visible_in_work_hours: true, is_visible_in_participation: true
     };
     mockApi.listAdminProjects.mockImplementation(async () => [persistedProject]);
     mockApi.updateAdminProject.mockImplementation(async (_projectId, payload) => {
@@ -3294,6 +3297,12 @@ describe("App", () => {
     await waitFor(() => expect(mockApi.updateAdminProject).toHaveBeenCalledWith("p1", { is_visible_in_boards: false }));
     await waitFor(() => expect(boardVisibility).not.toBeChecked());
 
+    const participationVisibility = screen.getByLabelText("Zichtbaar in Participatiemomenten voor Windpark de Boldijk");
+    expect(participationVisibility).toBeChecked();
+    await userEvent.click(participationVisibility);
+    await waitFor(() => expect(mockApi.updateAdminProject).toHaveBeenCalledWith("p1", { is_visible_in_participation: false }));
+    await waitFor(() => expect(participationVisibility).not.toBeChecked());
+
     firstApp.unmount();
     renderApp();
     await loginIntoApp();
@@ -3301,6 +3310,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "Admin" }));
     await userEvent.click(await screen.findByRole("tab", { name: "Projecten" }));
     expect(await screen.findByLabelText("Zichtbaar in Vergaderborden voor Windpark de Boldijk")).not.toBeChecked();
+    expect(screen.getByLabelText("Zichtbaar in Participatiemomenten voor Windpark de Boldijk")).not.toBeChecked();
   });
 
   it("persists multiline global-post descriptions after create and edit reloads", async () => {

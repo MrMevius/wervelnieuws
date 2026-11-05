@@ -204,6 +204,7 @@ export type Project = {
   is_active: boolean;
   is_visible_in_boards: boolean;
   is_visible_in_work_hours: boolean;
+  is_visible_in_participation: boolean;
 };
 
 export type BoardProjectSummary = {
@@ -613,14 +614,14 @@ export function listAdminProjects() {
   return request<Project[]>("/admin/projects");
 }
 
-export function createAdminProject(payload: { name: string; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean }) {
+export function createAdminProject(payload: { name: string; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean; is_visible_in_participation?: boolean }) {
   return request<Project>("/admin/projects", {
     method: "POST",
     body: JSON.stringify(payload)
   });
 }
 
-export function updateAdminProject(projectId: string, payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean }) {
+export function updateAdminProject(projectId: string, payload: { name?: string; is_active?: boolean; is_visible_in_boards?: boolean; is_visible_in_work_hours?: boolean; is_visible_in_participation?: boolean }) {
   return request<Project>(`/admin/projects/${projectId}`, {
     method: "PATCH",
     body: JSON.stringify(payload)

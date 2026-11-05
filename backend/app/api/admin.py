@@ -429,6 +429,7 @@ def create_project(
         name,
         is_visible_in_boards=payload.is_visible_in_boards,
         is_visible_in_work_hours=payload.is_visible_in_work_hours,
+        is_visible_in_participation=payload.is_visible_in_participation,
     )
     return ProjectResponse.model_validate(created)
 
@@ -465,6 +466,8 @@ def update_project(
         project.is_visible_in_boards = payload.is_visible_in_boards
     if payload.is_visible_in_work_hours is not None:
         project.is_visible_in_work_hours = payload.is_visible_in_work_hours
+    if payload.is_visible_in_participation is not None:
+        project.is_visible_in_participation = payload.is_visible_in_participation
 
     updated = repo.save_project(project)
     return ProjectResponse.model_validate(updated)
