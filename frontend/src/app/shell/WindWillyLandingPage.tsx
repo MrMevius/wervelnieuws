@@ -97,11 +97,14 @@ export function WindWillyLandingPage() {
             Hier plannen we, leggen we vast wat we doen en vertellen we de omgeving wat er speelt.
           </p>
         </div>
-        <div className="windwilly-home-windfarm" aria-hidden="true">
-          <Windmill tone="sun" />
-          <Windmill tone="leaf" />
-          <Windmill tone="sky" />
-        </div>
+        <figure className="windwilly-home-windfarm">
+          <div className="windwilly-home-windmills" aria-hidden="true">
+            <Windmill tone="sun" />
+            <Windmill tone="leaf" />
+            <Windmill tone="sky" />
+          </div>
+          <figcaption className="windwilly-home-slogan">Wij draaien mee</figcaption>
+        </figure>
       </header>
 
       <section className="panel windwilly-home-modules" aria-labelledby="windwilly-modules-title">
@@ -128,9 +131,25 @@ export function WindWillyLandingPage() {
       <section className="panel windwilly-cooperatives-panel" aria-labelledby="windwilly-cooperatives-title">
         <div className="windwilly-section-heading">
           <p className="eyebrow">Wie zitten erachter?</p>
-          <h2 id="windwilly-cooperatives-title">Drie coöperaties, één team</h2>
-          <p className="muted">Inwoners die samen de regie willen houden over de energie in hun eigen omgeving.</p>
+          <h2 id="windwilly-cooperatives-title">Samen zijn we Groene Noabers</h2>
+          <p className="muted">Drie energiecoöperaties uit de regio die samen de regie willen houden over de energie in hun eigen omgeving.</p>
         </div>
+        <article className="windwilly-groene-noabers" aria-labelledby="windwilly-groene-noabers-title">
+          <div className="windwilly-groene-noabers-copy">
+            <p className="windwilly-groene-noabers-slogan">Wij draaien mee.</p>
+            <h3 id="windwilly-groene-noabers-title">Coöperatie Groene Noabers</h3>
+            <p>
+              De samenwerking van Energiek Daarle, Duurzaam Daarlerveen en Noaber &amp; Co: een groeiende beweging van ondernemers,
+              inwoners en lokale organisaties. Wat hier wordt ontwikkeld, moet ook van hier zijn.
+            </p>
+            <p>
+              Groene Noabers is vanaf de ontwikkelfase voor 50% mede-eigenaar van{" "}
+              <a href="https://energieparkdaarle.nl/" target="_blank" rel="noopener noreferrer">Energiepark Daarle</a>,
+              een windpark met 5 tot 7 turbines tussen Daarle en Hoge Hexel.
+            </p>
+          </div>
+          <a href="https://www.groenenoabers.nl/" target="_blank" rel="noopener noreferrer" className="windwilly-cooperative-link">groenenoabers.nl ↗</a>
+        </article>
         <ul className="windwilly-cooperatives-grid">
           {COOPERATIVES.map((cooperative) => (
             <li key={cooperative.name} className={`windwilly-cooperative windwilly-cooperative-${cooperative.tone}`}>
@@ -143,11 +162,6 @@ export function WindWillyLandingPage() {
             </li>
           ))}
         </ul>
-        <aside className="windwilly-home-together" aria-label="Groene Noabers">
-          <strong>Samen zijn ze Groene Noabers.</strong>{" "}
-          Via deze samenwerkingscoöperatie wordt de omgeving voor de helft eigenaar van{" "}
-          <a href="https://energieparkdaarle.nl/" target="_blank" rel="noopener noreferrer">Energiepark Daarle</a>: 5 tot 7 windturbines tussen Daarle en Hoge Hexel.
-        </aside>
       </section>
     </section>
   );

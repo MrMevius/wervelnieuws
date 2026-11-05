@@ -1012,7 +1012,10 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "https://www.groenenoabers.nl/Groene-Noabers-Logo.png");
       expect(screen.getByRole("heading", { name: "Samen werken aan energie van hier" })).toBeInTheDocument();
-      expect(screen.getByRole("heading", { name: "Drie coöperaties, één team" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Samen zijn we Groene Noabers" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Coöperatie Groene Noabers" })).toBeInTheDocument();
+      expect(screen.getByText("Wij draaien mee")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "groenenoabers.nl ↗" })).toHaveAttribute("href", "https://www.groenenoabers.nl/");
       expect(screen.getByRole("heading", { name: "Energiek Daarle" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Duurzaam Daarlerveen" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Noaber & Co" })).toBeInTheDocument();

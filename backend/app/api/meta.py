@@ -35,7 +35,7 @@ def _default_about() -> AboutResponse:
                 "highlights": [
                     "De startpagina laat in één oogopslag zien wat je in WindWilly kunt doen, met een directe link naar elk onderdeel.",
                     "Je leest wie er achter WindWilly zitten: Energiek Daarle, Duurzaam Daarlerveen en Noaber & Co, met een link naar hun eigen website.",
-                    "Ook staat er kort hoe de drie samen als Groene Noabers mede-eigenaar worden van Energiepark Daarle.",
+                    "Groene Noabers, de samenwerking van de drie coöperaties, heeft een eigen plek op de pagina, met de slogan \"Wij draaien mee\" en uitleg over het mede-eigendom van Energiepark Daarle.",
                 ],
             },
             {

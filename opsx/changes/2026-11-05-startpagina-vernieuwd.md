@@ -31,6 +31,11 @@ Inhoud over de coöperaties komt van hun eigen websites (geraadpleegd 2026-11-05
 - noaber.co: sinds 2011, begonnen als Reggestroom, "de eerste energiecoöperatie in Overijssel", Zonnepark Haarle; via Groene Noabers wordt de omgeving voor de helft eigenaar van Energiepark Daarle.
 - energieparkdaarle.nl: 5 tot 7 windturbines tussen Daarle en Hoge Hexel (Noaber & Co; energieparkdaarle.nl noemt 4 tot 7).
 
+### Vervolg: slogan en Groene Noabers
+
+- De slogan "Wij draaien mee" van groenenoabers.nl staat onder de draaiende windmolens (op mobiel onder de introductie).
+- Groene Noabers heeft een eigen, uitgelichte kaart boven de drie coöperaties, in plaats van de losse regel onderaan. Bron (groenenoabers.nl, geraadpleegd 2026-11-05): "Coöperatie Groene Noabers is een samenwerking van" Energiek Daarle, Noaber & Co en Duurzaam Daarlerveen; "een groeiende beweging van ondernemers, inwoners en lokale organisaties"; "wat hier wordt ontwikkeld, ook van hier moet zijn"; "Groene Noabers is voor 50% mede-eigenaar vanaf de ontwikkelfase" van Energiepark Daarle.
+
 ## Acceptance criteria
 
 1. Elke functiekaart linkt naar het bestaande onderdeel; externe links openen in een nieuw tabblad.
