@@ -13,10 +13,19 @@ import {
   updateWorkExternalPerson,
   type WorkHourExternalPerson
 } from "../../../lib/api/client";
+import { ResponsiveRow, ResponsiveTable } from "../../../design-system/ResponsiveTable";
 import { formatAmsterdamDateTime } from "../../../lib/datetime";
 import { AccessibleModal } from "./AccessibleModal";
 
 const PAGE_SIZES = [25, 50, 100] as const;
+
+const HISTORY_KIND_LABELS = { post: "Post", external_person: "Externe persoon", historical_identity: "Historische identiteit" } as const;
+
+function externalPersonStatus(person: WorkHourExternalPerson) {
+  if (person.deleted_at) return { label: "Gearchiveerd", tone: "muted" as const };
+  if (person.is_active === false) return { label: "Inactief", tone: "muted" as const };
+  return { label: "Actief", tone: "active" as const };
+}
 
 type DuplicateCandidate = { id: string; display_name: string; email?: string | null; status_label?: string; selectable?: boolean; guidance?: string | null };
 type CreateConflict = { code?: string; message: string; candidates: DuplicateCandidate[] };
@@ -54,7 +63,14 @@ export function WorkHoursHistoryAdminTab() {
   const metaQuery = useQuery({ queryKey: ["work-hours-meta"], queryFn: listWorkHoursMeta });
   const people = masterdataQuery.data?.external_people ?? [];
   const eligibleUsers = metaQuery.data?.eligible_users ?? [];
-  const invalidatePeopleMeta = () => queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
+  const historyItems = historyQuery.data?.items ?? [];
+  const historyTotal = historyQuery.data?.total ?? 0;
+  const historyPageCount = Math.max(1, Math.ceil(historyTotal / historyPageSize));
+  const invalidatePeopleMeta = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["work-hours-meta"] });
+    await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-masterdata"] });
+    await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-history"] });
+  };
   const updateMutation = useMutation({ mutationFn: ({ personId, payload }: { personId: string; payload: Parameters<typeof updateWorkExternalPerson>[1] }) => updateWorkExternalPerson(personId, payload), onSuccess: async () => { setEditingPerson(null); await invalidatePeopleMeta(); } });
   const createMutation = useMutation({ mutationFn: createWorkExternalPerson, onSuccess: async (person) => { setCreatingPerson(false); setStatusMessage(`Externe persoon ${person.display_name} is aangemaakt.`); setErrorMessage(null); setCreateErrors({}); setCreateConflict(null); await queryClient.invalidateQueries({ queryKey: ["work-hours-admin-masterdata"] }); await invalidatePeopleMeta(); }, onError: (error) => { const conflict = parseCreateConflict(error); setCreateConflict(conflict); setErrorMessage(conflict?.message ?? "Aanmaken mislukt. Controleer de ingevulde gegevens."); } });
   const archiveMutation = useMutation({ mutationFn: (person: WorkHourExternalPerson) => archiveWorkExternalPerson(person.id, person.row_version ?? 1), onSuccess: invalidatePeopleMeta });
@@ -85,11 +101,67 @@ export function WorkHoursHistoryAdminTab() {
   }
 
   return <section aria-labelledby="work-hours-history-heading">
-    <h2 id="work-hours-history-heading">Urenhistorie en identiteiten</h2>
+    <header className="admin-users-header">
+      <h2 id="work-hours-history-heading">Urenhistorie en identiteiten</h2>
+      <p className="muted">Beheer externe personen voor de urenregistratie en herstel of koppel historische gegevens.</p>
+    </header>
     {statusMessage && <p className="notice success" role="status">{statusMessage}</p>}
     {errorMessage && !mergeSource && <p className="notice error" role="alert">{errorMessage}</p>}
-    <section className="panel"><h3>Externe personen</h3><button type="button" onClick={() => { setCreatingPerson(true); setErrorMessage(null); setCreateErrors({}); setCreateConflict(null); setCreateDraft({ display_name: "", email: "", note: "" }); }}>Externe persoon aanmaken</button><ul>{people.map((person) => <li key={person.id}>{person.display_name} {person.deleted_at ? "· verwijderd" : ""}<button type="button" onClick={() => setEditingPerson(person)}>Bewerk</button><button type="button" onClick={() => { setMergeSource(person); setMergeTargetId(""); }}>Samenvoegen</button><button type="button" onClick={() => archiveMutation.mutate(person)}>Archiveer</button><button type="button" onClick={() => restoreMutation.mutate(person)}>Herstel</button></li>)}</ul></section>
-    <section className="panel"><h3>Historie en identiteiten</h3><p className="muted">Alleen beheerders zien verwijderde personen en historische koppelingen.</p><div className="form-grid"><label><span>Type historie</span><select value={historyKind} onChange={(event) => { setHistoryKind(event.target.value as typeof historyKind); setHistoryPage(1); }}><option value="">Alles</option><option value="post">Posten</option><option value="external_person">Externe personen</option><option value="historical_identity">Historische identiteiten</option></select></label><label><span>Zoek historie</span><input value={historyQueryText} onChange={(event) => { setHistoryQueryText(event.target.value); setHistoryPage(1); }} /></label><label><span>Historie per pagina</span><select value={historyPageSize} onChange={(event) => { setHistoryPageSize(Number(event.target.value) as 25 | 50 | 100); setHistoryPage(1); }}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</select></label></div><ul>{(historyQuery.data?.items ?? []).map((item) => <li key={`${item.kind}-${item.id}`}>{item.display_name || item.id} · {item.kind.replace("_", " ")}{item.kind === "external_person" && <button type="button" onClick={() => restoreMutation.mutate({ id: item.id, display_name: item.display_name, row_version: item.row_version })}>Herstel persoon</button>}{item.kind === "historical_identity" && eligibleUsers[0] && <button type="button" onClick={() => relinkMutation.mutate({ identityId: item.id, userId: eligibleUsers[0].id, rowVersion: item.row_version })}>Koppel aan {eligibleUsers[0].full_name || eligibleUsers[0].username}</button>}</li>)}</ul><div className="section-actions"><button type="button" disabled={historyPage <= 1} onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}>Vorige historiepagina</button><span>Historiepagina {historyPage}</span><button type="button" disabled={historyPage * historyPageSize >= (historyQuery.data?.total ?? 0)} onClick={() => setHistoryPage((current) => current + 1)}>Volgende historiepagina</button></div></section>
+    <section className="admin-users-table-section" aria-labelledby="work-hours-people-heading">
+      <div className="admin-section-heading-row">
+        <div className="admin-users-table-heading-row">
+          <h3 id="work-hours-people-heading">Externe personen</h3>
+          <p className="muted">Personen zonder account die aan urenregistraties gekoppeld kunnen worden.</p>
+        </div>
+        <button type="button" className="button-primary" onClick={() => { setCreatingPerson(true); setErrorMessage(null); setCreateErrors({}); setCreateConflict(null); setCreateDraft({ display_name: "", email: "", note: "" }); }}>Externe persoon aanmaken</button>
+      </div>
+      {people.length ? <div className="table-wrap"><ResponsiveTable className="admin-people-table"><thead><ResponsiveRow><th>Naam</th><th>E-mail</th><th>Status</th><th>Acties</th></ResponsiveRow></thead><tbody>
+        {people.map((person) => {
+          const status = externalPersonStatus(person);
+          const isRemoved = status.tone !== "active";
+          return <ResponsiveRow key={person.id} className={isRemoved ? "is-inactive" : undefined}>
+            <td><span className="admin-people-name">{person.display_name}</span>{person.note && <span className="admin-people-note muted">{person.note}</span>}</td>
+            <td>{person.email || <span className="muted">-</span>}</td>
+            <td><span className={`status-badge status-badge-${status.tone}`}>{status.label}</span></td>
+            <td><div className="admin-user-actions" aria-label={`Acties voor ${person.display_name}`}>
+              <button type="button" className="button-neutral admin-user-action-compact" onClick={() => setEditingPerson(person)}>Bewerk</button>
+              {isRemoved
+                ? <button type="button" className="button-neutral admin-user-action-compact" onClick={() => restoreMutation.mutate(person)} disabled={restoreMutation.isPending}>Herstel</button>
+                : <>
+                  <button type="button" className="button-neutral admin-user-action-compact" onClick={() => { setMergeSource(person); setMergeTargetId(""); }}>Samenvoegen</button>
+                  <button type="button" className="button-danger admin-user-action-compact" onClick={() => archiveMutation.mutate(person)} disabled={archiveMutation.isPending}>Archiveer</button>
+                </>}
+            </div></td>
+          </ResponsiveRow>;
+        })}
+      </tbody></ResponsiveTable></div> : <p className="admin-empty-state muted">{masterdataQuery.isLoading ? "Externe personen laden..." : "Er zijn nog geen externe personen."}</p>}
+    </section>
+    <section className="admin-users-table-section admin-history-section" aria-labelledby="work-hours-identities-heading">
+      <div className="admin-users-table-heading-row">
+        <h3 id="work-hours-identities-heading">Historie en identiteiten</h3>
+        <p className="muted">Alleen beheerders zien verwijderde personen en historische koppelingen.</p>
+      </div>
+      <div className="admin-history-filters">
+        <label className="admin-field"><span>Type historie</span><select value={historyKind} onChange={(event) => { setHistoryKind(event.target.value as typeof historyKind); setHistoryPage(1); }}><option value="">Alles</option><option value="post">Posten</option><option value="external_person">Externe personen</option><option value="historical_identity">Historische identiteiten</option></select></label>
+        <label className="admin-field admin-history-search"><span>Zoek historie</span><input type="search" placeholder="Zoek op naam" value={historyQueryText} onChange={(event) => { setHistoryQueryText(event.target.value); setHistoryPage(1); }} /></label>
+        <label className="admin-field"><span>Historie per pagina</span><select value={historyPageSize} onChange={(event) => { setHistoryPageSize(Number(event.target.value) as 25 | 50 | 100); setHistoryPage(1); }}>{PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+      </div>
+      {historyItems.length ? <div className="table-wrap"><ResponsiveTable className="admin-history-table"><thead><ResponsiveRow><th>Naam</th><th>Type</th><th>Actie</th></ResponsiveRow></thead><tbody>
+        {historyItems.map((item) => <ResponsiveRow key={`${item.kind}-${item.id}`}>
+          <td>{item.display_name || item.id}</td>
+          <td><span className="status-badge status-badge-muted">{HISTORY_KIND_LABELS[item.kind]}</span></td>
+          <td><div className="admin-user-actions">
+            {item.kind === "external_person" && <button type="button" className="button-neutral admin-user-action-compact" onClick={() => restoreMutation.mutate({ id: item.id, display_name: item.display_name, row_version: item.row_version })}>Herstel persoon</button>}
+            {item.kind === "historical_identity" && eligibleUsers[0] && <button type="button" className="button-neutral admin-user-action-compact" onClick={() => relinkMutation.mutate({ identityId: item.id, userId: eligibleUsers[0].id, rowVersion: item.row_version })}>Koppel aan {eligibleUsers[0].full_name || eligibleUsers[0].username}</button>}
+          </div></td>
+        </ResponsiveRow>)}
+      </tbody></ResponsiveTable></div> : <p className="admin-empty-state muted">{historyQuery.isLoading ? "Historie laden..." : "Geen historie gevonden voor deze selectie."}</p>}
+      <div className="admin-pagination">
+        <button type="button" className="button-neutral admin-user-action-compact" disabled={historyPage <= 1} onClick={() => setHistoryPage((current) => Math.max(1, current - 1))}>Vorige historiepagina</button>
+        <span className="muted">Pagina {historyPage} van {historyPageCount}{historyTotal ? ` · ${historyTotal} resultaten` : ""}</span>
+        <button type="button" className="button-neutral admin-user-action-compact" disabled={historyPage * historyPageSize >= historyTotal} onClick={() => setHistoryPage((current) => current + 1)}>Volgende historiepagina</button>
+      </div>
+    </section>
     {editingPerson && <AccessibleModal title="Externe persoon bewerken" onClose={() => setEditingPerson(null)} committing={updateMutation.isPending}><form onSubmit={savePerson} className="form-grid"><label><span>Naam</span><input name="display_name" defaultValue={editingPerson.display_name} /></label><label><span>E-mail</span><input name="email" defaultValue={editingPerson.email ?? ""} /></label><label className="span-2"><span>Notitie</span><textarea name="note" rows={3} defaultValue={editingPerson.note} /></label><div className="section-actions span-2"><button type="submit">Opslaan</button><button type="button" onClick={() => setEditingPerson(null)}>Annuleren</button></div></form></AccessibleModal>}
     {creatingPerson && <AccessibleModal title="Externe persoon aanmaken" onClose={() => setCreatingPerson(false)} committing={createMutation.isPending}>{errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}<form onSubmit={createPerson} className="form-grid" noValidate><label><span>Naam</span><input name="display_name" value={createDraft.display_name} aria-invalid={Boolean(createErrors.display_name)} aria-describedby={createErrors.display_name ? "external-person-name-error" : undefined} onChange={(event) => { setCreateDraft((current) => ({ ...current, display_name: event.target.value })); setCreateErrors((current) => ({ ...current, display_name: "" })); }} />{createErrors.display_name && <span id="external-person-name-error" className="field-error">{createErrors.display_name}</span>}</label><label><span>E-mail (optioneel)</span><input name="email" value={createDraft.email} aria-invalid={Boolean(createErrors.email)} aria-describedby={createErrors.email ? "external-person-email-error" : undefined} onChange={(event) => { setCreateDraft((current) => ({ ...current, email: event.target.value })); setCreateErrors((current) => ({ ...current, email: "" })); }} />{createErrors.email && <span id="external-person-email-error" className="field-error">{createErrors.email}</span>}</label><label className="span-2"><span>Notitie (optioneel)</span><textarea name="note" rows={3} value={createDraft.note} onChange={(event) => setCreateDraft((current) => ({ ...current, note: event.target.value }))} /></label>{createConflict && <section className={`notice ${createConflict.code === "work_hours_external_person_hard_conflict" ? "error" : "warning"}`} aria-label="Mogelijke dubbele personen"><p>{createConflict.code === "work_hours_external_person_hard_conflict" ? "Deze persoon kan niet worden aangemaakt omdat het e-mailadres al bestaat." : "Controleer eerst deze mogelijke dubbele personen."}</p><ul>{createConflict.candidates.map((candidate) => <li key={candidate.id}>{candidate.display_name}{candidate.email ? ` · ${candidate.email}` : ""}{candidate.status_label ? ` · ${candidate.status_label}` : ""}{candidate.guidance ? ` · ${candidate.guidance}` : ""}</li>)}</ul>{createConflict.code === "work_hours_external_person_advisory_conflict" && <button type="button" onClick={forceCreatePerson} disabled={createMutation.isPending}>Bewust toch aanmaken</button>}</section>}<div className="section-actions span-2"><button type="submit" disabled={createMutation.isPending}>Opslaan</button><button type="button" onClick={() => setCreatingPerson(false)} disabled={createMutation.isPending}>Annuleren</button></div></form></AccessibleModal>}
     {mergeSource && <AccessibleModal title="Externe personen samenvoegen" onClose={() => setMergeSource(null)} committing={mergeMutation.isPending}>{errorMessage && <p className="notice error" role="alert">{errorMessage}</p>}<label><span>Doelpersoon</span><select value={mergeTargetId} onChange={(event) => setMergeTargetId(event.target.value)}><option value="">Kies een andere persoon</option>{people.filter((person) => person.id !== mergeSource.id && person.is_active).map((person) => <option key={person.id} value={person.id}>{person.display_name}</option>)}</select></label><div className="section-actions"><button type="button" disabled={!mergeTargetId || mergeMutation.isPending} onClick={() => { const target = people.find((person) => person.id === mergeTargetId); if (target) mergeMutation.mutate({ personId: mergeSource.id, payload: { target_id: target.id, expected_source_row_version: mergeSource.row_version, expected_target_row_version: target.row_version } }); }}>Samenvoegen</button><button type="button" disabled={mergeMutation.isPending} onClick={() => setMergeSource(null)}>Annuleren</button></div></AccessibleModal>}
