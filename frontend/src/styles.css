@@ -3242,11 +3242,6 @@ button:disabled {
     radial-gradient(circle at 83.8% 40%, var(--wind-hero-line) 0 2px, transparent 3px);
 }
 
-.windwilly-home-hero {
-  align-items: start;
-  padding: 12px 16px 10px;
-}
-
 .windwilly-home-hero-copy,
 .windwilly-home-hero-aside,
 .windwilly-intro-side,
@@ -3280,19 +3275,6 @@ button:disabled {
   max-width: 60ch;
 }
 
-.windwilly-home-summary-list {
-  margin: 0;
-  padding-left: 20px;
-  display: grid;
-  gap: 4px;
-  font-size: 0.96rem;
-  line-height: 1.42;
-}
-
-.windwilly-home-summary-list strong {
-  color: var(--text);
-}
-
 .windwilly-home-hero-list,
 .windwilly-intro-side ul,
 .windwilly-update-card ul {
@@ -3308,16 +3290,264 @@ button:disabled {
   align-items: start;
 }
 
-.windwilly-cooperatives-panel {
-  align-items: start;
-  padding: 12px 16px;
+.panel.windwilly-home-hero {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  overflow: hidden;
+  padding: 26px 28px;
+  background:
+    radial-gradient(circle at 88% 120%, color-mix(in srgb, var(--brand) 26%, transparent) 0, transparent 55%),
+    var(--surface);
 }
 
-.windwilly-cooperatives-list {
+.windwilly-home-hero-copy {
+  max-width: 62ch;
+}
+
+.windwilly-home-lead {
   margin: 0;
-  padding-left: 20px;
+  font-size: 1.04rem;
+  color: var(--text-muted);
+}
+
+.windwilly-home-windfarm {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin: -8px 8px -26px 0;
+}
+
+.windwilly-home-windmill {
+  width: 84px;
+  height: 112px;
+  color: var(--text-accent);
+}
+
+.windwilly-home-windmill.is-sun {
+  width: 66px;
+  height: 88px;
+  color: #e0a63a;
+}
+
+.windwilly-home-windmill.is-leaf {
+  width: 100px;
+  height: 134px;
+  color: #5bb36c;
+}
+
+.windwilly-home-windmill.is-sky {
+  width: 78px;
+  height: 104px;
+  color: #4f8fd8;
+}
+
+.windwilly-home-windmill.is-leaf .windwilly-home-windmill-rotor {
+  animation-duration: 6.5s;
+}
+
+.windwilly-home-windmill.is-sky .windwilly-home-windmill-rotor {
+  animation-duration: 10s;
+  animation-delay: -3s;
+}
+
+.windwilly-home-windmill-tower {
+  fill: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+.windwilly-home-windmill-rotor {
+  fill: currentColor;
+  transform-origin: 60px 55px;
+  animation: windwilly-home-spin 8s linear infinite;
+}
+
+@keyframes windwilly-home-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .windwilly-home-windmill-rotor {
+    animation: none;
+  }
+}
+
+.panel.windwilly-home-modules,
+.panel.windwilly-cooperatives-panel {
+  gap: 14px;
+  padding: 20px 24px;
+}
+
+.windwilly-home-module-grid,
+.windwilly-cooperatives-grid {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.windwilly-home-module-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.windwilly-home-module {
   display: grid;
   gap: 6px;
+  align-content: start;
+  height: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-muted);
+  color: inherit;
+  text-decoration: none;
+  transition: transform 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.windwilly-home-module:hover,
+.windwilly-home-module:focus-visible {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--brand) 60%, var(--line));
+  box-shadow: 0 6px 18px color-mix(in srgb, #000 18%, transparent);
+}
+
+.windwilly-home-module-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--brand-soft);
+  color: var(--text-accent);
+}
+
+.windwilly-home-module-title {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-weight: 700;
+}
+
+.windwilly-home-module-text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.42;
+}
+
+.windwilly-home-soon {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.windwilly-cooperatives-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.windwilly-cooperative {
+  --coop-accent: var(--brand);
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--coop-accent);
+  border-radius: 14px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--coop-accent) 10%, var(--surface-muted)) 0, var(--surface-muted) 70%);
+}
+
+.windwilly-cooperative-sun {
+  --coop-accent: #e0a63a;
+}
+
+.windwilly-cooperative-leaf {
+  --coop-accent: #5bb36c;
+}
+
+.windwilly-cooperative-sky {
+  --coop-accent: #4f8fd8;
+}
+
+.windwilly-cooperative-head {
+  display: grid;
+  gap: 2px;
+}
+
+.windwilly-cooperative h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.windwilly-cooperative-meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.windwilly-cooperative p {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.windwilly-cooperative-link,
+.windwilly-home-together a {
+  color: var(--text-accent);
+}
+
+.windwilly-cooperative-link {
+  justify-self: start;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.windwilly-home-together {
+  padding: 12px 16px;
+  border: 1px dashed color-mix(in srgb, var(--brand) 55%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-soft) 45%, transparent);
+  font-size: 0.94rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .panel.windwilly-home-hero {
+    padding: 20px 18px;
+  }
+
+  .windwilly-home-windfarm {
+    display: none;
+  }
+
+  .windwilly-home-module {
+    grid-template-columns: 34px minmax(0, 1fr);
+    column-gap: 12px;
+    row-gap: 2px;
+    padding: 12px 14px;
+  }
+
+  .windwilly-home-module-icon {
+    grid-row: span 2;
+    width: 34px;
+    height: 34px;
+  }
+
+  .panel.windwilly-home-modules,
+  .panel.windwilly-cooperatives-panel {
+    padding: 16px;
+  }
 }
 
 .windwilly-section-heading {

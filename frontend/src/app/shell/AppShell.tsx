@@ -101,6 +101,7 @@ import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
 import { UrenverantwoordingPage } from "../features/urenverantwoording/UrenverantwoordingPage";
 import { WorkHoursAuditAdminTab, WorkHoursHistoryAdminTab } from "../features/urenverantwoording/WorkHoursAdminTabs";
 import { AdminActivityLog } from "./AdminActivityLog";
+import { WindWillyLandingPage } from "./WindWillyLandingPage";
 import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
@@ -801,45 +802,6 @@ function handleLogin(
     password: String(data.get("password") ?? ""),
     rememberMe: data.get("rememberMe") === "on"
   });
-}
-
-function WindWillyLandingPage() {
-  return (
-    <section className="main-dashboard windwilly-homepage">
-      <header className="panel windwilly-home-hero" aria-labelledby="windwilly-home-title">
-        <div className="windwilly-home-hero-copy">
-          <p className="eyebrow">WindWilly · startpunt</p>
-          <h1 id="windwilly-home-title">WindWilly voor vraag, nieuws en acties</h1>
-          <p>Één rustig startpunt voor wat er speelt.</p>
-          <ul className="windwilly-home-summary-list">
-            <li>
-              <strong>WindWilly</strong> is de online vraagbaak.
-            </li>
-            <li>
-              <strong>Wervelnieuws</strong> brengt nieuws naar buiten.
-            </li>
-            <li>
-              <strong>Vergaderborden</strong> bundelt open acties.
-            </li>
-          </ul>
-        </div>
-      </header>
-
-      <section className="panel windwilly-cooperatives-panel" aria-labelledby="windwilly-cooperatives-title">
-        <div className="windwilly-section-heading">
-          <p className="eyebrow">Samenwerking</p>
-          <h2 id="windwilly-cooperatives-title">Samenwerkende coöperaties</h2>
-          <p className="muted">Drie coöperaties delen één herkenbare WindWilly-omgeving.</p>
-        </div>
-
-        <ul className="windwilly-cooperatives-list">
-          <li>Duurzaam Daarlerveen</li>
-          <li>Noaber &amp; Co</li>
-          <li>Energiek Daarle</li>
-        </ul>
-      </section>
-    </section>
-  );
 }
 
 function WindWillyModulePlaceholder() {
