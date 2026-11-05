@@ -100,6 +100,7 @@ import { usePlanningData } from "../features/planning/hooks/usePlanningData";
 import { VergaderbordenPage } from "../features/admin/VergaderbordenPage";
 import { UrenverantwoordingPage } from "../features/urenverantwoording/UrenverantwoordingPage";
 import { WorkHoursAuditAdminTab, WorkHoursHistoryAdminTab } from "../features/urenverantwoording/WorkHoursAdminTabs";
+import { AdminActivityLog } from "./AdminActivityLog";
 import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
@@ -3372,13 +3373,6 @@ function formatRelativeAge(value: string, nowMs: number = Date.now()): string {
   return `${ageHours} uur geleden`;
 }
 
-function truncateText(value: string, maxLength: number): string {
-  if (value.length <= maxLength) {
-    return value;
-  }
-  return `${value.slice(0, Math.max(1, maxLength - 3)).trimEnd()}...`;
-}
-
 function toDatetimeLocalInputValue(value: string | null): string {
   if (!value) {
     return "";
@@ -5913,36 +5907,12 @@ function AdminPage({ currentUser }: { currentUser: CurrentUser | undefined }) {
       {activeAdminTab === "workHoursAudit" && <WorkHoursAuditAdminTab />}
 
       <div hidden={activeAdminTab !== "activity"}>
-        <h2>Admin log</h2>
-        <p className="muted">Recente beheeracties en systeemevents (automatisch elke 30 sec ververst).</p>
+        <header className="admin-users-header">
+          <h2>Admin log</h2>
+          <p className="muted">De laatste 40 beheeracties en systeemevents, nieuwste eerst. Ververst elke 30 seconden.</p>
+        </header>
         <AdminQueryStatus resource="Admin log" isLoading={adminActivityQuery.isLoading} isError={adminActivityQuery.isError} onRetry={() => void adminActivityQuery.refetch()} />
-        <div className="table-wrap">
-          <ResponsiveTable>
-            <thead>
-              <ResponsiveRow>
-                <th>Tijd</th>
-                <th>Gebruiker</th>
-                <th>Actie</th>
-                <th>Topic</th>
-              </ResponsiveRow>
-            </thead>
-            <tbody>
-              {(adminActivityQuery.data ?? []).map((item) => {
-                const topicSubject = item.topic_subject?.trim() ?? "";
-                return (
-                  <ResponsiveRow key={item.id}>
-                    <td>{formatAmsterdamDateTime(item.created_at)}</td>
-                    <td>{item.actor_username}</td>
-                    <td>{item.event_type}</td>
-                    <td title={topicSubject || undefined}>
-                      {topicSubject ? truncateText(topicSubject, 60) : "-"}
-                    </td>
-                  </ResponsiveRow>
-                );
-              })}
-            </tbody>
-          </ResponsiveTable>
-        </div>
+        <AdminActivityLog items={adminActivityQuery.data ?? []} />
       </div>
     </section>
   );
