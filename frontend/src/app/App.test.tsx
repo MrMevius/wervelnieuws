@@ -990,6 +990,14 @@ describe("App", () => {
     });
   });
 
+  it("shows the light logo variant in the dark theme", async () => {
+    renderApp();
+    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u1", username: "admin", full_name: null, email: null, is_admin: true, theme_preference: "dark", has_avatar: false });
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+    await waitFor(() => expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "/groene-noabers-logo-dark.png"));
+  });
+
   it("shows WindWilly suite navigation and simplified landing after login", async () => {
     const { container } = renderApp();
     await loginIntoApp();

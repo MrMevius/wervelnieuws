@@ -337,6 +337,7 @@ export function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [avatarVersion, setAvatarVersion] = useState(0);
   const [topbarHidden, setTopbarHidden] = useState(false);
@@ -453,6 +454,7 @@ export function App() {
     const resolveTheme = () => {
       const resolved = themePreference === "system" ? (media.matches ? "dark" : "light") : themePreference;
       document.documentElement.setAttribute("data-theme", resolved);
+      setResolvedTheme(resolved);
     };
 
     resolveTheme();
@@ -608,7 +610,7 @@ export function App() {
     <div className="app-shell">
       <header className={`topbar ${topbarHidden ? "is-hidden" : ""}`}>
         <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="WindWilly landing">
-          <img className="brand-logo" src="https://www.groenenoabers.nl/Groene-Noabers-Logo.png" alt="Groene Noabers" />
+          <img className="brand-logo" src={resolvedTheme === "dark" ? "/groene-noabers-logo-dark.png" : "https://www.groenenoabers.nl/Groene-Noabers-Logo.png"} alt="Groene Noabers" />
         </NavLink>
         <nav className="tabs suite-tabs" aria-label="Hoofdnavigatie">
           <div
