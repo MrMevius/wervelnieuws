@@ -73,8 +73,8 @@ const COOPERATIVES: Cooperative[] = [
   }
 ];
 
-function Windmill({ tone }: { tone: string }) {
-  return <svg className={`windwilly-home-windmill is-${tone}`} viewBox="0 0 120 160" aria-hidden="true">
+export function Windmill({ tone, className = "windwilly-home-windmill" }: { tone: string; className?: string }) {
+  return <svg className={`${className} is-${tone}`} viewBox="0 0 120 160" aria-hidden="true">
     <path className="windwilly-home-windmill-tower" d="M57 58 L52 156 H68 L63 58 Z" />
     <g className="windwilly-home-windmill-rotor">
       <path d="M60 52 C57 36 58 16 60 4 C62 16 63 36 60 52 Z" />
