@@ -2,6 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, FocusEvent, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject, MouseEvent as ReactMouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  DONE_ARCHIVE_SUGGESTION_DAYS,
+  DONE_VISIBLE_LIMIT,
+  STALE_DOING_DAYS,
+  cardActivityAgeDays,
+  formatCardActivityAge
+} from "./boardCardActivity";
+import {
   AdminUser,
   BoardAccessUser,
   BoardCard,
@@ -693,6 +700,24 @@ function UpdateIcon() {
   );
 }
 
+function newestActiveCards(cards: BoardCard[], limit: number): BoardCard[] {
+  const keep = new Set(
+    [...cards]
+      .sort((a, b) => Date.parse(b.last_activity_at ?? b.created_at ?? "") - Date.parse(a.last_activity_at ?? a.created_at ?? "") || b.position - a.position)
+      .slice(0, limit)
+      .map((card) => card.id)
+  );
+  return cards.filter((card) => keep.has(card.id));
+}
+
+function AttachmentIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="board-card-activity-icon">
+      <path d="M10.6 5.2 6.3 9.5a1.2 1.2 0 0 0 1.7 1.7l4.6-4.6a2.5 2.5 0 0 0-3.5-3.5L4.4 7.8a3.7 3.7 0 0 0 5.3 5.3l3.6-3.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function UrgencyIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false" className="board-urgency-icon">
@@ -954,6 +979,9 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [trelloTransferError, setTrelloTransferError] = useState<string | null>(null);
   const [isBoardExporting, setIsBoardExporting] = useState<"json" | "markdown" | null>(null);
   const [boardView, setBoardView] = useState<"active" | "archive" | "recycle">("active");
+  const [showAllDoneCards, setShowAllDoneCards] = useState(false);
+  const [showBoardMenu, setShowBoardMenu] = useState(false);
+  const boardMenuRef = useRef<HTMLDivElement>(null);
   const [showMyCardsOnly, setShowMyCardsOnly] = useState(false);
   const [showUrgentOnly, setShowUrgentOnly] = useState(false);
   const [boardSearch, setBoardSearch] = useState("");
@@ -1150,6 +1178,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [boardSearchTerm]);
   useEffect(() => {
     setBoardSearch("");
+    setShowAllDoneCards(false);
   }, [resolvedProjectId]);
   // Title and description filter locally right away; the server adds matches in updates, transcripts and attachments.
   const boardSearchQuery = useQuery({
@@ -1179,6 +1208,25 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     return selected?.name ?? boardQuery.data?.project_name ?? null;
   }, [projectsQuery.data, resolvedProjectId, boardQuery.data?.project_name]);
 
+  // A hidden historical board is reachable by URL only; keep its plain title then.
+  const boardSwitchProjects = useMemo(() => {
+    const projects = projectsQuery.data ?? [];
+    return projects.some((project) => project.id === resolvedProjectId) ? projects : [];
+  }, [projectsQuery.data, resolvedProjectId]);
+  useEffect(() => {
+    if (!showBoardMenu) return;
+    const close = (event: Event) => {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      if (event instanceof MouseEvent && boardMenuRef.current?.contains(event.target as Node)) return;
+      setShowBoardMenu(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [showBoardMenu]);
   const boardAccessUsers = boardQuery.data?.access_users ?? [];
   const isReadOnly = boardQuery.data?.is_read_only === true;
   useEffect(() => {
@@ -1388,6 +1436,16 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       ]);
     }
   });
+  const archiveQuietCardsMutation = useMutation({
+    mutationFn: async (cardIds: string[]) => {
+      for (const cardId of cardIds) {
+        await archiveBoardCard(cardId);
+      }
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] });
+    }
+  });
   const restoreCardMutation = useMutation({
     mutationFn: (cardId: string) => restoreBoardCard(cardId),
     onSuccess: async (_result, cardId) => {
@@ -1530,14 +1588,16 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
 
   const renderBoardCard = (card: BoardCard, column: "todo" | "doing" | "done", variant: "active" | "archive") => {
     const isArchiveView = variant === "archive";
-    const hasActivity = card.updates_count > 0 || card.recordings_count > 0;
+    const hasActivity = card.updates_count > 0 || card.recordings_count > 0 || card.attachments_count > 0;
+    const activityDays = cardActivityAgeDays(card.last_activity_at);
+    const isStale = !isArchiveView && column === "doing" && activityDays !== null && activityDays >= STALE_DOING_DAYS;
     return (
       <div key={card.id}>
         {!isArchiveView && dragDropTarget?.column === column && dragDropTarget.cardId === card.id && dragDropTarget.placement === "before" && (
           <div className="vergaderborden-drop-indicator" data-testid={`board-drop-indicator-${column}-${card.id}-before`} aria-hidden="true" />
         )}
         <article
-          className={`vergaderborden-board-card${card.is_archived ? " is-archived" : ""}${isArchiveView ? " is-archive-view" : ""}`}
+          className={`vergaderborden-board-card${card.is_archived ? " is-archived" : ""}${isArchiveView ? " is-archive-view" : ""}${isStale ? " is-stale" : ""}`}
           data-testid={`board-card-${card.id}`}
           tabIndex={-1}
           draggable={!isArchiveView && !isReadOnly && !hasActiveBoardFilters}
@@ -1611,11 +1671,11 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             <span className="board-card-urgency" aria-label="Urgente kaart" title="Urgente kaart"><UrgencyIcon /></span>
           )}
           <strong className="vergaderborden-card-title" title={card.title}>{card.title}</strong>
-          {(card.assignments.length > 0 || hasActivity) && (
+          {(card.assignments.length > 0 || hasActivity || activityDays !== null) && (
             <div className="board-card-footer">
               <AssignedUserAvatarRow assignments={card.assignments} />
               {hasActivity && (
-                <div className="board-card-signals" aria-label={`${card.updates_count} updates, ${card.recordings_count} opnames`}>
+                <div className="board-card-signals" aria-label={`${card.updates_count} updates, ${card.recordings_count} opnames, ${card.attachments_count} bijlagen`}>
                   {card.updates_count > 0 && (
                     <span className="board-card-activity" title={`${card.updates_count} update${card.updates_count === 1 ? "" : "s"}`}>
                       <UpdateIcon />
@@ -1628,7 +1688,21 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                       <span>{card.recordings_count}</span>
                     </span>
                   )}
+                  {card.attachments_count > 0 && (
+                    <span className="board-card-activity" title={`${card.attachments_count} bijlage${card.attachments_count === 1 ? "" : "n"}`}>
+                      <AttachmentIcon />
+                      <span>{card.attachments_count}</span>
+                    </span>
+                  )}
                 </div>
+              )}
+              {activityDays !== null && (
+                <span
+                  className="board-card-age"
+                  title={isStale ? `Al ${activityDays} dagen geen activiteit` : "Laatste activiteit"}
+                >
+                  {isStale ? `Stil · ${formatCardActivityAge(activityDays)}` : formatCardActivityAge(activityDays)}
+                </span>
               )}
             </div>
           )}
@@ -1716,10 +1790,19 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     const cards = variant === "active" ? cardsByColumn[column] : archivedCardsByColumn[column];
     const isActiveView = variant === "active";
     const canDragInColumn = isActiveView && !isReadOnly && !hasActiveBoardFilters;
+    const columnTotal = isActiveView ? activeCards.filter((card) => card.column === column).length : cards.length;
+    const isFilteredCount = isActiveView && hasActiveBoardFilters && columnTotal !== cards.length;
+    // "Klaar" keeps growing; show the most recently active cards and fold away the rest.
+    const canCollapse = isActiveView && column === "done" && !hasActiveBoardFilters && cards.length > DONE_VISIBLE_LIMIT;
+    const isCollapsed = canCollapse && !showAllDoneCards;
+    const visibleCards = isCollapsed ? newestActiveCards(cards, DONE_VISIBLE_LIMIT) : cards;
+    const quietDoneCards = isActiveView && column === "done" && !isReadOnly && !hasActiveBoardFilters
+      ? cards.filter((card) => (cardActivityAgeDays(card.last_activity_at) ?? 0) >= DONE_ARCHIVE_SUGGESTION_DAYS)
+      : [];
 
     return (
       <div
-        className={`vergaderborden-column${dragDropTarget?.column === column && isActiveView ? " is-drag-over" : ""}${savingCardId && isActiveView ? " is-saving" : ""}`}
+        className={`vergaderborden-column${dragDropTarget?.column === column && isActiveView ? " is-drag-over" : ""}${savingCardId && isActiveView ? " is-saving" : ""}${quietDoneCards.length > 0 || (archiveQuietCardsMutation.isError && column === "done" && isActiveView) ? " has-column-hint" : ""}`}
         key={column}
         data-testid={`board-column-${column}`}
         onDragOver={
@@ -1764,7 +1847,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         }
       >
         <div className="vergaderborden-column-header">
-        <h3>{KOLOM_TITEL[column]}</h3>
+        <h3>
+          {KOLOM_TITEL[column]}
+          <span
+            className="vergaderborden-column-count"
+            aria-label={isFilteredCount ? `${cards.length} van ${columnTotal} kaarten` : `${columnTotal} ${columnTotal === 1 ? "kaart" : "kaarten"}`}
+          >
+            {isFilteredCount ? `${cards.length}/${columnTotal}` : columnTotal}
+          </span>
+        </h3>
         {isActiveView && !isReadOnly && (
           <MaterialButton
             variant="outlined"
@@ -1780,10 +1871,50 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           </MaterialButton>
         )}
         </div>
+        {quietDoneCards.length > 0 && (
+          <div className="vergaderborden-archive-hint">
+            <span>
+              {quietDoneCards.length === 1 ? "1 kaart is" : `${quietDoneCards.length} kaarten zijn`} al {DONE_ARCHIVE_SUGGESTION_DAYS}+ dagen stil.
+            </span>
+            <MaterialButton
+              variant="text"
+              size="compact"
+              disabled={archiveQuietCardsMutation.isPending}
+              onClick={() => {
+                const confirmed = window.confirm(
+                  `${quietDoneCards.length === 1 ? "Deze kaart" : `Deze ${quietDoneCards.length} kaarten`} naar het archief verplaatsen? Je kunt ze daar altijd terugzetten.`
+                );
+                if (!confirmed) return;
+                archiveQuietCardsMutation.mutate(quietDoneCards.map((card) => card.id));
+              }}
+            >
+              {archiveQuietCardsMutation.isPending ? "Archiveren…" : "Archiveren"}
+            </MaterialButton>
+          </div>
+        )}
+        {archiveQuietCardsMutation.isError && column === "done" && isActiveView && (
+          <p className="vergaderborden-archive-hint-error" role="alert">Niet alle kaarten konden worden gearchiveerd. Probeer het opnieuw.</p>
+        )}
         <div className="vergaderborden-column-cards" role="region" aria-label={`Kaarten: ${KOLOM_TITEL[column]}`} tabIndex={0}>
-        {cards.map((card) => renderBoardCard(card, column, variant))}
+        {visibleCards.map((card) => renderBoardCard(card, column, variant))}
+        {cards.length === 0 && (
+          <p className="vergaderborden-column-empty">
+            {!isActiveView
+              ? "Geen gearchiveerde kaarten."
+              : hasActiveBoardFilters
+                ? "Geen kaarten die aan de filters voldoen."
+                : isReadOnly
+                  ? "Nog geen kaarten."
+                  : "Nog geen kaarten. Sleep een kaart hierheen of voeg er een toe."}
+          </p>
+        )}
         {isActiveView && dragDropTarget?.column === column && dragDropTarget.cardId === null && (
           <div className="vergaderborden-drop-indicator vergaderborden-drop-indicator--end" data-testid={`board-drop-indicator-${column}-end`} aria-hidden="true" />
+        )}
+        {canCollapse && (
+          <button type="button" className="vergaderborden-column-more" aria-expanded={!isCollapsed} onClick={() => setShowAllDoneCards((value) => !value)}>
+            {isCollapsed ? `Toon alle ${cards.length} kaarten (${cards.length - visibleCards.length} oudere verborgen)` : "Toon alleen recente kaarten"}
+          </button>
         )}
         </div>
       </div>
@@ -2110,7 +2241,28 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       <div className="board-context-bar">
         <div className="board-context-project">
           <div className="vergaderborden-header">
-            {resolvedProjectName && <h1 title={resolvedProjectName}>{resolvedProjectName}</h1>}
+            {resolvedProjectName && boardSwitchProjects.length > 1 ? (
+              <div className="vergaderborden-board-switch">
+                <h1 title={resolvedProjectName}>
+                  <span className="vergaderborden-board-switch-name">{resolvedProjectName}</span>
+                  <svg className="vergaderborden-board-switch-chevron" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                </h1>
+                <select
+                  aria-label="Bord kiezen"
+                  value={resolvedProjectId ?? ""}
+                  onChange={(event) => {
+                    const projectId = event.target.value;
+                    setSearchParams((current) => {
+                      const next = new URLSearchParams(current);
+                      next.set("project", projectId);
+                      return next;
+                    });
+                  }}
+                >
+                  {boardSwitchProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+                </select>
+              </div>
+            ) : resolvedProjectName && <h1 title={resolvedProjectName}>{resolvedProjectName}</h1>}
           </div>
           {resolvedProjectId && <BoardAccessBadges users={boardAccessUsers} />}
         </div>
@@ -2147,27 +2299,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 </MaterialButton>
               )}
             </div>
-            {!isReadOnly && (
-              <MaterialButton
-                variant="outlined"
-                size="compact"
-                className="board-transfer-trigger"
-                onClick={() => {
-                  setShowBoardTransfer(true);
-                  setIsBoardClearConfirming(false);
-                  setTrelloTransferError(null);
-                }}
-              >
-                Import & export
-              </MaterialButton>
-            )}
             {boardView === "active" && (
               <div className="board-filter-bar" role="group" aria-label="Kaarten filteren">
                 <label className="board-search-field">
                   <input
                     type="search"
                     value={boardSearch}
-                    placeholder="Zoek in titels, beschrijvingen, updates…"
+                    placeholder="Zoek op dit bord…"
+                    title="Zoekt in titels, beschrijvingen, updates, transcripties en bijlagen"
                     aria-label="Zoeken op dit bord"
                     maxLength={200}
                     onChange={(evt) => setBoardSearch(evt.target.value)}
@@ -2180,24 +2319,22 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     }}
                   />
                 </label>
-                <MaterialButton
-                  variant={showMyCardsOnly ? "tonal" : "text"}
-                  size="compact"
+                <button
+                  type="button"
                   aria-pressed={showMyCardsOnly}
-                  className={showMyCardsOnly ? "is-active" : ""}
+                  className={`board-filter-chip${showMyCardsOnly ? " is-active" : ""}`}
                   onClick={() => setShowMyCardsOnly((active) => !active)}
                 >
                   Mijn kaarten ({myCardCount})
-                </MaterialButton>
-                <MaterialButton
-                  variant={showUrgentOnly ? "tonal" : "text"}
-                  size="compact"
+                </button>
+                <button
+                  type="button"
                   aria-pressed={showUrgentOnly}
-                  className={showUrgentOnly ? "is-active" : ""}
+                  className={`board-filter-chip is-urgent${showUrgentOnly ? " is-active" : ""}`}
                   onClick={() => setShowUrgentOnly((active) => !active)}
                 >
                   Urgent ({urgentCardCount})
-                </MaterialButton>
+                </button>
                 {boardSearchTerm && (
                   <span className="board-search-status" role="status">
                     {filteredActiveCards.length === 1 ? "1 kaart gevonden" : `${filteredActiveCards.length} kaarten gevonden`}
@@ -2213,6 +2350,36 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   }}>
                     Wis filters
                   </MaterialButton>
+                )}
+              </div>
+            )}
+            {!isReadOnly && (
+              <div className="board-overflow-menu" ref={boardMenuRef}>
+                <button
+                  type="button"
+                  className="board-overflow-trigger"
+                  aria-label="Meer bordacties"
+                  aria-haspopup="menu"
+                  aria-expanded={showBoardMenu}
+                  onClick={() => setShowBoardMenu((open) => !open)}
+                >
+                  <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="3.5" cy="8" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="12.5" cy="8" r="1.3" /></svg>
+                </button>
+                {showBoardMenu && (
+                  <div className="board-overflow-list" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowBoardMenu(false);
+                        setShowBoardTransfer(true);
+                        setIsBoardClearConfirming(false);
+                        setTrelloTransferError(null);
+                      }}
+                    >
+                      Import & export
+                    </button>
+                  </div>
                 )}
               </div>
             )}

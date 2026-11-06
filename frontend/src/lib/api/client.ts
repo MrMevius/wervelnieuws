@@ -258,6 +258,7 @@ export type BoardCard = {
   updates_count: number;
   recordings_count: number;
   attachments_count: number;
+  last_activity_at?: string | null;
 };
 
 export type BoardAccessUser = {

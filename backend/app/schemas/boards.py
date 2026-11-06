@@ -243,6 +243,7 @@ class BoardCardResponse(BaseModel):
     updates_count: int
     recordings_count: int
     attachments_count: int
+    last_activity_at: datetime | None = None
 
 
 class BoardSearchResponse(BaseModel):

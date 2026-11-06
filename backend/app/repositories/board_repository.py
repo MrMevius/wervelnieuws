@@ -169,6 +169,27 @@ class BoardRepository:
             or 0
         )
 
+    def last_activity_at(self, card: BoardCard) -> datetime:
+        """Newest update, recording or attachment; the card's creation time otherwise.
+
+        Card ``updated_at`` is not used because reordering a column touches every
+        sibling card's position.
+        """
+        candidates = [
+            card.created_at,
+            self.db.scalar(
+                select(func.max(CardUpdate.created_at)).where(
+                    CardUpdate.card_id == card.id,
+                    CardUpdate.deleted_at.is_(None),
+                )
+            ),
+            self.db.scalar(select(func.max(Recording.created_at)).where(Recording.card_id == card.id)),
+            self.db.scalar(
+                select(func.max(BoardCardAttachment.created_at)).where(BoardCardAttachment.card_id == card.id)
+            ),
+        ]
+        return max(_as_utc(value) for value in candidates if value is not None)
+
     def list_trello_card_ids(self, trello_card_ids: list[str]) -> set[str]:
         if not trello_card_ids:
             return set()
@@ -463,3 +484,8 @@ class BoardRepository:
 
     def get_user(self, user_id: str) -> User | None:
         return self.db.get(User, user_id)
+
+
+def _as_utc(value: datetime) -> datetime:
+    # SQLite returns naive datetimes even for timezone-aware columns.
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)

@@ -1407,6 +1407,32 @@ def test_move_card_creates_system_update_for_column_change(client):
     assert updates[0]["author_display_name"] == "admin"
 
 
+def test_board_card_last_activity_follows_newest_update(client):
+    headers = _login(client)
+    project_id = client.post(
+        "/api/boards/projects",
+        headers=headers,
+        json={"name": "Activiteit", "description": "", "invited_user_ids": []},
+    ).json()["id"]
+    card = client.post(
+        f"/api/boards/projects/{project_id}/cards",
+        headers=headers,
+        json={"title": "Stil", "description": "", "column": "todo", "assignment_user_ids": []},
+    ).json()
+    assert card["last_activity_at"] is not None
+    created = datetime.fromisoformat(card["last_activity_at"])
+
+    move = client.patch(f"/api/boards/cards/{card['id']}/move", headers=headers, json={"column": "doing", "position": 0})
+    assert move.status_code == 200
+    detail = client.get(f"/api/boards/cards/{card['id']}", headers=headers).json()
+    newest_update = datetime.fromisoformat(detail["updates"][0]["created_at"])
+
+    board = client.get(f"/api/boards/projects/{project_id}", headers=headers).json()
+    activity = datetime.fromisoformat(board["cards"][0]["last_activity_at"])
+    assert activity >= created
+    assert activity.replace(tzinfo=None) == newest_update.replace(tzinfo=None)
+
+
 def test_move_card_same_column_creates_no_system_update(client):
     headers = _login(client)
     create_project = client.post(

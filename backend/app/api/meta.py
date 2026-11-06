@@ -29,6 +29,18 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "135",
+                "date": "2026-11-06",
+                "title": "Vergaderborden zijn overzichtelijker",
+                "highlights": [
+                    "Elke kolom laat zien hoeveel kaarten erin staan; een lege kolom vertelt wat je ermee kunt.",
+                    "Kaarten tonen naast updates en opnames ook het aantal bijlagen en wanneer er voor het laatst iets gebeurde. Kaarten in Bezig die drie weken stil liggen vallen op.",
+                    "Een volle Klaar-kolom toont alleen de recentste kaarten en stelt voor om kaarten die al een maand stil zijn te archiveren.",
+                    "De filters Mijn kaarten en Urgent zijn duidelijke knoppen geworden en Import & export zit onder het menu met de drie puntjes.",
+                    "Via de bordnaam bovenaan wissel je direct naar een ander bord.",
+                ],
+            },
+            {
                 "iteration": "134",
                 "date": "2026-11-06",
                 "title": "Inloggen gaat soepeler en veiliger",

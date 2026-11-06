@@ -260,6 +260,7 @@
     padding-bottom: max(4px, env(safe-area-inset-bottom));
   }
   .vergaderborden-page.is-active-board-view > .board-grid > .vergaderborden-column { min-height: 0; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; scroll-snap-align: start; }
+  .vergaderborden-page.is-active-board-view > .board-grid > .vergaderborden-column.has-column-hint { grid-template-rows: auto auto minmax(0, 1fr); }
   .vergaderborden-page.is-active-board-view .vergaderborden-column-cards { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; }
   .vergaderborden-column-header { flex-wrap: nowrap; }
   .vergaderborden-column-header h3 { font-size: 0.95rem; }
