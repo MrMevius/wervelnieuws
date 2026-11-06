@@ -305,22 +305,191 @@ ul {
   padding-left: 1.2rem;
 }
 
+/* Login: a calm sky over a landscape of slowly turning turbines. The shell
+   paints its own background so the body's wind-line overlay stays hidden. */
 .login-shell {
+  --login-sky-top: #e6f1f8;
+  --login-sky-bottom: #f4faf5;
+  --login-hill-back: #d3ead9;
+  --login-hill-front: #b9dcc3;
+  --login-turbine: color-mix(in srgb, var(--noabers-navy) 30%, transparent);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   min-height: 100vh;
   display: grid;
-  place-items: center;
+  grid-template-rows: 1fr auto;
+  justify-items: center;
+  align-items: center;
+  gap: 16px;
   padding: 24px;
+  background: linear-gradient(180deg, var(--login-sky-top) 0%, var(--login-sky-bottom) 70%);
 }
 
+:root[data-theme="dark"] .login-shell {
+  --login-sky-top: #101518;
+  --login-sky-bottom: #1a2326;
+  --login-hill-back: #1f2c28;
+  --login-hill-front: #253830;
+  --login-turbine: color-mix(in srgb, var(--noabers-green-400) 34%, transparent);
+}
+
+.login-landscape {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: -1;
+  height: min(42vh, 360px);
+  pointer-events: none;
+}
+
+.login-hill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.login-hill.is-back { fill: var(--login-hill-back); }
+.login-hill.is-front { fill: var(--login-hill-front); }
+
+.login-windmill {
+  position: absolute;
+  color: var(--login-turbine);
+}
+
+.login-windmill .windwilly-home-windmill-tower { fill: currentColor; }
+.login-windmill.is-far { left: 8%; bottom: 34%; width: 72px; height: 96px; }
+.login-windmill.is-mid { left: 19%; bottom: 26%; width: 120px; height: 160px; }
+.login-windmill.is-near { right: 12%; bottom: 22%; width: 150px; height: 200px; }
+.login-windmill.is-side { right: 27%; bottom: 36%; width: 84px; height: 112px; }
+.login-windmill.is-far .windwilly-home-windmill-rotor { animation-duration: 11s; animation-delay: -2s; }
+.login-windmill.is-mid .windwilly-home-windmill-rotor { animation-duration: 9s; animation-delay: -5s; }
+.login-windmill.is-near .windwilly-home-windmill-rotor { animation-duration: 10s; }
+.login-windmill.is-side .windwilly-home-windmill-rotor { animation-duration: 12s; animation-delay: -7s; }
+
 .login-card {
-  width: min(480px, 100%);
-  background: var(--surface);
+  width: min(440px, 100%);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(6px);
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: var(--shadow);
-  padding: 28px;
+  padding: 32px;
   display: grid;
-  gap: 14px;
+  gap: 20px;
+}
+
+.login-logo {
+  display: block;
+  width: 156px;
+  height: auto;
+  max-height: 52px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.login-intro {
+  display: grid;
+  gap: 6px;
+}
+
+.login-intro h1 {
+  font-size: 1.7rem;
+}
+
+.login-field {
+  display: grid;
+  gap: 5px;
+}
+
+.login-field label {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.login-field input {
+  width: 100%;
+}
+
+.login-password {
+  position: relative;
+}
+
+.login-password input {
+  padding-right: 46px;
+}
+
+.login-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.login-password-toggle:hover {
+  color: var(--text);
+  background: var(--control-neutral-hover-bg);
+}
+
+.login-password-toggle svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.remember-me-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+  cursor: pointer;
+}
+
+.remember-me-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--brand);
+}
+
+.login-submit {
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.login-submit:not(:disabled):hover {
+  background: var(--control-primary-hover-bg);
+}
+
+.login-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--notice-error-border);
+  border-radius: 10px;
+  background: var(--notice-error-bg);
+  color: var(--notice-error-fg);
+}
+
+.login-footer {
+  align-self: end;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.login-footer a {
+  color: inherit;
+  text-underline-offset: 2px;
 }
 
 .eyebrow {
@@ -333,7 +502,7 @@ ul {
 
 .login-form {
   display: grid;
-  gap: 10px;
+  gap: 14px;
 }
 
 input,

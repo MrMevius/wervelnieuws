@@ -986,8 +986,52 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Ongeldige gebruikersnaam of wachtwoord.");
+      expect(screen.getByRole("alert")).toHaveTextContent("Gebruikersnaam of wachtwoord klopt niet.");
     });
+  });
+
+  it("focuses the password field after a failed login", async () => {
+    mockApi.login.mockRejectedValueOnce(Object.assign(new Error("Invalid credentials"), { status: 401 }));
+    renderApp();
+
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+
+    await waitFor(() => expect(screen.getByLabelText("Wachtwoord")).toHaveFocus());
+    expect(screen.getByLabelText("Wachtwoord")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it.each([
+    [Object.assign(new Error("Rate limit exceeded"), { status: 429 }), "Te veel inlogpogingen"],
+    [Object.assign(new Error("Bad gateway"), { status: 502 }), "aan de kant van de server"],
+    [new TypeError("Failed to fetch"), "De server is niet bereikbaar"]
+  ])("explains why login failed (%s)", async (error, expected) => {
+    mockApi.login.mockRejectedValueOnce(error);
+    renderApp();
+
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(expected));
+  });
+
+  it("toggles password visibility on the login page", () => {
+    renderApp();
+    const password = screen.getByLabelText("Wachtwoord");
+    expect(password).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Wachtwoord tonen" }));
+    expect(password).toHaveAttribute("type", "text");
+
+    fireEvent.click(screen.getByRole("button", { name: "Wachtwoord verbergen" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
+
+  it("shows branding, welcome and credits on the login page", () => {
+    renderApp();
+    expect(screen.getByRole("heading", { name: "Welkom bij WindWilly" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Groene Noabers" })).toBeInTheDocument();
+    expect(screen.getByText(/Ontwikkeld door BJ & MM/)).toBeInTheDocument();
   });
 
   it("shows the light logo variant in the dark theme", async () => {
@@ -1275,7 +1319,7 @@ describe("App", () => {
       expect(screen.queryByRole("heading", { name: "Bestuurslid 1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 2" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 3" })).not.toBeInTheDocument();
-      expect(screen.getByText("© 2026 WindWilly · Vibecoded by BJ & MR")).toBeInTheDocument();
+      expect(screen.getByText("© 2026 WindWilly · Ontwikkeld door BJ & MM")).toBeInTheDocument();
       expect(
         screen.queryByText(
           "Lokale communicatie, planning en publicatie met broncontrole, versiebeheer en menselijke review."

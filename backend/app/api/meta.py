@@ -29,6 +29,17 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "133",
+                "date": "2026-11-06",
+                "title": "Een vriendelijker inlogscherm",
+                "highlights": [
+                    "Het inlogscherm toont het logo van Groene Noabers en heet je welkom bij WindWilly, met een korte uitleg waar de werkplek voor is.",
+                    "De velden hebben vaste labels en met het oogje zie je wat je als wachtwoord hebt getypt.",
+                    "Lukt inloggen niet, dan lees je waarom: een verkeerd wachtwoord, te veel pogingen of een server die even niet bereikbaar is.",
+                    "Op de achtergrond draaien rustig een paar windmolens in het landschap, in een lichte en een donkere uitvoering en ook netjes op je telefoon.",
+                ],
+            },
+            {
                 "iteration": "132",
                 "date": "2026-11-05",
                 "title": "Een nieuwe startpagina",

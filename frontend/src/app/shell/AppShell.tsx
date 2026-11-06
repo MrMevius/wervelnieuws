@@ -102,6 +102,7 @@ import { UrenverantwoordingPage } from "../features/urenverantwoording/Urenveran
 import { WorkHoursAuditAdminTab, WorkHoursHistoryAdminTab } from "../features/urenverantwoording/WorkHoursAdminTabs";
 import { AdminActivityLog } from "./AdminActivityLog";
 import { WindWillyLandingPage } from "./WindWillyLandingPage";
+import { LoginPage, loginErrorMessage } from "./LoginPage";
 import {
   resolveVergaderbordenProjectId,
   VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY
@@ -416,14 +417,7 @@ export function App() {
       setLoginError(null);
       navigate(WINDWILLY_PATHS.landing, { replace: true });
     },
-    onError: (error) => {
-      const message = error instanceof Error ? error.message.toLowerCase() : "";
-      if (message.includes("invalid credentials") || message.includes("401")) {
-        setLoginError("Ongeldige gebruikersnaam of wachtwoord.");
-        return;
-      }
-      setLoginError("Inloggen mislukt. Controleer of de backend bereikbaar is en probeer opnieuw.");
-    }
+    onError: (error) => setLoginError(loginErrorMessage(error))
   });
 
   const currentUserQuery = useQuery({
@@ -572,29 +566,12 @@ export function App() {
 
   if (!authenticated) {
     return (
-      <main className="login-shell">
-        <section className="login-card">
-          <p className="eyebrow">WindWilly</p>
-          <h1>Suite Dashboard</h1>
-          <p>Log in om de planning, publicaties en changelog te bekijken.</p>
-          <form className="login-form" onSubmit={(e) => handleLogin(e, loginMutation.mutate)}>
-            <input name="username" aria-label="Gebruikersnaam" placeholder="Gebruikersnaam" autoComplete="username" autoCapitalize="none" required />
-            <input name="password" aria-label="Wachtwoord" type="password" placeholder="Wachtwoord" autoComplete="current-password" required />
-            <label className="remember-me-option">
-              <input name="rememberMe" type="checkbox" />
-              <span>Onthoud mij</span>
-            </label>
-            <button type="submit" disabled={loginMutation.isPending}>
-              {loginMutation.isPending ? "Bezig..." : "Inloggen"}
-            </button>
-            {loginError && (
-              <p className="error" role="alert">
-                {loginError}
-              </p>
-            )}
-          </form>
-        </section>
-      </main>
+      <LoginPage
+        theme={resolvedTheme}
+        isPending={loginMutation.isPending}
+        error={loginError}
+        onSubmit={(input) => loginMutation.mutate(input)}
+      />
     );
   }
 
@@ -785,25 +762,12 @@ export function App() {
       <footer className="app-footer">
         <div className="app-footer-inner">
           <div className="app-footer-copy">
-            <small>© 2026 WindWilly · Vibecoded by BJ &amp; MR</small>
+            <small>© 2026 WindWilly · Ontwikkeld door BJ &amp; MM</small>
           </div>
         </div>
       </footer>
     </div>
   );
-}
-
-function handleLogin(
-  e: FormEvent<HTMLFormElement>,
-  submit: (input: { username: string; password: string; rememberMe: boolean }) => void
-) {
-  e.preventDefault();
-  const data = new FormData(e.currentTarget);
-  submit({
-    username: String(data.get("username") ?? ""),
-    password: String(data.get("password") ?? ""),
-    rememberMe: data.get("rememberMe") === "on"
-  });
 }
 
 function WindWillyModulePlaceholder() {
