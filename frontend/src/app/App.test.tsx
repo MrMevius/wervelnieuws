@@ -3634,8 +3634,9 @@ describe("App", () => {
   });
 
   it("keeps the Admin guard for the hours submenu tabs", async () => {
-    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
     renderApp();
+    await screen.findByLabelText("Gebruikersnaam");
+    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
     fillLoginForm();
     await userEvent.click(screen.getByRole("button", { name: "Inloggen" }));
     await screen.findByRole("navigation", { name: "Hoofdnavigatie" });
