@@ -222,7 +222,8 @@ describe("Vergaderborden drag/drop", () => {
   it("vraagt een extra bevestiging voordat het volledige bord wordt leeggemaakt", async () => {
     renderPage();
 
-    await userEvent.click(await screen.findByRole("button", { name: "Import & export" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Meer bordacties" }));
+    await userEvent.click(screen.getByRole("menuitem", { name: "Import & export" }));
     expect(screen.getByRole("heading", { name: "Inhoud bord leegmaken" })).toBeInTheDocument();
     expect(screen.getByText(/verplaats alle actieve en gearchiveerde kaarten/i)).toBeInTheDocument();
 
@@ -1493,7 +1494,8 @@ describe("Vergaderborden drag/drop", () => {
 
     renderPage("/vergaderborden?project=p1");
 
-    fireEvent.click(await screen.findByRole("button", { name: "Import & export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Meer bordacties" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Import & export" }));
     fireEvent.change(screen.getByLabelText("JSON-bestand"), { target: { files: [file] } });
 
     const todo = await screen.findByRole("checkbox", { name: /To Do/ });
@@ -2544,5 +2546,87 @@ describe("Vergaderborden drag/drop", () => {
     const dialog = await screen.findByRole("dialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Start opname" }));
     expect(await screen.findByText("Microfoon starten is mislukt. Controleer toestemming en probeer opnieuw.")).toBeInTheDocument();
+  });
+
+  describe("bordoverzicht", () => {
+    const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const makeCard = (id: string, column: "todo" | "doing" | "done", position: number, activityDaysAgo: number, extra: Record<string, unknown> = {}) => ({
+      id,
+      project_id: "p1",
+      title: `Kaart ${id}`,
+      description: "",
+      column,
+      position,
+      assignments: [],
+      updates_count: 0,
+      recordings_count: 0,
+      attachments_count: 0,
+      last_activity_at: daysAgo(activityDaysAgo),
+      ...extra
+    });
+
+    it("toont aantallen per kolom en een hint in lege kolommen", async () => {
+      api.getBoardProject.mockResolvedValue({
+        project_id: "p1",
+        project_name: "Project A",
+        invited_user_ids: ["u1"],
+        cards: [makeCard("d1", "doing", 0, 1), makeCard("d2", "doing", 1, 2)]
+      });
+      renderPage();
+
+      const doing = await screen.findByTestId("board-column-doing");
+      expect(await within(doing).findByLabelText("2 kaarten")).toHaveTextContent("2");
+      const todo = screen.getByTestId("board-column-todo");
+      expect(within(todo).getByLabelText("0 kaarten")).toBeInTheDocument();
+      expect(within(todo).getByText("Nog geen kaarten. Sleep een kaart hierheen of voeg er een toe.")).toBeInTheDocument();
+    });
+
+    it("toont bijlagen, laatste activiteit en markeert stilstaande kaarten in Bezig", async () => {
+      api.getBoardProject.mockResolvedValue({
+        project_id: "p1",
+        project_name: "Project A",
+        invited_user_ids: ["u1"],
+        cards: [makeCard("fresh", "doing", 0, 0, { attachments_count: 2 }), makeCard("quiet", "doing", 1, 25)]
+      });
+      renderPage();
+
+      const fresh = await screen.findByTestId("board-card-fresh");
+      expect(within(fresh).getByTitle("2 bijlagen")).toHaveTextContent("2");
+      expect(within(fresh).getByText("vandaag")).toBeInTheDocument();
+      expect(fresh).not.toHaveClass("is-stale");
+      const quiet = screen.getByTestId("board-card-quiet");
+      expect(quiet).toHaveClass("is-stale");
+      expect(within(quiet).getByText("Stil · 3 weken geleden")).toBeInTheDocument();
+    });
+
+    it("vouwt een volle Klaar-kolom in en stelt archiveren van stille kaarten voor", async () => {
+      const done = Array.from({ length: 10 }, (_, index) => makeCard(`k${index}`, "done", index, index < 3 ? 40 + index : index));
+      api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: done });
+      const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+      renderPage();
+
+      const column = await screen.findByTestId("board-column-done");
+      expect(await within(column).findByLabelText("10 kaarten")).toBeInTheDocument();
+      expect(within(column).queryByTestId("board-card-k2")).not.toBeInTheDocument();
+      expect(within(column).getByTestId("board-card-k9")).toBeInTheDocument();
+
+      await userEvent.click(within(column).getByRole("button", { name: /Toon alle 10 kaarten/ }));
+      expect(within(column).getByTestId("board-card-k2")).toBeInTheDocument();
+
+      expect(within(column).getByText("3 kaarten zijn al 30+ dagen stil.")).toBeInTheDocument();
+      await userEvent.click(within(column).getByRole("button", { name: "Archiveren" }));
+      await waitFor(() => expect(api.archiveBoardCard).toHaveBeenCalledTimes(3));
+      expect(api.archiveBoardCard.mock.calls.map(([id]) => id)).toEqual(["k0", "k1", "k2"]);
+      confirm.mockRestore();
+    });
+
+    it("wisselt van bord via de titel", async () => {
+      renderPage();
+
+      const select = await screen.findByRole("combobox", { name: "Bord kiezen" });
+      await waitFor(() => expect(select).toHaveValue("p1"));
+      await userEvent.selectOptions(select, "p0");
+      await waitFor(() => expect(api.getBoardProject).toHaveBeenCalledWith("p0"));
+    });
   });
 });

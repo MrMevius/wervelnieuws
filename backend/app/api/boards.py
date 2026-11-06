@@ -253,6 +253,7 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
         updates_count=repo.count_updates(card.id),
         recordings_count=repo.count_recordings(card.id),
         attachments_count=repo.count_attachments(card.id),
+        last_activity_at=repo.last_activity_at(card),
     )
 
 
