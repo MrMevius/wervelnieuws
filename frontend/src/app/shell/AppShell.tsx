@@ -762,7 +762,7 @@ export function App() {
       <footer className="app-footer">
         <div className="app-footer-inner">
           <div className="app-footer-copy">
-            <small>© 2026 WindWilly · Vibecoded by BJ &amp; MR</small>
+            <small>© 2026 WindWilly · Ontwikkeld door BJ &amp; MM</small>
           </div>
         </div>
       </footer>

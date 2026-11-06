@@ -1319,7 +1319,7 @@ describe("App", () => {
       expect(screen.queryByRole("heading", { name: "Bestuurslid 1" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 2" })).not.toBeInTheDocument();
       expect(screen.queryByRole("heading", { name: "Bestuurslid 3" })).not.toBeInTheDocument();
-      expect(screen.getByText("© 2026 WindWilly · Vibecoded by BJ & MR")).toBeInTheDocument();
+      expect(screen.getByText("© 2026 WindWilly · Ontwikkeld door BJ & MM")).toBeInTheDocument();
       expect(
         screen.queryByText(
           "Lokale communicatie, planning en publicatie met broncontrole, versiebeheer en menselijke review."
