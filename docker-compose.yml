@@ -6,8 +6,10 @@ services:
       target: runtime
     env_file:
       - .env
+    # Loopback only: browsers reach the API through the frontend's /api proxy;
+    # the host port is for local health checks and the deploy script.
     ports:
-      - "8001:8000"
+      - "127.0.0.1:8001:8000"
     restart: unless-stopped
     volumes:
       - ${WERVEL_STORAGE_DIR:-/mnt/wervelwind/database}:/data
