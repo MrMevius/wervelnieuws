@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -882,6 +882,7 @@ function renderHoursCompatibility(entry: string) {
       theme_preference: "system",
       has_avatar: false
     });
+    await screen.findByLabelText("Gebruikersnaam");
     fillLoginForm();
     fireEvent.click(screen.getByRole("button", { name: "Inloggen" }));
     await waitFor(() => {
@@ -1034,6 +1035,60 @@ describe("App", () => {
     expect(screen.getByText(/Ontwikkeld door BJ & MM/)).toBeInTheDocument();
   });
 
+  it("returns to the requested page after logging in", async () => {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter initialEntries={["/changelog"]}>
+          <App />
+          <LocationEcho />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await loginIntoApp();
+    expect(screen.getByText("/changelog")).toBeInTheDocument();
+  });
+
+  it("shows a loading state instead of the login page while a remembered session is checked", async () => {
+    window.localStorage.setItem("windwilly-session-hint", "1");
+    let resolveUser: (user: unknown) => void = () => undefined;
+    mockApi.getCurrentUser.mockReturnValueOnce(new Promise((resolve) => { resolveUser = resolve; }));
+    renderApp();
+
+    expect(screen.getByRole("status")).toHaveTextContent("Bezig met laden...");
+    expect(screen.queryByLabelText("Gebruikersnaam")).not.toBeInTheDocument();
+
+    resolveUser({ id: "u1", username: "admin", full_name: null, email: null, is_admin: true, theme_preference: "system", has_avatar: false });
+    expect(await screen.findByRole("navigation", { name: "Hoofdnavigatie" })).toBeInTheDocument();
+  });
+
+  it("explains an expired session on the login page", async () => {
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    await loginIntoApp();
+    mockApi.getCurrentUser.mockRejectedValueOnce(Object.assign(new Error("Invalid token"), { status: 401 }));
+    await act(async () => {
+      await queryClient.refetchQueries({ queryKey: ["current-user"] });
+    });
+
+    expect(await screen.findByText("Je sessie is verlopen. Log opnieuw in om verder te gaan.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Gebruikersnaam")).toBeInTheDocument();
+  });
+
+  it("warns when Caps Lock is on and shows login help", () => {
+    renderApp();
+    const password = screen.getByLabelText("Wachtwoord");
+    fireEvent.keyDown(password, { key: "A", modifierCapsLock: true });
+    expect(screen.getByText("Caps Lock staat aan.")).toBeInTheDocument();
+    expect(screen.getByText(/Vraag een beheerder om je wachtwoord opnieuw in te stellen/)).toBeInTheDocument();
+    expect(document.title).toBe("Inloggen · WindWilly");
+  });
+
   it("shows the light logo variant in the dark theme", async () => {
     renderApp();
     mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u1", username: "admin", full_name: null, email: null, is_admin: true, theme_preference: "dark", has_avatar: false });
@@ -1054,7 +1109,7 @@ describe("App", () => {
       expect(screen.getByRole("link", { name: "Participatiemomenten" })).toBeInTheDocument();
       expect(screen.getByRole("link", { name: "WindWilly" })).toHaveClass("quiet-suite-link");
       expect(screen.getByRole("link", { name: "Wervelnieuws" })).toHaveClass("quiet-suite-link");
-      expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "https://www.groenenoabers.nl/Groene-Noabers-Logo.png");
+      expect(screen.getByRole("img", { name: "Groene Noabers" })).toHaveAttribute("src", "/groene-noabers-logo.png");
       expect(screen.getByRole("heading", { name: "Wij draaien mee" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Samen zijn we Groene Noabers" })).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Coöperatie Groene Noabers" })).toBeInTheDocument();
@@ -3579,8 +3634,9 @@ describe("App", () => {
   });
 
   it("keeps the Admin guard for the hours submenu tabs", async () => {
-    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
     renderApp();
+    await screen.findByLabelText("Gebruikersnaam");
+    mockApi.getCurrentUser.mockResolvedValueOnce({ id: "u3", username: "editor", full_name: null, email: "editor@example.com", is_admin: false, theme_preference: "system", has_avatar: false });
     fillLoginForm();
     await userEvent.click(screen.getByRole("button", { name: "Inloggen" }));
     await screen.findByRole("navigation", { name: "Hoofdnavigatie" });
