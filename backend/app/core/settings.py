@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     avatar_max_bytes: int = 5 * 1024 * 1024
     rate_limit_window_seconds: int = 60
     rate_limit_max_requests: int = 120
+    login_failure_window_seconds: int = 900
+    login_failure_max_attempts: int = 10
 
     @field_validator("upload_max_bytes", mode="before")
     @classmethod

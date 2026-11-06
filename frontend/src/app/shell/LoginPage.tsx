@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { Windmill } from "./WindWillyLandingPage";
 
 export type LoginInput = { username: string; password: string; rememberMe: boolean };
@@ -7,10 +7,11 @@ type LoginPageProps = {
   theme: "light" | "dark";
   isPending: boolean;
   error: string | null;
+  notice?: string | null;
   onSubmit: (input: LoginInput) => void;
 };
 
-const LIGHT_LOGO = "https://www.groenenoabers.nl/Groene-Noabers-Logo.png";
+const LIGHT_LOGO = "/groene-noabers-logo.png";
 const DARK_LOGO = "/groene-noabers-logo-dark.png";
 
 export function loginErrorMessage(error: unknown): string {
@@ -20,7 +21,9 @@ export function loginErrorMessage(error: unknown): string {
     return "Gebruikersnaam of wachtwoord klopt niet. Controleer je gegevens en probeer het opnieuw.";
   }
   if (status === 429) {
-    return "Te veel inlogpogingen achter elkaar. Wacht een minuut en probeer het dan opnieuw.";
+    return message.includes("failed login")
+      ? "Te veel mislukte inlogpogingen voor deze gebruiker. Wacht een kwartier en probeer het dan opnieuw."
+      : "Te veel inlogpogingen achter elkaar. Wacht een minuut en probeer het dan opnieuw.";
   }
   if (typeof status === "number" && status >= 500) {
     return "Er ging iets mis aan de kant van de server. Probeer het over een paar minuten opnieuw.";
@@ -31,9 +34,24 @@ export function loginErrorMessage(error: unknown): string {
   return "Inloggen is niet gelukt. Probeer het opnieuw of neem contact op met een beheerder.";
 }
 
-export function LoginPage({ theme, isPending, error, onSubmit }: LoginPageProps) {
+export function LoginPage({ theme, isPending, error, notice = null, onSubmit }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
+  const [capsLockOn, setCapsLockOn] = useState(false);
   const passwordRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = "Inloggen · WindWilly";
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+
+  function updateCapsLock(e: KeyboardEvent<HTMLInputElement>) {
+    if (typeof e.getModifierState === "function") {
+      setCapsLockOn(e.getModifierState("CapsLock"));
+    }
+  }
 
   useEffect(() => {
     if (error) {
@@ -76,6 +94,12 @@ export function LoginPage({ theme, isPending, error, onSubmit }: LoginPageProps)
           </p>
         </div>
 
+        {notice && !error && (
+          <p className="login-notice" role="status">
+            {notice}
+          </p>
+        )}
+
         <form className="login-form" onSubmit={handleSubmit}>
           <div className="login-field">
             <label htmlFor="login-username">Gebruikersnaam</label>
@@ -91,7 +115,10 @@ export function LoginPage({ theme, isPending, error, onSubmit }: LoginPageProps)
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 aria-invalid={error ? true : undefined}
-                aria-describedby={error ? "login-error" : undefined}
+                aria-describedby={[capsLockOn ? "login-capslock" : "", error ? "login-error" : ""].filter(Boolean).join(" ") || undefined}
+                onKeyDown={updateCapsLock}
+                onKeyUp={updateCapsLock}
+                onBlur={() => setCapsLockOn(false)}
                 required
               />
               <button
@@ -108,6 +135,11 @@ export function LoginPage({ theme, isPending, error, onSubmit }: LoginPageProps)
                 </svg>
               </button>
             </div>
+            {capsLockOn && (
+              <p id="login-capslock" className="login-capslock">
+                Caps Lock staat aan.
+              </p>
+            )}
           </div>
           <label className="remember-me-option">
             <input name="rememberMe" type="checkbox" />
@@ -122,6 +154,10 @@ export function LoginPage({ theme, isPending, error, onSubmit }: LoginPageProps)
             </p>
           )}
         </form>
+
+        <p className="login-help muted">
+          Wachtwoord vergeten of lukt inloggen niet? Vraag een beheerder om je wachtwoord opnieuw in te stellen.
+        </p>
       </section>
 
       <footer className="login-footer">
