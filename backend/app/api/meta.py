@@ -29,6 +29,18 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "134",
+                "date": "2026-11-06",
+                "title": "Inloggen gaat soepeler en veiliger",
+                "highlights": [
+                    "Open je een link terwijl je niet bent ingelogd, dan kom je na het inloggen direct op die pagina terecht.",
+                    "Ben je al ingelogd, dan zie je bij het openen niet meer kort het inlogscherm voorbijflitsen.",
+                    "Is je sessie verlopen, dan zegt het inlogscherm dat; staat Caps Lock aan, dan krijg je een seintje bij het wachtwoord.",
+                    "Na tien mislukte pogingen voor dezelfde gebruikersnaam is inloggen voor die naam een kwartier geblokkeerd. Kom je er niet uit, dan kan een beheerder je wachtwoord opnieuw instellen.",
+                    "Het logo en de lettertypes worden nu door WindWilly zelf geleverd, zodat alles er overal hetzelfde uitziet.",
+                ],
+            },
+            {
                 "iteration": "133",
                 "date": "2026-11-06",
                 "title": "Een vriendelijker inlogscherm",

@@ -330,11 +330,38 @@ function boardRightsMatchesFilters(
   return matchesSearch && matchesStatus && matchesAccess;
 }
 
+const SESSION_HINT_STORAGE_KEY = "windwilly-session-hint";
+
+// Remembers that this browser had a session, so a returning user sees a short
+// loading state instead of a flash of the login page while /auth/me resolves.
+function readSessionHint() {
+  try {
+    return window.localStorage.getItem(SESSION_HINT_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function writeSessionHint(active: boolean) {
+  try {
+    if (active) {
+      window.localStorage.setItem(SESSION_HINT_STORAGE_KEY, "1");
+    } else {
+      window.localStorage.removeItem(SESSION_HINT_STORAGE_KEY);
+    }
+  } catch {
+    // Storage can be unavailable (private mode); the hint is only cosmetic.
+  }
+}
+
 export function App() {
   const queryClient = useQueryClient();
   const location = useLocation();
   const navigate = useNavigate();
   const [authenticated, setAuthenticated] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(() => !readSessionHint());
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const authenticatedRef = useRef(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [themePreference, setThemePreference] = useState<ThemePreference>("system");
@@ -413,9 +440,11 @@ export function App() {
     onMutate: () => setLoginError(null),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["current-user"] });
+      authenticatedRef.current = true;
+      writeSessionHint(true);
       setAuthenticated(true);
+      setSessionExpired(false);
       setLoginError(null);
-      navigate(WINDWILLY_PATHS.landing, { replace: true });
     },
     onError: (error) => setLoginError(loginErrorMessage(error))
   });
@@ -428,13 +457,51 @@ export function App() {
 
   useEffect(() => {
     if (currentUserQuery.isSuccess) {
+      authenticatedRef.current = true;
+      writeSessionHint(true);
       setAuthenticated(true);
+      setSessionChecked(true);
       return;
     }
     if (currentUserQuery.isError) {
+      if (authenticatedRef.current) {
+        setSessionExpired(true);
+      }
+      authenticatedRef.current = false;
+      writeSessionHint(false);
       setAuthenticated(false);
+      setSessionChecked(true);
     }
   }, [currentUserQuery.isError, currentUserQuery.isSuccess]);
+
+  // Any 401 while signed in means the session expired: return to the login
+  // page (keeping the current URL) and explain why.
+  useEffect(() => {
+    function handleUnauthorized(error: unknown) {
+      if (!authenticatedRef.current || (error as { status?: unknown } | null)?.status !== 401) {
+        return;
+      }
+      authenticatedRef.current = false;
+      writeSessionHint(false);
+      setSessionExpired(true);
+      setAuthenticated(false);
+      setMenuOpen(false);
+    }
+    const unsubscribeQueries = queryClient.getQueryCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        handleUnauthorized(event.action.error);
+      }
+    });
+    const unsubscribeMutations = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type === "updated" && event.action.type === "error") {
+        handleUnauthorized(event.action.error);
+      }
+    });
+    return () => {
+      unsubscribeQueries();
+      unsubscribeMutations();
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     if (!currentUserQuery.data) {
@@ -549,14 +616,18 @@ export function App() {
   }, [authenticated]);
 
   async function logout() {
+    authenticatedRef.current = false;
+    writeSessionHint(false);
     try {
       await logoutRequest();
     } catch {
       // noop: local auth state is still reset below
     }
     setAuthenticated(false);
+    setSessionExpired(false);
     setMenuOpen(false);
     setLoginError(null);
+    navigate(WINDWILLY_PATHS.landing, { replace: true });
     setThemePreference("system");
     setAvatarUrl(null);
     setAvatarVersion(0);
@@ -565,11 +636,19 @@ export function App() {
   }
 
   if (!authenticated) {
+    if (!sessionChecked) {
+      return (
+        <main className="login-shell" aria-busy="true">
+          <p className="sr-only" role="status">Bezig met laden...</p>
+        </main>
+      );
+    }
     return (
       <LoginPage
         theme={resolvedTheme}
         isPending={loginMutation.isPending}
         error={loginError}
+        notice={sessionExpired ? "Je sessie is verlopen. Log opnieuw in om verder te gaan." : null}
         onSubmit={(input) => loginMutation.mutate(input)}
       />
     );
@@ -587,7 +666,7 @@ export function App() {
     <div className="app-shell">
       <header className={`topbar ${topbarHidden ? "is-hidden" : ""}`}>
         <NavLink to={WINDWILLY_PATHS.landing} className="brand" aria-label="WindWilly landing">
-          <img className="brand-logo" src={resolvedTheme === "dark" ? "/groene-noabers-logo-dark.png" : "https://www.groenenoabers.nl/Groene-Noabers-Logo.png"} alt="Groene Noabers" />
+          <img className="brand-logo" src={resolvedTheme === "dark" ? "/groene-noabers-logo-dark.png" : "/groene-noabers-logo.png"} alt="Groene Noabers" />
         </NavLink>
         <nav className="tabs suite-tabs" aria-label="Hoofdnavigatie">
           <div

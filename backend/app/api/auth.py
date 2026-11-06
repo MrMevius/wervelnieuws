@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.core.db import get_db
-from app.core.rate_limit import rate_limit
+from app.core.rate_limit import (
+    clear_login_failures,
+    ensure_login_not_locked,
+    rate_limit,
+    record_login_failure,
+)
 from app.core.settings import get_settings
 from app.core.security import (
     create_access_token,
@@ -70,11 +75,14 @@ def login(
     db: Session = Depends(get_db),
 ) -> TokenResponse:
     settings = get_settings()
+    ensure_login_not_locked(db, payload.username)
     token = AuthService(db).login(payload.username, payload.password)
     if not token:
+        record_login_failure(db, payload.username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials"
         )
+    clear_login_failures(db, payload.username)
     _revoke_current_remember_session(request, db)
     if request.cookies.get(settings.remember_cookie_name):
         _delete_remember_cookie(response)
