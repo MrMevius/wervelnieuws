@@ -29,6 +29,14 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "136",
+                "date": "2026-11-09",
+                "title": "Reliable WindWilly availability monitoring",
+                "highlights": [
+                    "The status dashboard can check WindWilly through its website without reporting a false outage when the backend port is restricted to localhost.",
+                ],
+            },
+            {
                 "iteration": "135",
                 "date": "2026-11-06",
                 "title": "Vergaderborden zijn overzichtelijker",
