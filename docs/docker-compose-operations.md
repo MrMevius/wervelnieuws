@@ -122,3 +122,11 @@ docker compose up -d --no-deps backend frontend worker
 ```
 
 If the explicit migration failed or schema/data is implicated, keep backend and worker stopped and restore the verified database and matching storage backup with the previous release artifact. Do not downgrade or manually edit historical Alembic revisions.
+
+## WindWilly status dashboard probe
+
+The production frontend proxies exact GET/HEAD `/api/health` to the backend
+`/health`, returning `{"status":"ok"}` without authentication. It exposes no
+application data. Monitor `https://windwilly.nl/api/health` and require that JSON
+response. The backend host port remains bound to `127.0.0.1:8001`; do not use
+its LAN address for monitoring. Other API routes retain their authentication.
