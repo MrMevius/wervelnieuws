@@ -446,13 +446,14 @@ export type ChangePasswordPayload = {
 };
 
 export type ChangelogEntry = {
-  iteration: string;
+  version: string;
   date: string;
   title: string;
   highlights: string[];
 };
 
 export type AboutContent = {
+  version: string;
   description: string;
   disclaimer: string;
   developed_by: string;

@@ -380,11 +380,11 @@ def test_about_returns_read_only_payload(client):
     assert payload["disclaimer"]
     assert len(payload["changelog"]) >= 1
     audio_entries = [
-        entry for entry in payload["changelog"] if entry["iteration"] == "100"
+        entry for entry in payload["changelog"] if entry["version"] == "0.27.2"
     ]
     assert audio_entries == [
         {
-            "iteration": "100",
+            "version": "0.27.2",
             "date": "2026-08-11",
             "title": "Topicbronnen ondersteunen nu veilige audio-transcriptie",
             "highlights": [
@@ -493,3 +493,53 @@ def test_auth_me_avatar_fetch_without_avatar_returns_404(client):
     image = client.get("/api/auth/me/avatar", headers=headers)
     assert image.status_code == 404
     assert image.json()["detail"] == "Avatar not found"
+
+
+def test_changelog_uses_unique_scope_based_versions_and_dutch_release_notes(client):
+    import re
+    payload = client.get("/api/meta/about", headers=_login(client)).json()
+    entries = payload["changelog"]
+    versions = [entry["version"] for entry in entries]
+    assert len(entries) >= 142
+    assert len(versions) == len(set(versions))
+    assert all(re.fullmatch(r"0\.\d+\.\d+", version) for version in versions)
+    assert all("iteration" not in entry for entry in entries)
+    ordered = sorted(entries, key=lambda entry: tuple(map(int, entry["version"].split("."))))
+    assert [entry["date"] for entry in ordered] == sorted(entry["date"] for entry in ordered)
+    assert payload["version"] == ordered[-1]["version"]
+    assert "0.34.1" in versions
+    assert next(e for e in entries if e["version"] == "0.34.0")["title"] == "Opnames worden verder verwerkt nadat je het kaartje sluit"
+    assert next(e for e in entries if e["version"] == "0.33.7")["title"] == "Opnames worden automatisch als kaartupdate geplaatst"
+    for previous, current in zip(ordered, ordered[1:]):
+        _, old_minor, old_patch = map(int, previous["version"].split("."))
+        _, minor, patch = map(int, current["version"].split("."))
+        assert (minor == old_minor and patch == old_patch + 1) or (minor == old_minor + 1 and patch == 0)
+    recent = [entry for entry in entries if entry["date"] >= "2026-11-09"]
+    assert all(not entry["title"].startswith(("Recording", "Reliable")) for entry in recent)
+    assert "Na het uploaden" in next(e for e in entries if e["version"] == "0.34.0")["highlights"][0]
+
+
+def test_legacy_stored_changelog_maps_versions_without_rewriting_settings(client):
+    import json
+    from sqlalchemy import select
+    from app.api.deps import get_db
+    from app.main import app
+    from app.models.entities import SystemSetting
+    legacy = {"description": "Eigen omschrijving", "disclaimer": "Eigen disclaimer", "developed_by": "Eigen team", "changelog": [
+        {"iteration": "138", "date": "2026-11-17", "title": "Recording updates keep processing after you close the card", "highlights": ["Old English notes"]},
+        {"iteration": "07B", "date": "2026-03-12", "title": "Eigen historische wijziging", "highlights": ["Eigen toelichting"]},
+    ]}
+    db = next(app.dependency_overrides[get_db]())
+    original = json.dumps(legacy)
+    db.add(SystemSetting(key="about_page_content", value=original))
+    db.commit()
+    result = client.get("/api/meta/about", headers=_login(client))
+    assert result.status_code == 200
+    payload = result.json()
+    assert payload["description"] == "Eigen omschrijving"
+    assert {entry["version"] for entry in payload["changelog"]} == {"0.34.0", "0.0.1"}
+    assert next(e for e in payload["changelog"] if e["version"] == "0.0.1")["highlights"] == ["Eigen toelichting"]
+    assert "Old English notes" not in result.text
+    db.expire_all()
+    assert db.scalar(select(SystemSetting.value).where(SystemSetting.key == "about_page_content")) == original
+    db.close()
