@@ -176,6 +176,7 @@ Production lifecycle, migration, backup and rollback procedures are documented i
 ## Documentation
 
 - [Participatiemomenten: gespreksregister en exports](docs/participatiemomenten.md)
+- [Meeting-card recordings](docs/board-recordings.md)
 - [Architecture](docs/architecture.md)
 - [Docker Compose operations](docs/docker-compose-operations.md)
 - [Release readiness](docs/release-readiness.md)

@@ -38,7 +38,7 @@ Regels:
 - Noem afspraken, besluiten en actiepunten expliciet, met wie en wanneer als dat gezegd wordt.
 - Laat herhalingen, aarzelingen en irrelevante zijpaden weg.
 - Verwijst de spreker naar een ander kaartje, gebruik dan de titel van dat kaartje.
-- Geef uitsluitend de bullets terug, elk op een eigen regel beginnend met "- ". Gebruik hooguit 8 bullets; bij een korte opname volstaat één bullet."""
+- Geef uitsluitend de bullets terug, elk op een eigen regel beginnend met "- ". Stem het aantal bullets af op de lengte en inhoud van de opname. Gebruik één bullet per afzonderlijk relevant punt, zonder vaste bovengrens. Bij een korte opname volstaat één bullet; behoud bij langere opnames alle relevante afspraken, besluiten en actiepunten."""
 
 
 def _clip(text: str, limit: int) -> str:
@@ -54,7 +54,8 @@ def _as_bullets(text: str) -> str:
 class BoardRecordingTranscriptionService:
     """Transcribes stored meeting-board recordings and keeps the text on the recording."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, *, request_timeout: float | None = None) -> None:
+        self.request_timeout = request_timeout
         self.db = db
         self.config = GenAIConfigService(db).get_effective_config()
 
@@ -62,23 +63,28 @@ class BoardRecordingTranscriptionService:
     def is_configured(self) -> bool:
         return bool(self.config.openai_api_key)
 
+    def transcribe_text(self, recording: Recording) -> str:
+        openai = OpenAIClient(
+            api_key=self.config.openai_api_key,
+            text_model=self.config.text_model,
+            image_model=self.config.image_model,
+            request_timeout=self.request_timeout,
+        )
+        result = openai.transcribe_audio(
+            recording.file_path,
+            model=self.config.whisper_model,
+            language=self.config.whisper_language,
+        )
+        text = str(result.get("text") or "").strip()
+        if not text:
+            raise ValueError("OpenAI transcription returned an empty transcript.")
+        return text
+
     def transcribe(self, recording: Recording) -> Recording:
         # The status stays as-is while transcribing, so an interrupted request
         # leaves a pending recording that the worker retries.
         try:
-            openai = OpenAIClient(
-                api_key=self.config.openai_api_key,
-                text_model=self.config.text_model,
-                image_model=self.config.image_model,
-            )
-            result = openai.transcribe_audio(
-                recording.file_path,
-                model=self.config.whisper_model,
-                language=self.config.whisper_language,
-            )
-            text = str(result.get("text") or "").strip()
-            if not text:
-                raise ValueError("OpenAI transcription returned an empty transcript.")
+            text = self.transcribe_text(recording)
             recording.transcription_text = text
             recording.transcription_status = RECORDING_TRANSCRIPTION_DONE
         except Exception as exc:
@@ -98,6 +104,7 @@ class BoardRecordingTranscriptionService:
             api_key=self.config.openai_api_key,
             text_model=self.config.text_model,
             image_model=self.config.image_model,
+            request_timeout=self.request_timeout,
         )
         generated, _ = openai.generate_text(prompt)
         summary = _as_bullets(generated)
@@ -145,6 +152,7 @@ class BoardRecordingTranscriptionService:
         rows = self.db.scalars(
             select(Recording)
             .where(
+                Recording.processing_status.is_(None),
                 Recording.transcription_status == RECORDING_TRANSCRIPTION_PENDING,
                 Recording.created_at < cutoff,
             )

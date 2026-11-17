@@ -434,6 +434,9 @@ class BoardRepository:
         duration: int | None,
         mime_type: str,
         size_bytes: int,
+        *,
+        client_request_id: str | None = None,
+        processing_status: str | None = None,
     ) -> Recording:
         row = Recording(
             card_id=card_id,
@@ -443,6 +446,8 @@ class BoardRepository:
             duration=duration,
             mime_type=mime_type,
             size_bytes=size_bytes,
+            client_request_id=client_request_id,
+            processing_status=processing_status,
         )
         self.db.add(row)
         self.db.commit()

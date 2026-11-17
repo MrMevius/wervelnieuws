@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 
+from app.services.board_recording_processing_service import BoardRecordingProcessingService
 from app.services.board_recording_transcription_service import BoardRecordingTranscriptionService
 from app.services.worker_lease_service import WorkerLeaseService
 from app.services.notification_service import NotificationService
@@ -36,6 +37,9 @@ def run_worker_cycle(db: Session) -> None:
                 raise RuntimeError(f"Unknown retry flow: {job.flow_name}")
         except Exception as exc:
             retry_service.mark_failed_with_error(job, type(exc).__name__, str(exc))
+
+    # Keep publication/retry work ahead of new audio processing, one recording per cycle.
+    BoardRecordingProcessingService(db).process_pending(limit=1)
 
 
 def run_worker_cycle_guarded(db: Session, *, owner_id: str, lease_seconds: int) -> bool:

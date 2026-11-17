@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "138",
+                "date": "2026-11-17",
+                "title": "Recording updates keep processing after you close the card",
+                "highlights": [
+                    "After upload, recordings are transcribed, summarized and posted in the background; the card shows each processing step.",
+                    "Retry failed uploads or processing without creating duplicate recording updates.",
+                    "Summary length follows the recording's content, preserving relevant points without a fixed eight-bullet limit.",
+                ],
+            },
+            {
                 "iteration": "137",
                 "date": "2026-11-17",
                 "title": "Recordings are posted automatically on meeting cards",

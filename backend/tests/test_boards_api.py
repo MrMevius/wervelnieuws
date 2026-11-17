@@ -1990,3 +1990,229 @@ def test_recording_from_other_card_cannot_be_linked_and_failed_transcript_blocks
 
     _configure_transcription(monkeypatch, failing)
     assert client.post(f"/api/boards/recordings/{foreign['id']}/summary", headers=headers).status_code == 502
+
+
+def _queued_recording(client, headers, card_id, request_id=None):
+    from uuid import uuid4
+    return client.post(
+        f"/api/boards/cards/{card_id}/recordings", headers=headers,
+        data={"duration": "5", "auto_update": "true", "client_request_id": request_id or str(uuid4())},
+        files={"file": ("opname.webm", BytesIO(b"audio"), "audio/webm")},
+    )
+
+
+def _recording_db():
+    from app.api.deps import get_db
+    from app.main import app
+    return next(app.dependency_overrides[get_db]())
+
+
+def test_queued_recording_survives_browser_and_posts_once_with_dynamic_summary(client, monkeypatch):
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    queued = _queued_recording(client, headers, card_id).json()
+    assert queued["processing_status"] == "queued"
+    calls = []
+    def transcribe(_self, *_args, **_kwargs):
+        calls.append(1)
+        other_db = _recording_db()
+        assert not BoardRecordingProcessingService(other_db).process(queued["id"])
+        other_db.close()
+        return {"text": "Tien afzonderlijke afspraken"}
+    _configure_transcription(monkeypatch, transcribe)
+    bullets = "\n".join(f"- Afspraak {i}" for i in range(10))
+    def summarize(_self, prompt, **_kwargs):
+        assert "hooguit 8" not in prompt
+        assert "zonder vaste bovengrens" in prompt
+        return bullets, []
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", summarize)
+    db = _recording_db()
+    service = BoardRecordingProcessingService(db)
+    assert service.process_pending() == 1
+    assert not service.process(queued["id"])
+    service.retry(queued["id"])
+    assert service.process_pending() == 0
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    linked = [u for u in detail["updates"] if u["recording"]]
+    assert len(linked) == 1
+    assert linked[0]["message"] == bullets
+    assert linked[0]["recording"]["processing_status"] == "done"
+    assert len(calls) == 1
+    edited = client.patch(f"/api/boards/cards/{card_id}/updates/{linked[0]['id']}", headers=headers, data={"message": "Eigen correctie"}).json()
+    service.retry(queued["id"])
+    assert service.process_pending() == 0
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert next(u for u in detail["updates"] if u["recording"])["message"] == "Eigen correctie"
+    client.delete(f"/api/boards/cards/{card_id}/updates/{edited['id']}", headers=headers)
+    service.retry(queued["id"])
+    assert service.process_pending() == 0
+    db.close()
+
+
+def test_recording_upload_idempotency_and_legacy_routes_do_not_race_worker(client):
+    from uuid import uuid4
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    key = str(uuid4())
+    first = _queued_recording(client, headers, card_id, key)
+    again = _queued_recording(client, headers, card_id, key)
+    assert first.status_code == again.status_code == 200
+    assert first.json()["id"] == again.json()["id"]
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert len(detail["recordings"]) == 2
+    recording_id = first.json()["id"]
+    assert client.post(f"/api/boards/recordings/{recording_id}/transcribe", headers=headers).status_code == 409
+    assert client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Dubbel", "recording_id": recording_id}).status_code == 409
+    _, other_card_id, _ = _card_with_recording(client, headers, "Ander bord")
+    assert _queued_recording(client, headers, other_card_id, key).status_code == 409
+    editor_headers = _login(client, "editor", "editor12345")
+    assert client.post(f"/api/boards/recordings/{recording_id}/retry", headers=editor_headers).status_code in (403, 404)
+
+
+def test_recording_failure_retry_resumes_saved_transcript(client, monkeypatch):
+    from app.models.entities import Recording
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    recording = _queued_recording(client, headers, card_id).json()
+    calls = []
+    def transcribe(*_args, **_kwargs):
+        calls.append(1)
+        return {"text": "De scan is klaar"}
+    _configure_transcription(monkeypatch, transcribe)
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("private upstream details")
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", fail)
+    db = _recording_db()
+    service = BoardRecordingProcessingService(db)
+    service.process(recording["id"])
+    db.expire_all()
+    row = db.get(Recording, recording["id"])
+    assert (row.processing_status, row.processing_error, row.transcription_status) == ("failed", "summarizing", "done")
+    assert service.process_pending() == 0
+    assert client.post(f"/api/boards/recordings/{recording['id']}/retry", headers=headers).json()["processing_status"] == "queued"
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", lambda *_a, **_k: ("- Scan klaar", []))
+    assert service.process_pending() == 1
+    assert len(calls) == 1
+    db.expire_all()
+    assert db.get(Recording, recording["id"]).processing_status == "done"
+    db.close()
+
+
+def test_recording_expired_claim_recovers_but_stale_owner_cannot_post(client, monkeypatch):
+    from datetime import timedelta
+    from app.models.entities import Recording
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    recording_id = _queued_recording(client, headers, card_id).json()["id"]
+    db = _recording_db()
+    row = db.get(Recording, recording_id)
+    row.processing_token = "abandoned-worker"
+    row.processing_status = "summarizing"
+    row.processing_lease_until = datetime.now(UTC) - timedelta(minutes=1)
+    row.transcription_status = "done"
+    row.transcription_text = "Bewaar deze tekst"
+    row.summary_text = "- Opgeslagen samenvatting"
+    db.commit()
+    _configure_transcription(monkeypatch, lambda *_a, **_k: {"text": "Moet niet worden aangeroepen"})
+    service = BoardRecordingProcessingService(db)
+    assert not service._save(recording_id, "abandoned-worker", transcription_text="Verkeerd")
+    assert service.process_pending() == 1
+    service._post(recording_id, "abandoned-worker")
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    linked = [u for u in detail["updates"] if u["recording"]]
+    assert len(linked) == 1
+    assert linked[0]["message"] == "- Opgeslagen samenvatting"
+    assert linked[0]["recording"]["transcription_text"] == "Bewaar deze tekst"
+    db.close()
+
+
+def test_recording_post_transaction_rolls_back_and_retries_without_regeneration(client, monkeypatch):
+    from sqlalchemy import event
+    from app.models.entities import CardUpdate, Recording
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    recording_id = _queued_recording(client, headers, card_id).json()["id"]
+    _configure_transcription(monkeypatch, lambda *_a, **_k: {"text": "De scan is klaar"})
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", lambda *_a, **_k: ("- De scan is klaar", []))
+    def fail_insert(*_args):
+        raise RuntimeError("Simulated activity insert failure")
+    db = _recording_db()
+    service = BoardRecordingProcessingService(db)
+    event.listen(CardUpdate, "before_insert", fail_insert)
+    try:
+        service.process(recording_id)
+    finally:
+        event.remove(CardUpdate, "before_insert", fail_insert)
+    db.expire_all()
+    row = db.get(Recording, recording_id)
+    assert (row.processing_status, row.processing_error) == ("failed", "posting")
+    assert row.summary_text == "- De scan is klaar"
+    assert not client.get(f"/api/boards/cards/{card_id}", headers=headers).json()["updates"]
+    def must_not_regenerate(*_args, **_kwargs):
+        raise AssertionError("Completed AI steps must be reused")
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", must_not_regenerate)
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.transcribe_audio", must_not_regenerate)
+    service.retry(recording_id)
+    assert service.process_pending() == 1
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert len(detail["updates"]) == 1
+    assert detail["updates"][0]["recording"]["processing_status"] == "done"
+    db.close()
+
+
+def test_failed_transcription_remains_visible_and_retryable(client, monkeypatch):
+    from app.models.entities import Recording
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    recording_id = _queued_recording(client, headers, card_id).json()["id"]
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("Do not expose these upstream details")
+    _configure_transcription(monkeypatch, fail)
+    db = _recording_db()
+    service = BoardRecordingProcessingService(db)
+    service.process(recording_id)
+    db.expire_all()
+    assert db.get(Recording, recording_id).processing_error == "transcribing"
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    queued = next(r for r in detail["recordings"] if r["id"] == recording_id)
+    assert queued["processing_status"] == "failed"
+    assert "upstream" not in json.dumps(queued)
+    service.retry(recording_id)
+    _configure_transcription(monkeypatch, lambda *_a, **_k: {"text": "Hersteld"})
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", lambda *_a, **_k: ("- Hersteld", []))
+    service.process_pending()
+    db.expire_all()
+    assert db.get(Recording, recording_id).processing_status == "done"
+    db.close()
+
+
+def test_concurrent_upload_retry_creates_one_recording_and_removes_losing_file(client, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    from uuid import uuid4
+    from app.services.board_service import BoardService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    barrier = Barrier(2)
+    original = BoardService.store_recording
+    paths = []
+    def store(self, card, file):
+        result = original(self, card, file)
+        paths.append(result[0])
+        barrier.wait(timeout=10)
+        return result
+    monkeypatch.setattr(BoardService, "store_recording", store)
+    request_id = str(uuid4())
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(_queued_recording, client, headers, card_id, request_id) for _ in range(2)]
+        responses = [future.result(timeout=20) for future in futures]
+    assert [response.status_code for response in responses] == [200, 200]
+    assert responses[0].json()["id"] == responses[1].json()["id"]
+    assert sum(Path(path).exists() for path in paths) == 1
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert sum(r["processing_status"] == "queued" for r in detail["recordings"]) == 1

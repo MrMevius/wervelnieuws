@@ -4,11 +4,14 @@ from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from uuid import UUID
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, require_admin
@@ -58,6 +61,7 @@ from app.services.board_recording_transcription_service import (
     BoardRecordingTranscriptionService,
 )
 from app.services.board_service import BoardService
+from app.services.board_recording_processing_service import BoardRecordingProcessingService
 from app.services.genai_config_service import GenAIConfigService
 
 router = APIRouter(prefix="/boards", tags=["boards"])
@@ -268,6 +272,8 @@ def _recording_response(repo: BoardRepository, row: Recording) -> RecordingRespo
         file_path=row.file_path,
         duration=row.duration,
         recorded_at=row.recorded_at,
+        processing_status=row.processing_status,
+        processing_error=row.processing_error,
         transcription_status=row.transcription_status,
         transcription_text=row.transcription_text,
         mime_type=row.mime_type,
@@ -843,6 +849,8 @@ def post_update(card_id: str, payload: CardUpdateCreateRequest, current: User = 
         recording = db.get(Recording, payload.recording_id)
         if not recording or recording.card_id != card.id:
             raise HTTPException(status_code=422, detail="Opname hoort niet bij deze kaart.")
+        if recording.processing_status is not None:
+            raise HTTPException(status_code=409, detail="Deze opname wordt automatisch als update geplaatst.")
         if repo.is_recording_linked(recording.id):
             raise HTTPException(status_code=409, detail="Deze opname staat al in een andere update.")
     row = repo.create_update(card.id, current.id, payload.message, recording_id=payload.recording_id)
@@ -1047,17 +1055,55 @@ def upload_recording(
     card_id: str,
     file: UploadFile = File(...),
     duration: int | None = Form(default=None),
+    auto_update: bool = Form(default=False),
+    client_request_id: str | None = Form(default=None),
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> RecordingResponse:
     repo = BoardRepository(db)
     service = BoardService(repo)
     card = service.ensure_card_writable(repo.get_card(card_id), current)
+    request_id = None
+    if auto_update:
+        try:
+            request_id = str(UUID(client_request_id or ""))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Een unieke opnamecode is vereist.") from exc
+        existing = db.scalar(select(Recording).where(Recording.uploaded_by_user_id == current.id, Recording.client_request_id == request_id))
+        if existing:
+            if existing.card_id != card.id:
+                raise HTTPException(status_code=409, detail="Deze opnamecode hoort bij een ander kaartje.")
+            return _recording_response(repo, existing)
     normalized_duration = duration if (isinstance(duration, int) and duration > 0) else None
     file_path, size_bytes, mime_type, filename = service.store_recording(card, file)
-    row = repo.create_recording(card.id, current.id, filename, file_path, normalized_duration, mime_type, size_bytes)
+    try:
+        row = repo.create_recording(card.id, current.id, filename, file_path, normalized_duration, mime_type, size_bytes,
+                                    client_request_id=request_id, processing_status="queued" if auto_update else None)
+    except IntegrityError:
+        db.rollback()
+        Path(file_path).unlink(missing_ok=True)
+        existing = db.scalar(select(Recording).where(Recording.uploaded_by_user_id == current.id, Recording.client_request_id == request_id)) if request_id else None
+        if not existing:
+            raise
+        if existing.card_id != card.id:
+            raise HTTPException(status_code=409, detail="Deze opnamecode hoort bij een ander kaartje.")
+        return _recording_response(repo, existing)
     service.touch_activity(service.ensure_project_access(repo.get_project(card.project_id), current))
     AuditService(db).log("board.recording.created", actor_user_id=current.id, details_json=service.audit_details(card_id=card.id, recording_id=row.id))
+    return _recording_response(repo, row)
+
+
+@router.post("/recordings/{recording_id}/retry", response_model=RecordingResponse)
+def retry_recording_processing(recording_id: str, current: User = Depends(get_current_user), db: Session = Depends(get_db)) -> RecordingResponse:
+    repo = BoardRepository(db)
+    row = db.get(Recording, recording_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Opname niet gevonden.")
+    BoardService(repo).ensure_card_writable(repo.get_card(row.card_id), current)
+    if row.processing_status is None:
+        raise HTTPException(status_code=409, detail="Deze opname gebruikt de eerdere transcriptieflow.")
+    BoardRecordingProcessingService(db).retry(row.id)
+    db.refresh(row)
     return _recording_response(repo, row)
 
 
@@ -1071,6 +1117,8 @@ def transcribe_recording(recording_id: str, current: User = Depends(get_current_
     if not recording:
         raise HTTPException(status_code=404, detail="Opname niet gevonden.")
     service.ensure_card_writable(repo.get_card(recording.card_id), current)
+    if recording.processing_status is not None:
+        raise HTTPException(status_code=409, detail="Deze opname wordt op de achtergrond verwerkt.")
     if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
         transcription = BoardRecordingTranscriptionService(db)
         if not transcription.is_configured:
@@ -1097,6 +1145,8 @@ def summarize_recording(recording_id: str, current: User = Depends(get_current_u
     transcription = BoardRecordingTranscriptionService(db)
     if not transcription.is_configured:
         raise HTTPException(status_code=503, detail="Samenvatten is niet geconfigureerd.")
+    if recording.processing_status is not None:
+        raise HTTPException(status_code=409, detail="Deze opname wordt op de achtergrond verwerkt.")
     if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
         recording = transcription.transcribe(recording)
         if recording.transcription_status != RECORDING_TRANSCRIPTION_DONE:
