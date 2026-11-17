@@ -840,6 +840,10 @@ export function App() {
       </main>
       <footer className="app-footer">
         <div className="app-footer-inner">
+          <nav className="app-footer-links" aria-label="Voettekst">
+            {aboutQuery.data?.version && <small>Versie {aboutQuery.data.version}</small>}
+            <NavLink to={WINDWILLY_PATHS.changelog} className="main-inline-link">Wijzigingen</NavLink>
+          </nav>
           <div className="app-footer-copy">
             <small>© 2026 WindWilly · Ontwikkeld door BJ &amp; MM</small>
           </div>
@@ -3471,13 +3475,6 @@ function AboutPage({
         <p>
           <strong>Ontwikkeld door:</strong> {about.developed_by}
         </p>
-        <p>
-          Productwijzigingen staan op de aparte{" "}
-          <NavLink to={WINDWILLY_PATHS.changelog} className="main-inline-link">
-            changelogpagina
-          </NavLink>
-          .
-        </p>
       </article>
     </section>
   );
@@ -3495,7 +3492,7 @@ function ChangelogPage({
   if (isLoading) {
     return (
       <section className="panel">
-        <h1>Changelog</h1>
+        <h1>Wijzigingen</h1>
         <p>Laden...</p>
       </section>
     );
@@ -3504,8 +3501,8 @@ function ChangelogPage({
   if (hasError || !about) {
     return (
       <section className="panel">
-        <h1>Changelog</h1>
-        <p>De changelog kon niet worden geladen. Ververs de pagina of probeer het later opnieuw.</p>
+        <h1>Wijzigingen</h1>
+        <p>De wijzigingsgeschiedenis kon niet worden geladen. Ververs de pagina of probeer het later opnieuw.</p>
       </section>
     );
   }
@@ -3516,17 +3513,17 @@ function ChangelogPage({
     <section className="panel changelog-page">
       <header>
         <p className="eyebrow">WindWilly</p>
-        <h1>Changelog</h1>
-        <p className="muted">Nieuwste wijzigingen bovenaan.</p>
+        <h1>Wijzigingen</h1>
+        <p className="muted">Wat is er nieuw in WindWilly? De nieuwste versies staan bovenaan.</p>
       </header>
 
       <div className="changelog-list">
         {sortedChangelog.map((entry) => (
-          <section className="changelog-item" key={`${entry.iteration}-${entry.date}`}>
+          <section className="changelog-item" key={`${entry.version}-${entry.date}`}>
             <h2>
-              Iteratie {entry.iteration} - {entry.title}
+              Versie {entry.version} - {entry.title}
             </h2>
-            <p className="muted">{entry.date}</p>
+            <p className="muted"><time dateTime={entry.date}>{formatChangelogDate(entry.date)}</time></p>
             <ul>
               {entry.highlights.map((highlight) => (
                 <li key={highlight}>{highlight}</li>
@@ -3539,15 +3536,29 @@ function ChangelogPage({
   );
 }
 
+function formatChangelogDate(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("nl-NL", {
+    day: "numeric", month: "long", year: "numeric", timeZone: "UTC"
+  }).format(date);
+}
+
 function sortChangelogNewestFirst(entries: ChangelogEntry[]): ChangelogEntry[] {
   return [...entries].sort((left, right) => {
+    const leftParts = left.version.split(".").map(Number);
+    const rightParts = right.version.split(".").map(Number);
+    for (let index = 0; index < 3; index += 1) {
+      const difference = rightParts[index] - leftParts[index];
+      if (difference) return difference;
+    }
     const leftTime = new Date(left.date).getTime();
     const rightTime = new Date(right.date).getTime();
     const dateCompare = (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime);
     if (dateCompare !== 0) {
       return dateCompare;
     }
-    return Number(right.iteration) - Number(left.iteration);
+    return 0;
   });
 }
 

@@ -4081,6 +4081,14 @@ button:disabled {
   justify-items: center;
 }
 
+.app-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
 .app-footer-copy {
   display: grid;
   gap: 4px;

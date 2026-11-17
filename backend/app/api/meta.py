@@ -29,34 +29,44 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
-                "iteration": "138",
+                "version": "0.34.1",
                 "date": "2026-11-17",
-                "title": "Recording updates keep processing after you close the card",
+                "title": "Nederlandse wijzigingsgeschiedenis met duidelijke versienummers",
                 "highlights": [
-                    "After upload, recordings are transcribed, summarized and posted in the background; the card shows each processing step.",
-                    "Retry failed uploads or processing without creating duplicate recording updates.",
-                    "Summary length follows the recording's content, preserving relevant points without a fixed eight-bullet limit.",
+                    "Via de link Wijzigingen in de voettekst bekijk je vanuit elke pagina wat er is verbeterd.",
+                    "Ook eerdere wijzigingen hebben nu een versienummer: grotere uitbreidingen krijgen een nieuwe tussenversie, kleine verbeteringen een nieuw laatste nummer.",
+                    "De wijzigingsgeschiedenis is volledig in het Nederlands en toont de nieuwste versies bovenaan.",
                 ],
             },
             {
-                "iteration": "137",
+                "version": "0.34.0",
                 "date": "2026-11-17",
-                "title": "Recordings are posted automatically on meeting cards",
+                "title": "Opnames worden verder verwerkt nadat je het kaartje sluit",
                 "highlights": [
-                    "Stopping a recording automatically posts its text and audio together as a card update.",
-                    "Use the edit button to adjust the text afterwards; your draft for a new update is preserved.",
+                    "Na het uploaden worden opnames op de achtergrond uitgeschreven, samengevat en geplaatst. Op het kaartje zie je de voortgang.",
+                    "Je kunt een mislukte upload of verwerking opnieuw proberen zonder dubbele opname-updates te maken.",
+                    "Het aantal opsommingspunten past bij de inhoud van de opname, zonder vaste grens van acht punten.",
                 ],
             },
             {
-                "iteration": "136",
+                "version": "0.33.7",
+                "date": "2026-11-17",
+                "title": "Opnames worden automatisch als kaartupdate geplaatst",
+                "highlights": [
+                    "Na het stoppen van een opname worden de tekst en het geluid automatisch samen als kaartupdate geplaatst.",
+                    "Je kunt de tekst achteraf aanpassen met de bewerkknop. Je concept voor een nieuwe update blijft behouden.",
+                ],
+            },
+            {
+                "version": "0.33.6",
                 "date": "2026-11-09",
-                "title": "Reliable WindWilly availability monitoring",
+                "title": "Betrouwbaardere controle van de bereikbaarheid van WindWilly",
                 "highlights": [
-                    "The status dashboard can check WindWilly through its website without reporting a false outage when the backend port is restricted to localhost.",
+                    "Het statusoverzicht controleert WindWilly via de website, zodat een afgeschermde interne verbinding niet meer onterecht als storing wordt gemeld.",
                 ],
             },
             {
-                "iteration": "135",
+                "version": "0.33.5",
                 "date": "2026-11-06",
                 "title": "Vergaderborden zijn overzichtelijker",
                 "highlights": [
@@ -68,7 +78,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "134",
+                "version": "0.33.4",
                 "date": "2026-11-06",
                 "title": "Inloggen gaat soepeler en veiliger",
                 "highlights": [
@@ -80,7 +90,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "133",
+                "version": "0.33.3",
                 "date": "2026-11-06",
                 "title": "Een vriendelijker inlogscherm",
                 "highlights": [
@@ -91,7 +101,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "132",
+                "version": "0.33.2",
                 "date": "2026-11-05",
                 "title": "Een nieuwe startpagina",
                 "highlights": [
@@ -101,7 +111,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "131",
+                "version": "0.33.1",
                 "date": "2026-11-05",
                 "title": "Admin is overzichtelijker",
                 "highlights": [
@@ -112,7 +122,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "130",
+                "version": "0.33.0",
                 "date": "2026-10-31",
                 "title": "Opnames worden samengevat in de update",
                 "highlights": [
@@ -122,7 +132,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "129",
+                "version": "0.32.1",
                 "date": "2026-10-31",
                 "title": "Transcripties blijven bij de opname bewaard",
                 "highlights": [
@@ -132,7 +142,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "128",
+                "version": "0.32.0",
                 "date": "2026-10-31",
                 "title": "Snel zoeken op een vergaderbord",
                 "highlights": [
@@ -142,7 +152,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "127",
+                "version": "0.31.4",
                 "date": "2026-10-31",
                 "title": "Nieuwe kaartjes bovenaan de kolom",
                 "highlights": [
@@ -151,7 +161,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "126",
+                "version": "0.31.3",
                 "date": "2026-10-31",
                 "title": "Profielfoto's zichtbaar voor alle bordleden",
                 "highlights": [
@@ -159,7 +169,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "125",
+                "version": "0.31.2",
                 "date": "2026-10-31",
                 "title": "Klikbare links in vergaderbordkaartjes",
                 "highlights": [
@@ -168,7 +178,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "124",
+                "version": "0.31.1",
                 "date": "2026-10-31",
                 "title": "Zien wie een kaartje heeft aangemaakt",
                 "highlights": [
@@ -178,7 +188,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "123",
+                "version": "0.31.0",
                 "date": "2026-09-10",
                 "title": "Urenregistratie met een helder overzicht en los formulier",
                 "highlights": [
@@ -189,7 +199,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "122",
+                "version": "0.30.0",
                 "date": "2026-09-09",
                 "title": "Participatiegesprekken vastleggen en exporteren",
                 "highlights": [
@@ -200,7 +210,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "121",
+                "version": "0.29.0",
                 "date": "2026-09-09",
                 "title": "Veiliger inloggen en betrouwbaardere verwerking",
                 "highlights": [
@@ -212,7 +222,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "120",
+                "version": "0.28.0",
                 "date": "2026-09-09",
                 "title": "De hele applicatie beter bruikbaar op mobiel",
                 "highlights": [
@@ -223,7 +233,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "119",
+                "version": "0.27.22",
                 "date": "2026-09-09",
                 "title": "Namen van bordleden duidelijk zichtbaar bij hover",
                 "highlights": [
@@ -232,7 +242,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "118",
+                "version": "0.27.21",
                 "date": "2026-09-09",
                 "title": "Update-opnames stoppen en opslaan betrouwbaarder",
                 "highlights": [
@@ -241,7 +251,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "117",
+                "version": "0.27.20",
                 "date": "2026-09-09",
                 "title": "Teamleden wijzigen op bestaande kaartjes",
                 "highlights": [
@@ -250,7 +260,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "116",
+                "version": "0.27.19",
                 "date": "2026-09-09",
                 "title": "Kaartpopup met heldere kolommen en goed uitgelijnde knoppen",
                 "highlights": [
@@ -260,7 +270,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "115",
+                "version": "0.27.18",
                 "date": "2026-09-09",
                 "title": "Kaartdetails krijgen een rustigere indeling",
                 "highlights": [
@@ -269,7 +279,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "114",
+                "version": "0.27.17",
                 "date": "2026-09-09",
                 "title": "Kolomkoppen blijven zichtbaar tijdens het scrollen",
                 "highlights": [
@@ -278,7 +288,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "113",
+                "version": "0.27.16",
                 "date": "2026-09-09",
                 "title": "Trello-import kiest nu eerst je kolommen",
                 "highlights": [
@@ -287,7 +297,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "112",
+                "version": "0.27.15",
                 "date": "2026-09-09",
                 "title": "Bordkop geeft meer ruimte aan je kaarten",
                 "highlights": [
@@ -296,7 +306,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "111",
+                "version": "0.27.14",
                 "date": "2026-09-09",
                 "title": "Vergaderbord gebruikt een consistente Material-knopset",
                 "highlights": [
@@ -305,7 +315,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "110",
+                "version": "0.27.13",
                 "date": "2026-09-09",
                 "title": "Vergaderbord scrolt nu per statuskolom",
                 "highlights": [
@@ -314,7 +324,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "109",
+                "version": "0.27.12",
                 "date": "2026-09-09",
                 "title": "Vergaderbord veilig leegmaken voor een nieuwe import",
                 "highlights": [
@@ -323,7 +333,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "108",
+                "version": "0.27.11",
                 "date": "2026-08-13",
                 "title": "Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
                 "highlights": [
@@ -332,7 +342,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "107",
+                "version": "0.27.10",
                 "date": "2026-08-13",
                 "title": "Urenregistratie toont een rustiger overzicht",
                 "highlights": [
@@ -341,7 +351,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "106",
+                "version": "0.27.9",
                 "date": "2026-08-13",
                 "title": "Urenregistratie benut ruimte beter",
                 "highlights": [
@@ -350,7 +360,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "105",
+                "version": "0.27.8",
                 "date": "2026-08-12",
                 "title": "Urenregistratie is directer en overzichtelijker",
                 "highlights": [
@@ -360,7 +370,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "104",
+                "version": "0.27.7",
                 "date": "2026-08-12",
                 "title": "Urenregistratie toont totalen per project",
                 "highlights": [
@@ -368,7 +378,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "103",
+                "version": "0.27.6",
                 "date": "2026-08-12",
                 "title": "Urenhistorie staat overzichtelijk bij Admin",
                 "highlights": [
@@ -377,7 +387,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "102",
+                "version": "0.27.5",
                 "date": "2026-08-12",
                 "title": "Wervelnieuws start betrouwbaarder na onderhoud",
                 "highlights": [
@@ -386,7 +396,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "101",
+                "version": "0.27.4",
                 "date": "2026-08-12",
                 "title": "Urenregistratie kiest deelnemers en duur duidelijker",
                 "highlights": [
@@ -395,7 +405,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "100",
+                "version": "0.27.2",
                 "date": "2026-08-11",
                 "title": "Topicbronnen ondersteunen nu veilige audio-transcriptie",
                 "highlights": [
@@ -404,7 +414,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "99",
+                "version": "0.27.1",
                 "date": "2026-08-10",
                 "title": "Admin-fouten zijn duidelijker per onderdeel",
                 "highlights": [
@@ -413,7 +423,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "98",
+                "version": "0.27.0",
                 "date": "2026-08-10",
                 "title": "Projecten zijn per module in te stellen",
                 "highlights": [
@@ -422,7 +432,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "97",
+                "version": "0.26.1",
                 "date": "2026-08-10",
                 "title": "Urenregistratie is eenvoudiger en gebruikt normale systeemback-ups",
                 "highlights": [
@@ -431,7 +441,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "96",
+                "version": "0.26.0",
                 "date": "2026-08-09",
                 "title": "Uren sneller registreren met centraal project- en postenbeheer",
                 "highlights": [
@@ -439,7 +449,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "95",
+                "version": "0.25.2",
                 "date": "2026-08-04",
                 "title": "Urenregistratie maakt audit en historie beter inzichtelijk",
                 "highlights": [
@@ -447,7 +457,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "94",
+                "version": "0.25.1",
                 "date": "2026-08-04",
                 "title": "Urenregistratie beschermt historie en persoonsgegevens beter",
                 "highlights": [
@@ -455,7 +465,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "93",
+                "version": "0.25.0",
                 "date": "2026-08-04",
                 "title": "Urenregistratie is veiliger en beter controleerbaar",
                 "highlights": [
@@ -466,7 +476,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "92",
+                "version": "0.24.0",
                 "date": "2026-07-29",
                 "title": "Vergaderbord-kaarten krijgen archief en prullenbak",
                 "highlights": [
@@ -476,7 +486,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "91",
+                "version": "0.23.4",
                 "date": "2026-07-29",
                 "title": "Lichtmodusknoppen en invoervelden zijn duidelijker",
                 "highlights": [
@@ -486,7 +496,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "90",
+                "version": "0.23.3",
                 "date": "2026-07-28",
                 "title": "Gebruikersvenster leest rustiger in donkere modus",
                 "highlights": [
@@ -496,7 +506,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "89",
+                "version": "0.23.2",
                 "date": "2026-07-28",
                 "title": "Vergaderborden krijgen een duidelijke paarse stijl",
                 "highlights": [
@@ -506,7 +516,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "88",
+                "version": "0.23.1",
                 "date": "2026-07-01",
                 "title": "Vergaderbord-updates tonen de opmaaktoolbar pas bij focus",
                 "highlights": [
@@ -516,7 +526,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "87",
+                "version": "0.22.5",
                 "date": "2026-06-22",
                 "title": "Meerdere bijlagen tegelijk toevoegen in Vergaderborden",
                 "highlights": [
@@ -526,7 +536,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "86",
+                "version": "0.22.4",
                 "date": "2026-06-22",
                 "title": "Afbeeldingsbijlagen kun je nu groter bekijken",
                 "highlights": [
@@ -536,7 +546,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "85",
+                "version": "0.22.3",
                 "date": "2026-06-17",
                 "title": "Vergaderbord-kaartdetail voelt rustiger en overzichtelijker",
                 "highlights": [
@@ -546,7 +556,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "84",
+                "version": "0.22.2",
                 "date": "2026-06-17",
                 "title": "Vergaderbord-kaarten kun je nu binnen dezelfde kolom herschikken",
                 "highlights": [
@@ -557,7 +567,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "83",
+                "version": "0.22.1",
                 "date": "2026-06-17",
                 "title": "Bijlagen direct toevoegen bij nieuwe vergaderbord-kaarten",
                 "highlights": [
@@ -567,7 +577,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "82",
+                "version": "0.22.0",
                 "date": "2026-06-16",
                 "title": "Vergaderbord-kaarten ondersteunen nu bijlagen",
                 "highlights": [
@@ -577,7 +587,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "81",
+                "version": "0.21.17",
                 "date": "2026-06-16",
                 "title": "Teamleden op vergaderbord-kaarten volgen nu bordtoegang",
                 "highlights": [
@@ -587,7 +597,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "80",
+                "version": "0.21.16",
                 "date": "2026-06-13",
                 "title": "Automatische verplaats-updates zijn nu alleen informatief",
                 "highlights": [
@@ -596,7 +606,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "79",
+                "version": "0.21.15",
                 "date": "2026-06-12",
                 "title": "Vergaderbord-header gebruikt avatarbadges",
                 "highlights": [
@@ -606,17 +616,17 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "77",
+                "version": "0.21.14",
                 "date": "2026-06-12",
                 "title": "Compacte bordrechtenmatrix met admins",
                 "highlights": [
-                    "Admins zijn nu zichtbaar in Admin > Bordrechten als read-only rijen met een duidelijke Admin-badge.",
+                    "Admins zijn nu zichtbaar in Admin > Bordrechten als alleen-lezen rijen met een duidelijke Admin-badge.",
                     "De matrix is compacter opgebouwd met kleinere spacing, zodat de rechtenpagina rustiger en beter scanbaar is.",
                     "Opslaan blijft beperkt tot niet-admin wijzigingen, terwijl admins automatisch overal toegang houden.",
                 ],
             },
             {
-                "iteration": "76",
+                "version": "0.21.13",
                 "date": "2026-06-12",
                 "title": "Bordrechten werken nu als matrix",
                 "highlights": [
@@ -626,7 +636,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "75",
+                "version": "0.21.12",
                 "date": "2026-06-12",
                 "title": "Bordrechtenbeheer is overzichtelijker geworden",
                 "highlights": [
@@ -636,7 +646,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "74",
+                "version": "0.21.11",
                 "date": "2026-06-12",
                 "title": "WindWilly-startpagina verder versoberd",
                 "highlights": [
@@ -646,7 +656,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "73",
+                "version": "0.21.10",
                 "date": "2026-06-11",
                 "title": "WindWilly-startpagina terug naar de kern",
                 "highlights": [
@@ -656,7 +666,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "72",
+                "version": "0.21.9",
                 "date": "2026-06-11",
                 "title": "Compactere bewerkmodal voor gebruikers",
                 "highlights": [
@@ -666,7 +676,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "71",
+                "version": "0.21.8",
                 "date": "2026-06-11",
                 "title": "Rustigere gebruikersmodal met veilig sluiten",
                 "highlights": [
@@ -676,7 +686,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "70",
+                "version": "0.21.7",
                 "date": "2026-06-11",
                 "title": "Overzichtelijkere gebruikersacties voor admins",
                 "highlights": [
@@ -686,7 +696,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "69",
+                "version": "0.21.6",
                 "date": "2026-06-11",
                 "title": "Admins kunnen gebruikersprofielen direct bewerken",
                 "highlights": [
@@ -696,7 +706,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "68",
+                "version": "0.21.5",
                 "date": "2026-06-11",
                 "title": "Veiliger gebruikersbeheer voor admins",
                 "highlights": [
@@ -706,17 +716,17 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "67",
+                "version": "0.21.3",
                 "date": "2026-06-09",
-                "title": "Aparte changelog en duidelijkere previewmeldingen",
+                "title": "Aparte wijzigingsgeschiedenis en duidelijkere voorbeeldmeldingen",
                 "highlights": [
-                    "De changelog heeft nu een eigen pagina die vanaf de WindWilly-startpagina bereikbaar is.",
+                    "De wijzigingsgeschiedenis heeft nu een eigen pagina die vanaf de WindWilly-startpagina bereikbaar is.",
                     "Wijzigingen worden met de nieuwste update bovenaan getoond.",
                     "De WindWilly Assistent en Wervelnieuws tonen duidelijker welke onderdelen nog preview of work in progress zijn.",
                 ],
             },
             {
-                "iteration": "66",
+                "version": "0.21.2",
                 "date": "2026-06-09",
                 "title": "Rustiger startscherm na inloggen",
                 "highlights": [
@@ -725,7 +735,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "65",
+                "version": "0.21.1",
                 "date": "2026-06-09",
                 "title": "Login blijft werken bij tijdelijk Onthoud mij-probleem",
                 "highlights": [
@@ -735,7 +745,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "64",
+                "version": "0.21.0",
                 "date": "2026-06-09",
                 "title": "Ingelogd blijven per apparaat met Onthoud mij",
                 "highlights": [
@@ -745,7 +755,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "63",
+                "version": "0.20.1",
                 "date": "2026-06-09",
                 "title": "Vergaderbord-kaartbeschrijving direct bewerken",
                 "highlights": [
@@ -755,7 +765,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "62",
+                "version": "0.20.0",
                 "date": "2026-06-03",
                 "title": "Admins beheren toegang tot vergaderborden",
                 "highlights": [
@@ -765,7 +775,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "60",
+                "version": "0.19.12",
                 "date": "2026-06-02",
                 "title": "Update-tijden op vergaderborden tonen nu Amsterdamse tijd",
                 "highlights": [
@@ -775,7 +785,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "58",
+                "version": "0.19.11",
                 "date": "2026-06-02",
                 "title": "Verplaats-updates op vergaderborden compacter weergegeven",
                 "highlights": [
@@ -784,7 +794,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "57",
+                "version": "0.19.10",
                 "date": "2026-05-29",
                 "title": "Titels in planning en kanaalredactie nu begrensd op 80 tekens",
                 "highlights": [
@@ -795,7 +805,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "56",
+                "version": "0.19.9",
                 "date": "2026-05-29",
                 "title": "Teamleden kiezen op vergaderbord-kaarten nu via avatar-tegels",
                 "highlights": [
@@ -806,7 +816,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "55",
+                "version": "0.19.8",
                 "date": "2026-05-29",
                 "title": "Vergaderbord-kaartbeschrijvingen nu rijker en beter leesbaar",
                 "highlights": [
@@ -816,7 +826,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "54",
+                "version": "0.19.7",
                 "date": "2026-05-28",
                 "title": "Audio-opnames tonen nulduur nu als onbekend en bewaren duur robuuster",
                 "highlights": [
@@ -826,7 +836,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "53",
+                "version": "0.19.6",
                 "date": "2026-05-28",
                 "title": "Audio-opnames tonen nu duur en bestandsgrootte in kaartupdates",
                 "highlights": [
@@ -836,7 +846,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "52",
+                "version": "0.19.5",
                 "date": "2026-05-28",
                 "title": "Updateveld op vergaderbord-kaarten gebruikt nu de volle breedte",
                 "highlights": [
@@ -846,7 +856,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "51",
+                "version": "0.19.4",
                 "date": "2026-05-28",
                 "title": "Vergaderbord-updates editor nu compacter en Trello-achtiger",
                 "highlights": [
@@ -856,7 +866,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "50",
+                "version": "0.19.3",
                 "date": "2026-05-28",
                 "title": "Rijkere update-editor op vergaderbord-kaarten",
                 "highlights": [
@@ -866,7 +876,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "49",
+                "version": "0.19.2",
                 "date": "2026-05-28",
                 "title": "Compacte update-acties en veilig verwijderen op vergaderbord-kaarten",
                 "highlights": [
@@ -876,9 +886,9 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "48",
+                "version": "0.19.1",
                 "date": "2026-05-28",
-                "title": "Vergaderbord-kaartupdates als duidelijke activity cards",
+                "title": "Vergaderbord-updates als overzichtelijke activiteitenkaarten",
                 "highlights": [
                     "Updates in kaartdetails worden nu getoond als overzichtelijke activity cards met auteur, datum/tijd en berichttekst.",
                     "Alleen jouw eigen updates tonen een bewerkactie binnen dezelfde activity card; updates van anderen blijven alleen leesbaar.",
@@ -886,7 +896,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "47",
+                "version": "0.19.0",
                 "date": "2026-05-28",
                 "title": "Vergaderbord-updates: eigen update bewerken met revisie",
                 "highlights": [
@@ -896,7 +906,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "46",
+                "version": "0.18.5",
                 "date": "2026-05-28",
                 "title": "Vergaderborden: duidelijke verplaatsingsupdates met kolomnamen",
                 "highlights": [
@@ -906,7 +916,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "45",
+                "version": "0.18.3",
                 "date": "2026-05-27",
                 "title": "Vergaderbord-opnameknop duidelijker en minimale opnameduur",
                 "highlights": [
@@ -916,7 +926,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "33",
+                "version": "0.17.8",
                 "date": "2026-05-27",
                 "title": "Kaartbeschrijving direct bewerken in Vergaderborden",
                 "highlights": [
@@ -926,17 +936,17 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "02",
+                "version": "0.1.0",
                 "date": "2026-03-12",
                 "title": "Duidelijker dashboard en betere navigatie",
                 "highlights": [
                     "Het dashboard heeft een frisse nieuwe uitstraling gekregen.",
                     "Je kunt nu bovenaan snel schakelen tussen Main, Planning, Database, Log en About.",
-                    "In About zie je nu per iteratie wat er is verbeterd, opgehaald via de backend API.",
+                    "In de wijzigingsgeschiedenis lees je per versie wat er is verbeterd.",
                 ],
             },
             {
-                "iteration": "03",
+                "version": "0.2.0",
                 "date": "2026-03-12",
                 "title": "Persoonlijke instellingen in eigen beheer",
                 "highlights": [
@@ -946,7 +956,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "04",
+                "version": "0.2.1",
                 "date": "2026-03-12",
                 "title": "Profielfoto uploaden en rond bijsnijden",
                 "highlights": [
@@ -956,7 +966,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "05",
+                "version": "0.3.0",
                 "date": "2026-03-12",
                 "title": "Admin-menu en rollenbeheer",
                 "highlights": [
@@ -966,7 +976,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "06",
+                "version": "0.4.0",
                 "date": "2026-03-12",
                 "title": "Centrale Database-pagina voor bronbestanden",
                 "highlights": [
@@ -976,7 +986,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "07",
+                "version": "0.5.0",
                 "date": "2026-03-12",
                 "title": "AI-bronindexering en transparante bronweergave",
                 "highlights": [
@@ -986,7 +996,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "07B",
+                "version": "0.6.0",
                 "date": "2026-03-13",
                 "title": "Planningimport met doelmedia per bericht",
                 "highlights": [
@@ -996,7 +1006,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "08",
+                "version": "0.7.0",
                 "date": "2026-03-13",
                 "title": "Multichannel redactie op de planningsdetailpagina",
                 "highlights": [
@@ -1006,7 +1016,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "09",
+                "version": "0.8.0",
                 "date": "2026-03-13",
                 "title": "GenAI-instellingen vanuit Admin en optionele websearch",
                 "highlights": [
@@ -1016,7 +1026,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "10",
+                "version": "0.9.0",
                 "date": "2026-03-14",
                 "title": "Planningregels nu gekoppeld aan projecten",
                 "highlights": [
@@ -1026,7 +1036,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "10B",
+                "version": "0.10.0",
                 "date": "2026-03-14",
                 "title": "Admin-tabs, themabeheer en slimme planningssjablonen",
                 "highlights": [
@@ -1036,7 +1046,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "11",
+                "version": "0.10.1",
                 "date": "2026-03-14",
                 "title": "Duidelijke melding bij ontbrekende kanaalvariant-migratie",
                 "highlights": [
@@ -1046,7 +1056,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "12",
+                "version": "0.10.2",
                 "date": "2026-03-14",
                 "title": "Main-pagina met live dashboard en duidelijkere start",
                 "highlights": [
@@ -1056,7 +1066,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "13",
+                "version": "0.11.0",
                 "date": "2026-03-14",
                 "title": "Admin Scheduler-overzicht met recente runs en planning",
                 "highlights": [
@@ -1066,7 +1076,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "14",
+                "version": "0.11.1",
                 "date": "2026-03-14",
                 "title": "Planning detail met kanaalpreviews en rustigere werkindeling",
                 "highlights": [
@@ -1076,7 +1086,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "15",
+                "version": "0.11.2",
                 "date": "2026-03-14",
                 "title": "Admin log toont nu onderwerpregels in plaats van technische IDs",
                 "highlights": [
@@ -1086,7 +1096,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "16",
+                "version": "0.12.0",
                 "date": "2026-03-15",
                 "title": "Logpagina live met filters en dagstart op Main",
                 "highlights": [
@@ -1096,7 +1106,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "17",
+                "version": "0.13.0",
                 "date": "2026-03-15",
                 "title": "n8n-meldingen zichtbaar en centraal afgehandeld",
                 "highlights": [
@@ -1106,7 +1116,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "18",
+                "version": "0.13.1",
                 "date": "2026-03-15",
                 "title": "Subtiel wind-thema met centrale adminschakelaar",
                 "highlights": [
@@ -1116,7 +1126,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "19",
+                "version": "0.13.2",
                 "date": "2026-03-16",
                 "title": "Planning detail nu rustiger, leesbaarder en met vaste 3-media preview",
                 "highlights": [
@@ -1126,7 +1136,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "20",
+                "version": "0.14.0",
                 "date": "2026-03-16",
                 "title": "Planning detail met aparte tekst/afbeelding-goedkeuring en directe afwijs-webhook",
                 "highlights": [
@@ -1136,7 +1146,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "21",
+                "version": "0.14.1",
                 "date": "2026-03-16",
                 "title": "Planning detail opnieuw uitgelijnd met strakke rasteropbouw",
                 "highlights": [
@@ -1146,7 +1156,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "22",
+                "version": "0.15.0",
                 "date": "2026-03-24",
                 "title": "WindWilly-suite start met Wervelnieuws als subdienst",
                 "highlights": [
@@ -1156,7 +1166,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "23",
+                "version": "0.15.1",
                 "date": "2026-03-24",
                 "title": "Main opgeschoond en bronbestanden standaard projectoverstijgend",
                 "highlights": [
@@ -1166,7 +1176,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "24",
+                "version": "0.15.2",
                 "date": "2026-03-24",
                 "title": "Nieuwe Trello-placeholder in de WindWilly-suite",
                 "highlights": [
@@ -1176,7 +1186,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "25",
+                "version": "0.16.0",
                 "date": "2026-03-24",
                 "title": "Technische upgrade: stabielere basis, veiligere configuratie en betrouwbaardere achtergrondtaken",
                 "highlights": [
@@ -1186,7 +1196,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "26",
+                "version": "0.16.1",
                 "date": "2026-03-25",
                 "title": "Landingspagina rustiger met coöperatiecontext en vaste voettekst",
                 "highlights": [
@@ -1196,17 +1206,17 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "27",
+                "version": "0.16.2",
                 "date": "2026-03-25",
                 "title": "WindWilly-chatpagina als gerichte placeholder voor windinformatie",
                 "highlights": [
                     "De WindWilly-module heeft nu een chat-achtige opzet, zodat de toekomstige assistent direct herkenbaar is.",
                     "De voorbeeldvragen en voorbeeldantwoorden zijn toegespitst op windprojectinformatie, planning en bewonerscommunicatie.",
-                    "Het is bewust nog een placeholder: de schermopbouw staat klaar, maar zonder live AI-gesprekken in deze iteratie.",
+                    "Het is bewust nog een placeholder: de schermopbouw staat klaar, maar zonder daadwerkelijke AI-gesprekken in deze versie.",
                 ],
             },
             {
-                "iteration": "28",
+                "version": "0.17.0",
                 "date": "2026-05-14",
                 "title": "Nieuwe adminmodule Vergaderborden met kaarten, updates en opnames",
                 "highlights": [
@@ -1216,7 +1226,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "29",
+                "version": "0.17.1",
                 "date": "2026-05-22",
                 "title": "Vergaderborden vervangt Trello-placeholder in navigatie en landing",
                 "highlights": [
@@ -1226,7 +1236,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "30",
+                "version": "0.17.2",
                 "date": "2026-05-22",
                 "title": "Vergaderborden rustiger en consistenter ingedeeld",
                 "highlights": [
@@ -1236,7 +1246,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "31",
+                "version": "0.17.3",
                 "date": "2026-05-26",
                 "title": "Vergaderborden: kaart toevoegen en update-flow duidelijker gemaakt",
                 "highlights": [
@@ -1246,7 +1256,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "32",
+                "version": "0.17.4",
                 "date": "2026-05-26",
                 "title": "Vergaderborden: rustiger kaart-aanmaak en teamselectie verbeterd",
                 "highlights": [
@@ -1256,7 +1266,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "33",
+                "version": "0.17.5",
                 "date": "2026-05-26",
                 "title": "Vergaderborden: kaartjes verslepen nu duidelijker en betrouwbaarder",
                 "highlights": [
@@ -1266,7 +1276,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "34",
+                "version": "0.17.6",
                 "date": "2026-05-26",
                 "title": "Vergaderborden: kolomverplaatsingen nu zichtbaar in kaartupdates",
                 "highlights": [
@@ -1276,7 +1286,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "35",
+                "version": "0.17.7",
                 "date": "2026-05-26",
                 "title": "Vergaderborden: kaarttitels direct aanpassen",
                 "highlights": [
@@ -1286,7 +1296,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "36",
+                "version": "0.17.9",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: kaarttitels bewerken vanuit kaartdetail",
                 "highlights": [
@@ -1296,7 +1306,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "37",
+                "version": "0.17.10",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: compact project kiezen via dropdown",
                 "highlights": [
@@ -1306,7 +1316,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "38",
+                "version": "0.17.11",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: projectkeuze via hoofdmenu en admin-only projectaanmaak",
                 "highlights": [
@@ -1316,7 +1326,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "39",
+                "version": "0.17.12",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: sneller terug naar je laatst gekozen bord",
                 "highlights": [
@@ -1326,7 +1336,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "40",
+                "version": "0.17.13",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: duidelijkere verplaatsingsupdates en volledige namen",
                 "highlights": [
@@ -1336,7 +1346,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "41",
+                "version": "0.17.14",
                 "date": "2026-05-27",
                 "title": "Admin: nieuw vergaderbord aanmaken nu direct zichtbaar",
                 "highlights": [
@@ -1346,7 +1356,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "42",
+                "version": "0.18.0",
                 "date": "2026-05-27",
                 "title": "Ingelogd blijven na verversen of browser herstart",
                 "highlights": [
@@ -1356,7 +1366,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "43",
+                "version": "0.18.1",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: direct opnemen op elk kaartje",
                 "highlights": [
@@ -1366,7 +1376,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "44",
+                "version": "0.18.2",
                 "date": "2026-05-27",
                 "title": "Vergaderborden: compacte opnameknop op kaartjes",
                 "highlights": [
@@ -1376,7 +1386,7 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "46",
+                "version": "0.21.4",
                 "date": "2026-06-11",
                 "title": "Vergaderborden: recordicoon subtieler en rechtsonder",
                 "highlights": [
@@ -1386,27 +1396,27 @@ def _default_about() -> AboutResponse:
                 ],
             },
             {
-                "iteration": "45",
+                "version": "0.18.4",
                 "date": "2026-05-28",
                 "title": "Vergaderborden: audio-opnames nu in dezelfde updates-tijdlijn",
                 "highlights": [
                     "In kaartdetails staan audio-opnames nu tussen de gewone updates, zodat je één chronologische activiteitenlijst hebt.",
                     "De aparte sectie 'Opnames' is verwijderd; audio-items tonen nu dezelfde kaartstijl met speler en downloadlink.",
-                    "Updates en opnames worden samen newest-first gesorteerd op datum en tijd, met behoud van bestaande update- en opnameflows.",
+                    "Updates en opnames worden samen van nieuw naar oud gesorteerd op datum en tijd, met behoud van bestaande update- en opnameflows.",
                 ],
             },
             {
-                "iteration": "47",
+                "version": "0.23.0",
                 "date": "2026-06-30",
                 "title": "Wervelnieuws: audio-opnames automatisch omgezet naar doorzoekbare bron",
                 "highlights": [
                     "Bij topic-updates kun je nu een audio-opname uploaden; de transcriptie start automatisch op de achtergrond.",
-                    "Na verwerking verschijnt de transcriptie als normale, read-only tekstbron die mee kan in zoekresultaten en generatie.",
+                    "Na verwerking verschijnt de transcriptie als normale, alleen-lezen tekstbron die mee kan in zoekresultaten en generatie.",
                     "Bij een mislukte transcriptie blijft de opname bewaard en kun je de bron direct opnieuw laten verwerken.",
                 ],
             },
             {
-                "iteration": "48",
+                "version": "0.27.3",
                 "date": "2026-08-12",
                 "title": "Urenbeheer overzichtelijker in Admin",
                 "highlights": [
@@ -1461,6 +1471,30 @@ def about(
 
     try:
         parsed = json.loads(setting.value)
+        # Normalize legacy stored overrides on read, without rewriting user settings.
+        if isinstance(parsed, dict) and isinstance(parsed.get("changelog"), list) and all(isinstance(entry, dict) for entry in parsed["changelog"]):
+            defaults = _default_about()
+            canonical = {(entry.date, entry.title): entry for entry in defaults.changelog}
+            historical_titles = {
+                "Recording updates keep processing after you close the card": "Opnames worden verder verwerkt nadat je het kaartje sluit",
+                "Recordings are posted automatically on meeting cards": "Opnames worden automatisch als kaartupdate geplaatst",
+                "Reliable WindWilly availability monitoring": "Betrouwbaardere controle van de bereikbaarheid van WindWilly",
+                "Vergaderbord-kaartupdates als duidelijke activity cards": "Vergaderbord-updates als overzichtelijke activiteitenkaarten",
+                "Aparte changelog en duidelijkere previewmeldingen": "Aparte wijzigingsgeschiedenis en duidelijkere voorbeeldmeldingen",
+            }
+            entries = sorted(parsed["changelog"], key=lambda entry: (str(entry.get("date", "")), str(entry.get("iteration", ""))))
+            for index, entry in enumerate(entries, 1):
+                if "version" not in entry and "iteration" in entry:
+                    original_title = entry.get("title")
+                    if not isinstance(original_title, str) or not isinstance(entry.get("date"), str):
+                        continue  # Let schema validation reject malformed settings below.
+                    title = historical_titles.get(original_title, original_title)
+                    known = canonical.get((entry.get("date"), title))
+                    if known:
+                        entry.update(known.model_dump())
+                    else:
+                        entry["version"] = f"0.0.{index}"
+                    entry.pop("iteration", None)
         return AboutResponse.model_validate(parsed)
     except (json.JSONDecodeError, ValidationError):
         return _default_about()

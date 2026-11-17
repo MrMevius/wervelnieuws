@@ -681,12 +681,13 @@ const mockApi = vi.hoisted(() => ({
   getGeneratedImageBlob: vi.fn().mockResolvedValue(new Blob(["img"], { type: "image/png" })),
   listBoardRecycleBin: vi.fn().mockResolvedValue([]),
   getAboutContent: vi.fn().mockResolvedValue({
+    version: "0.10.0",
     description: "Wervelnieuws helpt het communicatieteam.",
     disclaimer: "Controleer inhoud altijd voor publicatie.",
       developed_by: "Energiek Daarle",
       changelog: [
         {
-          iteration: "108",
+          version: "0.10.0",
           date: "2026-08-13",
           title: "Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
           highlights: [
@@ -695,7 +696,7 @@ const mockApi = vi.hoisted(() => ({
           ]
         },
         {
-          iteration: "107",
+          version: "0.9.10",
           date: "2026-08-13",
           title: "Urenregistratie toont een rustiger overzicht",
           highlights: [
@@ -704,7 +705,7 @@ const mockApi = vi.hoisted(() => ({
           ]
         },
         {
-         iteration: "106",
+         version: "0.9.9",
          date: "2026-08-13",
          title: "Urenregistratie benut ruimte beter",
          highlights: [
@@ -713,7 +714,7 @@ const mockApi = vi.hoisted(() => ({
          ]
        },
        {
-        iteration: "105",
+        version: "0.1.105",
         date: "2026-08-12",
         title: "Urenregistratie is directer en overzichtelijker",
         highlights: [
@@ -723,7 +724,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "104",
+        version: "0.1.104",
         date: "2026-08-12",
         title: "Urenregistratie toont totalen per project",
         highlights: [
@@ -731,7 +732,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "103",
+        version: "0.1.103",
         date: "2026-08-12",
         title: "Urenhistorie staat overzichtelijk bij Admin",
         highlights: [
@@ -740,7 +741,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "102",
+        version: "0.1.102",
         date: "2026-08-12",
         title: "Wervelnieuws start betrouwbaarder na onderhoud",
         highlights: [
@@ -749,7 +750,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "101",
+        version: "0.1.101",
         date: "2026-08-12",
         title: "Urenregistratie kiest deelnemers en duur duidelijker",
         highlights: [
@@ -758,7 +759,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "100",
+        version: "0.1.100",
         date: "2026-08-11",
         title: "Topicbronnen ondersteunen nu veilige audio-transcriptie",
         highlights: [
@@ -767,7 +768,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "92",
+        version: "0.1.92",
         date: "2026-07-29",
         title: "Vergaderborden verfijnen tabs, tooltips en archief",
         highlights: [
@@ -777,7 +778,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "91",
+        version: "0.1.91",
         date: "2026-07-29",
         title: "Lichtmodusknoppen en invoervelden zijn duidelijker",
         highlights: [
@@ -787,7 +788,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "89",
+        version: "0.1.89",
         date: "2026-07-28",
         title: "Vergaderborden krijgen een duidelijke paarse stijl",
         highlights: [
@@ -797,7 +798,7 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "73",
+        version: "0.1.73",
         date: "2026-06-11",
         title: "WindWilly-startpagina duidelijker en rijker",
         highlights: [
@@ -807,19 +808,19 @@ const mockApi = vi.hoisted(() => ({
         ]
       },
       {
-        iteration: "01",
+        version: "0.1.1",
         date: "2026-03-01",
         title: "Eerste basis",
         highlights: ["Startscherm"]
       },
       {
-        iteration: "02",
+        version: "0.1.2",
         date: "2026-03-12",
         title: "Nieuwe shell",
         highlights: ["Tabnavigatie", "About API"]
       },
       {
-        iteration: "03",
+        version: "0.1.3",
         date: "2026-04-01",
         title: "Aparte changelog",
         highlights: ["Nieuwe changelogpagina"]
@@ -1424,7 +1425,7 @@ describe("App", () => {
     });
   });
 
-  it("opens separate changelog page from About with newest items first", async () => {
+  it("opens Dutch release notes from the footer with numeric semantic version order", async () => {
     mockApi.getCurrentUser.mockResolvedValueOnce({
       id: "u1",
       username: "admin",
@@ -1438,35 +1439,37 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "About" })).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "changelogpagina" })).toBeInTheDocument();
+      expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "Wijzigingen" })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("link", { name: "changelogpagina" }));
+    expect(within(screen.getByRole("main")).queryByRole("link", { name: "Wijzigingen" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("contentinfo")).getByText("Versie 0.10.0")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("contentinfo")).getByRole("link", { name: "Wijzigingen" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Changelog" })).toBeInTheDocument();
-      expect(screen.getByText("Nieuwste wijzigingen bovenaan.")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Wijzigingen" })).toBeInTheDocument();
+      expect(screen.getByText("Wat is er nieuw in WindWilly? De nieuwste versies staan bovenaan.")).toBeInTheDocument();
     });
     expect(screen.getByText(/Externe personen zijn niet meer te kiezen voor een nieuwe urenregistratie/i)).toBeInTheDocument();
 
     const headings = screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent);
       expect(headings).toEqual([
-       "Iteratie 108 - Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
-       "Iteratie 107 - Urenregistratie toont een rustiger overzicht",
-       "Iteratie 106 - Urenregistratie benut ruimte beter",
-       "Iteratie 105 - Urenregistratie is directer en overzichtelijker",
-       "Iteratie 104 - Urenregistratie toont totalen per project",
-      "Iteratie 103 - Urenhistorie staat overzichtelijk bij Admin",
-      "Iteratie 102 - Wervelnieuws start betrouwbaarder na onderhoud",
-      "Iteratie 101 - Urenregistratie kiest deelnemers en duur duidelijker",
-      "Iteratie 100 - Topicbronnen ondersteunen nu veilige audio-transcriptie",
-      "Iteratie 92 - Vergaderborden verfijnen tabs, tooltips en archief",
-      "Iteratie 91 - Lichtmodusknoppen en invoervelden zijn duidelijker",
-      "Iteratie 89 - Vergaderborden krijgen een duidelijke paarse stijl",
-      "Iteratie 73 - WindWilly-startpagina duidelijker en rijker",
-      "Iteratie 03 - Aparte changelog",
-      "Iteratie 02 - Nieuwe shell",
-      "Iteratie 01 - Eerste basis"
+       "Versie 0.10.0 - Nieuwe urenregistraties gebruiken alleen WindWilly-personen",
+       "Versie 0.9.10 - Urenregistratie toont een rustiger overzicht",
+       "Versie 0.9.9 - Urenregistratie benut ruimte beter",
+       "Versie 0.1.105 - Urenregistratie is directer en overzichtelijker",
+       "Versie 0.1.104 - Urenregistratie toont totalen per project",
+      "Versie 0.1.103 - Urenhistorie staat overzichtelijk bij Admin",
+      "Versie 0.1.102 - Wervelnieuws start betrouwbaarder na onderhoud",
+      "Versie 0.1.101 - Urenregistratie kiest deelnemers en duur duidelijker",
+      "Versie 0.1.100 - Topicbronnen ondersteunen nu veilige audio-transcriptie",
+      "Versie 0.1.92 - Vergaderborden verfijnen tabs, tooltips en archief",
+      "Versie 0.1.91 - Lichtmodusknoppen en invoervelden zijn duidelijker",
+      "Versie 0.1.89 - Vergaderborden krijgen een duidelijke paarse stijl",
+      "Versie 0.1.73 - WindWilly-startpagina duidelijker en rijker",
+      "Versie 0.1.3 - Aparte changelog",
+      "Versie 0.1.2 - Nieuwe shell",
+      "Versie 0.1.1 - Eerste basis"
     ]);
   });
 
@@ -3655,9 +3658,9 @@ describe("App", () => {
     await waitFor(() => {
       expect(screen.getByText("Wervelnieuws helpt het communicatieteam.")).toBeInTheDocument();
       expect(screen.getByText(/Ontwikkeld door:/)).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: "changelogpagina" })).toBeInTheDocument();
-      expect(screen.queryByRole("heading", { name: "Changelog" })).not.toBeInTheDocument();
-      expect(screen.queryByText("Iteratie 02 - Nieuwe shell")).not.toBeInTheDocument();
+      expect(within(screen.getByRole("contentinfo")).getByRole("link", { name: "Wijzigingen" })).toBeInTheDocument();
+      expect(screen.queryByRole("heading", { name: "Wijzigingen" })).not.toBeInTheDocument();
+      expect(screen.queryByText("Versie 0.1.2 - Nieuwe shell")).not.toBeInTheDocument();
     });
   });
 });
