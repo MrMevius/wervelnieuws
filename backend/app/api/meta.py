@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "iteration": "137",
+                "date": "2026-11-17",
+                "title": "Recordings are posted automatically on meeting cards",
+                "highlights": [
+                    "Stopping a recording automatically posts its text and audio together as a card update.",
+                    "Use the edit button to adjust the text afterwards; your draft for a new update is preserved.",
+                ],
+            },
+            {
                 "iteration": "136",
                 "date": "2026-11-09",
                 "title": "Reliable WindWilly availability monitoring",

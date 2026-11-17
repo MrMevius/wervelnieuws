@@ -2185,36 +2185,41 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => {
       expect(api.summarizeBoardRecording).toHaveBeenCalledWith("r1");
     });
-    expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("- Aannemer is gebeld.");
-    expect(within(dialog).getByText("Audio-opname (0:07) wordt bij deze update geplaatst.")).toBeInTheDocument();
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "- Aannemer is gebeld.", "r1"));
+    expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("");
+    expect(within(dialog).queryByText(/wordt bij deze update geplaatst/)).not.toBeInTheDocument();
     expect(api.transcribeBoardAudioChunk).not.toHaveBeenCalled();
     expect(api.reviewBoardTranscript).not.toHaveBeenCalled();
-
-    fireEvent.click(within(dialog).getByRole("button", { name: "Update plaatsen" }));
-    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "- Aannemer is gebeld.", "r1"));
-    await waitFor(() => expect(within(dialog).queryByText(/wordt bij deze update geplaatst/)).not.toBeInTheDocument());
   });
 
-  it("valt terug op de transcriptie als samenvatten mislukt en kan de opname loskoppelen", async () => {
+  it.each([false, true])("behoudt het concept bij transcriptiefallback en biedt een retry bij plaatsingsfouten (%s)", async (postingFails) => {
     const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
     api.getBoardCard.mockResolvedValue({ card, updates: [], recordings: [] });
     api.summarizeBoardRecording.mockRejectedValue(new Error("502"));
     api.transcribeBoardRecording.mockResolvedValue({ id: "r1", transcription_status: "done", transcription_text: "volledige tekst" });
+    if (postingFails) api.postBoardCardUpdate.mockRejectedValueOnce(new Error("502"));
 
     renderPage();
     fireEvent.click(await screen.findByTestId("board-card-c1"));
     const dialog = await screen.findByRole("dialog");
+    const draft = within(dialog).getByPlaceholderText("Beschrijf kort de voortgang");
+    fireEvent.change(draft, { target: { value: "Mijn concept" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Start opname" }));
     await waitFor(() => expect(mediaRecorderInstances).toHaveLength(1));
     mediaRecorderInstances[0].requestData();
     fireEvent.click(within(dialog).getByRole("button", { name: /Stop opname/ }));
 
-    await waitFor(() => expect(within(dialog).getByPlaceholderText("Beschrijf kort de voortgang")).toHaveValue("volledige tekst"));
-    expect(within(dialog).getByText("Samenvatten is mislukt; de volledige transcriptie is ingevoegd.")).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Niet toevoegen" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Update plaatsen" }));
-    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "volledige tekst", null));
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "volledige tekst", "r1"));
+    if (postingFails) {
+      await waitFor(() => expect(draft).toHaveValue("Mijn concept\n\nvolledige tekst"));
+      expect(within(dialog).getByText(/Automatisch plaatsen is mislukt/)).toBeInTheDocument();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Update plaatsen" }));
+      await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenLastCalledWith("c1", "Mijn concept\n\nvolledige tekst", "r1"));
+    } else {
+      await waitFor(() => expect(draft).toHaveValue("Mijn concept"));
+      expect(within(dialog).getByText("Samenvatten is mislukt; de volledige transcriptie is geplaatst.")).toBeInTheDocument();
+    }
   });
 
   it("toont de opname met transcriptie binnen de update", async () => {
@@ -2261,7 +2266,7 @@ describe("Vergaderborden drag/drop", () => {
     await waitFor(() => expect(api.transcribeBoardRecording).toHaveBeenCalledWith("r2"));
   });
 
-  it("voegt transcriptie toe aan bestaande update-tekst", async () => {
+  it("plaatst de opnametekst apart en behoudt bestaande concepttekst", async () => {
     const card = { id: "c1", project_id: "p1", title: "Kaart", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0 };
     api.getBoardProject.mockResolvedValue({
       project_id: "p1",
@@ -2283,7 +2288,8 @@ describe("Vergaderborden drag/drop", () => {
     mediaRecorderInstances[0].requestData();
     fireEvent.click(within(dialog).getByRole("button", { name: /Stop opname/ }));
 
-    await waitFor(() => expect(message).toHaveValue("Eerste regel.\n\n- Dit is de aanvulling."));
+    await waitFor(() => expect(api.postBoardCardUpdate).toHaveBeenCalledWith("c1", "- Dit is de aanvulling.", "r1"));
+    expect(message).toHaveValue("Eerste regel.");
   });
 
   it("wacht op de laatste audiochunk en stopt transcriptie wanneer opname-upload mislukt", async () => {

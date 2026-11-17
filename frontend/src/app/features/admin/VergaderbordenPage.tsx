@@ -2069,7 +2069,6 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
           try {
             setUpdateRecordingProgress("Opname wordt opgeslagen…");
             storedRecording = await uploadRecordingMutation.mutateAsync({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
-            setPendingUpdateRecording({ cardId: finishedCardId, recording: storedRecording });
           } catch {
             setUpdateError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
             setIsUpdateTranscribing(false);
@@ -2078,28 +2077,34 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
             stream.getTracks().forEach((track) => track.stop());
             return;
           }
+          let nextText = "";
+          let notice: string | null = null;
           try {
             setUpdateRecordingProgress("Opname wordt getranscribeerd en samengevat…");
-            let nextText = "";
-            let notice: string | null = null;
             try {
               nextText = (await summarizeBoardRecording(storedRecording.id)).summary.trim();
             } catch {
               // Fall back to the plain transcript when only the summary step fails.
               const transcribed = await transcribeBoardRecording(storedRecording.id);
               nextText = transcribed.transcription_status === "done" ? transcribed.transcription_text.trim() : "";
-              notice = "Samenvatten is mislukt; de volledige transcriptie is ingevoegd.";
+              notice = "Samenvatten is mislukt; de volledige transcriptie is geplaatst.";
             }
-            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
-            if (nextText) {
-              setUpdateMessage((current) => [current.trim(), nextText].filter(Boolean).join(current.trim() ? "\n\n" : ""));
-              setUpdateError(notice);
-            } else {
-              setUpdateError("Er is geen tekst uit de opname gekomen. De opname wordt wel aan de update toegevoegd.");
-            }
+            if (!nextText) notice = "Er is geen tekst uit de opname gekomen. De audio-opname is geplaatst.";
           } catch {
-            setUpdateError("Transcriberen van de opname is mislukt. De opname wordt wel aan de update toegevoegd.");
+            notice = "Transcriberen van de opname is mislukt. De audio-opname is geplaatst.";
+          }
+          try {
+            setUpdateRecordingProgress("Update wordt geplaatst…");
+            await postBoardCardUpdate(finishedCardId, nextText || "Audio-opname", storedRecording.id);
+            setUpdateError(notice);
+          } catch {
+            // Preserve the uploaded recording for a manual retry.
+            setPendingUpdateRecording({ cardId: finishedCardId, recording: storedRecording });
+            setUpdateMessage((current) => [current.trim(), nextText || "Audio-opname"].filter(Boolean).join("\n\n"));
+            setUpdateError("Automatisch plaatsen is mislukt. Je kunt de update met opname opnieuw plaatsen.");
           } finally {
+            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
+            void queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] });
             setIsUpdateTranscribing(false);
             setUpdateRecordingProgress(null);
           }
