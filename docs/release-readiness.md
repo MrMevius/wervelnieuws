@@ -47,6 +47,25 @@ Verification: 381 backend tests (1 skipped) and 230 frontend tests pass, plus Ty
 
 Placing a recording inside a card update requires migration `20261031_0034` (parent `20261031_0033`). It adds the nullable `card_updates.recording_id` column with an index and rewrites no data. A downgrade drops only that column; recordings stay on their card and show as standalone activity again.
 
+### Durable meeting-card recording processing (November 2026)
+
+This release requires migration `20261117_0036` (parent `20261105_0035`). It adds
+nullable processing state, a lease token/expiry, a cached summary, a safe error
+stage and a per-uploader unique upload request ID to `recordings`. Existing
+recordings retain NULL processing state and continue through the legacy
+transcript-only flow; they are not automatically posted or reprocessed.
+
+Follow the database/storage backup and stopped-writer migration sequence in
+[Docker Compose operations](docker-compose-operations.md). Deploy the backend,
+frontend and worker together. Verify the new schema head, runtime health and a
+short card recording: upload completes, processing progresses and exactly one
+editable update appears. Reopen the card after upload to verify server-owned
+processing. Rollback requires the previous immutable release and matching
+verified database/storage backup; the migration refuses a downgrade once managed recording jobs exist.
+
+The workflow and failure/recovery behavior are documented in
+[Meeting-card recordings](board-recordings.md).
+
 ### Production checklist
 
 Before a production release:

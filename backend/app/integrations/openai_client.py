@@ -8,10 +8,12 @@ class OpenAIClient:
         api_key: str,
         text_model: str,
         image_model: str,
+        request_timeout: float | None = None,
     ) -> None:
         self.text_model = text_model
         self.image_model = image_model
-        self.client = OpenAI(api_key=api_key) if api_key else None
+        options = {"timeout": request_timeout, "max_retries": 1} if request_timeout is not None else {}
+        self.client = OpenAI(api_key=api_key, **options) if api_key else None
 
     def generate_text(
         self,

@@ -165,6 +165,8 @@ class RecordingResponse(BaseModel):
     file_path: str
     duration: int | None
     recorded_at: datetime
+    processing_status: str | None = None
+    processing_error: str | None = None
     transcription_status: str
     transcription_text: str
     mime_type: str

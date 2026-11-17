@@ -46,7 +46,7 @@ import {
   uploadBoardCardAttachment,
   transcribeBoardAudioChunk,
   transcribeBoardRecording,
-  summarizeBoardRecording,
+  retryBoardRecording,
   reviewBoardTranscript,
   suggestBoardCardTitle
 } from "../../../lib/api/client";
@@ -537,6 +537,29 @@ function RichTextRenderer({ text, emptyFallback }: { text: string; emptyFallback
 function RecordingTranscript({ recording, canRetry, onRetry }: { recording: BoardRecording; canRetry: boolean; onRetry: () => Promise<void> }) {
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
+  if (recording.processing_status && recording.processing_status !== "done") {
+    const labels: Record<string, string> = {
+      queued: "Opname opgeslagen. Wacht op verwerking… Je kunt dit kaartje sluiten.",
+      transcribing: "Opname wordt uitgeschreven… Je kunt dit kaartje sluiten.",
+      summarizing: "Samenvatting wordt gemaakt… Je kunt dit kaartje sluiten.",
+      posting: "Update wordt geplaatst… Je kunt dit kaartje sluiten."
+    };
+    if (recording.processing_status !== "failed") {
+      return <p className="board-recording-transcript-status" role="status">{labels[recording.processing_status] ?? "Opname wordt verwerkt…"}</p>;
+    }
+    const errors: Record<string, string> = { transcribing: "Uitschrijven is mislukt.", summarizing: "Samenvatten is mislukt.", posting: "Update plaatsen is mislukt." };
+    return (
+      <div className="board-recording-transcript-status" role="status">
+        <p>{retryFailed ? "Opnieuw proberen is mislukt." : errors[recording.processing_error ?? ""] ?? "Verwerken is mislukt."} De opname is bewaard.</p>
+        {canRetry && <MaterialButton variant="text" size="compact" disabled={isRetrying} onClick={async () => {
+          setIsRetrying(true);
+          setRetryFailed(false);
+          try { await onRetry(); } catch { setRetryFailed(true); } finally { setIsRetrying(false); }
+        }}>{isRetrying ? "Bezig…" : "Opnieuw proberen"}</MaterialButton>}
+        {recording.transcription_text && <details><summary>Transcriptie</summary><p>{recording.transcription_text}</p></details>}
+      </div>
+    );
+  }
   if (recording.transcription_status === "done" && recording.transcription_text.trim()) {
     return (
       <details className="board-recording-transcript">
@@ -990,11 +1013,10 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const [activeRecordingCardId, setActiveRecordingCardId] = useState<string | null>(null);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [updateRecordingProgress, setUpdateRecordingProgress] = useState<string | null>(null);
-  const [isUpdateTranscribing, setIsUpdateTranscribing] = useState(false);
+  const [isRecordingUploading, setIsRecordingUploading] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
-  // Recording that will be placed in the next update posted on that card.
-  const [pendingUpdateRecording, setPendingUpdateRecording] = useState<{ cardId: string; recording: BoardRecording } | null>(null);
+  const [pendingAudioUpload, setPendingAudioUpload] = useState<{ cardId: string; blob: Blob; duration: number; requestId: string } | null>(null);
   const [attachmentFiles, setAttachmentFiles] = useState<File[]>([]);
   const [attachmentResults, setAttachmentResults] = useState<AttachmentBatchItem[]>([]);
   const [attachmentStatusMessage, setAttachmentStatusMessage] = useState<string | null>(null);
@@ -1201,7 +1223,20 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     // load or expose its restore-only recycle-bin surface.
     enabled: canManageProjects && boardQuery.data?.is_read_only !== true
   });
-  const cardQuery = useQuery({ queryKey: ["board-card", selectedCardId], queryFn: () => getBoardCard(selectedCardId || ""), enabled: Boolean(selectedCardId) });
+  const cardQuery = useQuery({
+    queryKey: ["board-card", selectedCardId],
+    queryFn: () => getBoardCard(selectedCardId || ""),
+    enabled: Boolean(selectedCardId),
+    refetchInterval: (query) => query.state.data?.recordings.some((recording) =>
+      recording.processing_status && !["done", "failed"].includes(recording.processing_status)
+    ) ? 1500 : false
+  });
+  useEffect(() => {
+    if (cardQuery.data?.updates.some((update) => update.recording?.processing_status === "done")) {
+      void queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] });
+    }
+  }, [cardQuery.data, queryClient, resolvedProjectId]);
+
   const resolvedProjectName = useMemo(() => {
     const projects = projectsQuery.data ?? [];
     const selected = projects.find((project) => project.id === resolvedProjectId);
@@ -1380,7 +1415,6 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
       ]);
       setUpdateMessage("");
       setUpdateError(null);
-      setPendingUpdateRecording(null);
     }
   });
   const editUpdateMutation = useMutation({
@@ -1395,7 +1429,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     }
   });
   const uploadRecordingMutation = useMutation({
-    mutationFn: ({ cardId, blob, duration }: { cardId: string; blob: Blob; duration: number }) => uploadBoardRecording(cardId, blob, duration),
+    mutationFn: ({ cardId, blob, duration, requestId }: { cardId: string; blob: Blob; duration: number; requestId: string }) => uploadBoardRecording(cardId, blob, duration, requestId),
     onSuccess: async (_result, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] }),
@@ -2025,6 +2059,22 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     };
   }, []);
 
+  const uploadRecordedAudio = async (upload: { cardId: string; blob: Blob; duration: number; requestId: string }) => {
+    setIsRecordingUploading(true);
+    setUpdateRecordingProgress("Opname wordt opgeslagen… Houd dit tabblad open totdat de upload klaar is.");
+    setUpdateError(null);
+    try {
+      await uploadRecordingMutation.mutateAsync(upload);
+      setPendingAudioUpload(null);
+      setUpdateRecordingProgress(null);
+    } catch {
+      setUpdateRecordingProgress(null);
+      setUpdateError("Uploaden van de opname is mislukt. Probeer de upload opnieuw; dezelfde opname wordt niet dubbel geplaatst.");
+    } finally {
+      setIsRecordingUploading(false);
+    }
+  };
+
   const startOrStopUpdateRecording = async (cardId: string) => {
     if (recorder && activeRecordingCardId === cardId) {
       try {
@@ -2063,56 +2113,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
         window.clearInterval((window as any).__vergaderbordTimer);
         const recordingMimeType = mr.mimeType || mimeType || "audio/webm";
         const blob = new Blob(chunks, { type: recordingMimeType });
+        stream.getTracks().forEach((track) => track.stop());
         if (blob.size > 0) {
-          setIsUpdateTranscribing(true);
-          let storedRecording: BoardRecording;
-          try {
-            setUpdateRecordingProgress("Opname wordt opgeslagen…");
-            storedRecording = await uploadRecordingMutation.mutateAsync({ cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop) });
-          } catch {
-            setUpdateError("Uploaden van de opname is mislukt. Probeer het opnieuw.");
-            setIsUpdateTranscribing(false);
-            setUpdateRecordingProgress(null);
-            setRecordingSeconds(0);
-            stream.getTracks().forEach((track) => track.stop());
-            return;
-          }
-          let nextText = "";
-          let notice: string | null = null;
-          try {
-            setUpdateRecordingProgress("Opname wordt getranscribeerd en samengevat…");
-            try {
-              nextText = (await summarizeBoardRecording(storedRecording.id)).summary.trim();
-            } catch {
-              // Fall back to the plain transcript when only the summary step fails.
-              const transcribed = await transcribeBoardRecording(storedRecording.id);
-              nextText = transcribed.transcription_status === "done" ? transcribed.transcription_text.trim() : "";
-              notice = "Samenvatten is mislukt; de volledige transcriptie is geplaatst.";
-            }
-            if (!nextText) notice = "Er is geen tekst uit de opname gekomen. De audio-opname is geplaatst.";
-          } catch {
-            notice = "Transcriberen van de opname is mislukt. De audio-opname is geplaatst.";
-          }
-          try {
-            setUpdateRecordingProgress("Update wordt geplaatst…");
-            await postBoardCardUpdate(finishedCardId, nextText || "Audio-opname", storedRecording.id);
-            setUpdateError(notice);
-          } catch {
-            // Preserve the uploaded recording for a manual retry.
-            setPendingUpdateRecording({ cardId: finishedCardId, recording: storedRecording });
-            setUpdateMessage((current) => [current.trim(), nextText || "Audio-opname"].filter(Boolean).join("\n\n"));
-            setUpdateError("Automatisch plaatsen is mislukt. Je kunt de update met opname opnieuw plaatsen.");
-          } finally {
-            void queryClient.invalidateQueries({ queryKey: ["board-card", finishedCardId] });
-            void queryClient.invalidateQueries({ queryKey: ["board-project", resolvedProjectId] });
-            setIsUpdateTranscribing(false);
-            setUpdateRecordingProgress(null);
-          }
+          const upload = { cardId: finishedCardId, blob, duration: Math.max(1, durationAtStop), requestId: crypto.randomUUID() };
+          setPendingAudioUpload(upload);
+          await uploadRecordedAudio(upload);
         } else {
           setUpdateError("Geen audiogegevens opgenomen. Probeer opnieuw.");
         }
         setRecordingSeconds(0);
-        stream.getTracks().forEach((track) => track.stop());
       };
       mr.start();
       setActiveRecordingCardId(cardId);
@@ -3059,7 +3068,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 postUpdateMutation.mutate({
                   cardId,
                   message,
-                  recordingId: pendingUpdateRecording?.cardId === cardId ? pendingUpdateRecording.recording.id : null
+                  recordingId: null
                 });
               }}
               >
@@ -3089,7 +3098,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   onClick={() => {
                     void startOrStopUpdateRecording(cardQuery.data!.card.id);
                   }}
-                  disabled={isUpdateTranscribing || Boolean(recorder && activeRecordingCardId !== cardQuery.data.card.id)}
+                  disabled={isRecordingUploading || Boolean(pendingAudioUpload) || Boolean(recorder && activeRecordingCardId !== cardQuery.data.card.id)}
                 >
                   <RecordIcon active={activeRecordingCardId === cardQuery.data.card.id} />
                   {activeRecordingCardId === cardQuery.data.card.id ? `Stop opname (${recordingSeconds}s)` : "Start opname"}
@@ -3097,18 +3106,15 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                 <MaterialButton
                   type="submit"
                   className="board-detail-submit"
-                  disabled={!updateMessage.trim() || postUpdateMutation.isPending || isUpdateTranscribing || activeRecordingCardId === cardQuery.data.card.id}
+                  disabled={!updateMessage.trim() || postUpdateMutation.isPending || isRecordingUploading || activeRecordingCardId === cardQuery.data.card.id}
                 >
                   {postUpdateMutation.isPending ? "Update plaatsen…" : "Update plaatsen"}
                 </MaterialButton>
               </div>
-              {pendingUpdateRecording?.cardId === cardQuery.data.card.id && (
-                <p className="board-update-pending-recording">
-                  <span>Audio-opname ({formatRecordingDuration(pendingUpdateRecording.recording.duration)}) wordt bij deze update geplaatst.</span>
-                  <MaterialButton variant="text" size="compact" type="button" onClick={() => setPendingUpdateRecording(null)}>
-                    Niet toevoegen
-                  </MaterialButton>
-                </p>
+              {pendingAudioUpload && !isRecordingUploading && (
+                <MaterialButton variant="text" size="compact" type="button" onClick={() => void uploadRecordedAudio(pendingAudioUpload)}>
+                  Upload opnieuw proberen
+                </MaterialButton>
               )}
               {updateRecordingProgress && <p className="board-detail-recording-progress" role="status">{updateRecordingProgress}</p>}
               {updateError && <p className="error vergaderborden-inline-error">{updateError}</p>}
@@ -3144,7 +3150,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                             recording={r}
                             canRetry={!isReadOnly}
                             onRetry={async () => {
-                              await transcribeBoardRecording(r.id);
+                              await (r.processing_status ? retryBoardRecording(r.id) : transcribeBoardRecording(r.id));
                               await queryClient.invalidateQueries({ queryKey: ["board-card", cardQuery.data!.card.id] });
                             }}
                           />
@@ -3239,11 +3245,12 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                           {u.recording && (
                             <div className="board-update-recording">
                               <audio controls src={u.recording.download_url} aria-label="Audio-opname bij update" />
+                              {u.recording.processing_status === "done" && <p role="status">Opname verwerkt en geplaatst.</p>}
                               <RecordingTranscript
                                 recording={u.recording}
                                 canRetry={!isReadOnly}
                                 onRetry={async () => {
-                                  await transcribeBoardRecording(u.recording!.id);
+                                  await (u.recording!.processing_status ? retryBoardRecording(u.recording!.id) : transcribeBoardRecording(u.recording!.id));
                                   await queryClient.invalidateQueries({ queryKey: ["board-card", cardQuery.data!.card.id] });
                                 }}
                               />

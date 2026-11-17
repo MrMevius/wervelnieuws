@@ -232,6 +232,8 @@ export type BoardRecording = {
   file_path: string;
   duration?: number | null;
   recorded_at: string;
+  processing_status?: "queued" | "transcribing" | "summarizing" | "posting" | "done" | "failed" | null;
+  processing_error?: string | null;
   transcription_status: "pending" | "done" | "failed";
   transcription_text: string;
   mime_type: string;
@@ -743,13 +745,21 @@ export function deleteBoardCardUpdate(cardId: string, updateId: string) {
   return request<{ status: string }>(`/boards/cards/${cardId}/updates/${updateId}`, { method: "DELETE" });
 }
 
-export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number) {
+export function uploadBoardRecording(cardId: string, blob: Blob, duration?: number, requestId?: string) {
   const fd = new FormData();
   fd.append("file", blob, "opname.webm");
+  if (requestId) {
+    fd.append("auto_update", "true");
+    fd.append("client_request_id", requestId);
+  }
   if (typeof duration === "number" && Number.isFinite(duration) && duration > 0) {
     fd.append("duration", String(Math.round(duration)));
   }
   return request<BoardRecording>(`/boards/cards/${cardId}/recordings`, { method: "POST", body: fd });
+}
+
+export function retryBoardRecording(recordingId: string) {
+  return request<BoardRecording>(`/boards/recordings/${encodeURIComponent(recordingId)}/retry`, { method: "POST" });
 }
 
 export function summarizeBoardRecording(recordingId: string) {

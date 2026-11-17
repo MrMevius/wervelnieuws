@@ -262,7 +262,11 @@ class CardUpdate(Base):
 
 class Recording(Base):
     __tablename__ = "recordings"
-    __table_args__ = (Index("ix_recordings_card_created", "card_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_recordings_card_created", "card_id", "created_at"),
+        UniqueConstraint("uploaded_by_user_id", "client_request_id", name="uq_recordings_upload_request"),
+        Index("ix_recordings_processing", "processing_status", "processing_lease_until"),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     card_id: Mapped[str] = mapped_column(
@@ -283,6 +287,14 @@ class Recording(Base):
         String(20), default="pending", nullable=False
     )
     transcription_text: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # NULL status preserves the historical, transcript-only workflow.
+    client_request_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    processing_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    processing_token: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    processing_lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_error: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
