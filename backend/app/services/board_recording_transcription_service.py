@@ -6,9 +6,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.integrations.openai_client import OpenAIClient
-from app.models.entities import BoardCard, Recording
+from app.models.entities import BoardCard, BoardCardAttachment, Recording
 from app.repositories.board_repository import BoardRepository
 from app.services.genai_config_service import GenAIConfigService
+from app.services.ingestion_service import detect_doc_type, extract_text
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,8 @@ CONTEXT_UPDATE_CHARS = 600
 CONTEXT_UPDATES_TOTAL_CHARS = 6000
 CONTEXT_OTHER_CARD_CHARS = 160
 CONTEXT_OTHER_CARDS_TOTAL_CHARS = 5000
+CONTEXT_ATTACHMENT_CHARS = 3000
+CONTEXT_ATTACHMENTS_TOTAL_CHARS = 8000
 COLUMN_LABELS = {"todo": "Te doen", "doing": "Bezig", "done": "Klaar"}
 BULLET_PREFIX = re.compile(r"^\s*(?:[-*•–]|\d+[.)])\s*")
 
@@ -34,7 +37,8 @@ SUMMARY_INSTRUCTIONS = """Je bent notulist van een vergaderbord voor een lokaal 
 
 Regels:
 - Gebruik uitsluitend informatie die in de transcriptie staat. Voeg geen feiten toe uit de context.
-- Gebruik de context alleen om namen, termen en verwijzingen correct te schrijven en om te bepalen wat nieuw of relevant is ten opzichte van eerdere updates.
+- Gebruik de context, inclusief de bijlagen van het kaartje, alleen om namen, termen en verwijzingen correct te schrijven en om te bepalen wat nieuw of relevant is ten opzichte van eerdere updates.
+- Verwijst de spreker naar een document of bijlage, gebruik dan de bestandsnaam of de juiste naam uit die bijlage.
 - Noem afspraken, besluiten en actiepunten expliciet, met wie en wanneer als dat gezegd wordt.
 - Laat herhalingen, aarzelingen en irrelevante zijpaden weg.
 - Verwijst de spreker naar een ander kaartje, gebruik dan de titel van dat kaartje.
@@ -44,6 +48,22 @@ Regels:
 def _clip(text: str, limit: int) -> str:
     text = " ".join(text.split())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _attachment_text(attachment: BoardCardAttachment) -> str:
+    try:
+        doc_type = detect_doc_type(attachment.filename)
+    except ValueError:
+        return ""
+    try:
+        return extract_text(attachment.file_path, doc_type).strip()
+    except Exception as exc:
+        # An unreadable attachment must not block the summary.
+        logger.warning(
+            "Board attachment text extraction failed",
+            extra={"attachment_id": attachment.id, "error_type": type(exc).__name__},
+        )
+        return ""
 
 
 def _as_bullets(text: str) -> str:
@@ -128,6 +148,21 @@ class BoardRecordingTranscriptionService:
             budget -= len(line)
         if update_lines:
             sections.append("Eerdere updates op dit kaartje (oud naar nieuw):\n" + "\n".join(reversed(update_lines)))
+
+        # Newest attachments first. Files without readable text are listed by name.
+        attachment_lines: list[str] = []
+        budget = CONTEXT_ATTACHMENTS_TOTAL_CHARS
+        for attachment in repo.list_attachments(card.id):
+            line = f"- {attachment.filename}"
+            content = _attachment_text(attachment)
+            if content:
+                line += f": {_clip(content, CONTEXT_ATTACHMENT_CHARS)}"
+            if len(line) > budget:
+                break
+            attachment_lines.append(line)
+            budget -= len(line)
+        if attachment_lines:
+            sections.append("Bijlagen bij dit kaartje (nieuwste eerst):\n" + "\n".join(attachment_lines))
 
         other_lines: list[str] = []
         budget = CONTEXT_OTHER_CARDS_TOTAL_CHARS

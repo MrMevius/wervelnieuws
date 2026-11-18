@@ -2050,6 +2050,45 @@ def test_queued_recording_survives_browser_and_posts_once_with_dynamic_summary(c
     db.close()
 
 
+def test_recording_summary_context_includes_card_attachment_contents(client, monkeypatch):
+    from docx import Document
+    from app.services.board_recording_processing_service import BoardRecordingProcessingService
+    headers = _login(client)
+    _, card_id, _ = _card_with_recording(client, headers)
+    docx_bytes = BytesIO()
+    document = Document()
+    document.add_paragraph("Offerte van Windkracht Montage BV voor de fundering")
+    document.save(docx_bytes)
+    docx_bytes.seek(0)
+    uploads = [
+        ("offerte.docx", docx_bytes, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        ("planning.txt", BytesIO(b"Vergunning Hof van Twente aanvragen voor 1 december"), "text/plain"),
+        ("kapot.pdf", BytesIO(b"geen echte pdf"), "application/pdf"),
+        ("locatie.jpg", BytesIO(b"\xff\xd8\xff"), "image/jpeg"),
+    ]
+    for upload in uploads:
+        assert client.post(f"/api/boards/cards/{card_id}/attachments", headers=headers, files={"file": upload}).status_code == 200
+    queued = _queued_recording(client, headers, card_id).json()
+    _configure_transcription(monkeypatch, lambda *_args, **_kwargs: {"text": "We wachten op de offerte"})
+    prompts = []
+    def summarize(_self, prompt, **_kwargs):
+        prompts.append(prompt)
+        return "- Wachten op offerte", []
+    monkeypatch.setattr("app.services.board_recording_transcription_service.OpenAIClient.generate_text", summarize)
+    db = _recording_db()
+    assert BoardRecordingProcessingService(db).process(queued["id"])
+    db.close()
+    context = prompts[0].split("Bijlagen bij dit kaartje (nieuwste eerst):\n", 1)[1].split("\n\n", 1)[0]
+    assert context.splitlines() == [
+        "- locatie.jpg",
+        "- kapot.pdf",
+        "- planning.txt: Vergunning Hof van Twente aanvragen voor 1 december",
+        "- offerte.docx: Offerte van Windkracht Montage BV voor de fundering",
+    ]
+    detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
+    assert next(u for u in detail["updates"] if u["recording"])["message"] == "- Wachten op offerte"
+
+
 def test_recording_upload_idempotency_and_legacy_routes_do_not_race_worker(client):
     from uuid import uuid4
     headers = _login(client)
