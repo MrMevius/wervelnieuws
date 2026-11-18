@@ -111,3 +111,18 @@ def test_minute_migration_preserves_legacy_rows_and_roundtrips(tmp_path, monkeyp
         assert con.execute(text("SELECT duration_minutes,post_id,start_time FROM work_hour_groups WHERE id='1'")).one() == (7, None, "09:07")
     engine.dispose()
     get_settings.cache_clear()
+
+
+def test_month_totals_cover_all_pages_and_follow_filters(client, minute_setup):
+    headers, payload = minute_setup
+    for work_date, minutes in [("2026-09-01", 30), ("2026-09-30", 60), ("2026-10-02", 15), ("2025-10-02", 45)]:
+        response = client.post("/api/urenverantwoording/groepen", headers=headers, json={**payload, "work_date": work_date, "duration_minutes": minutes})
+        assert response.status_code == 201, response.text
+    result = client.get("/api/urenverantwoording/groepen?page_size=25&page=1", headers=headers).json()
+    months = {row["month"]: row for row in result["month_totals"]}
+    assert set(months) == {"2026-10", "2026-09", "2025-10"}
+    assert months["2026-09"]["registrations"] == 2
+    assert months["2026-09"]["person_hours"] == pytest.approx(2 * 90 / 60)
+    assert months["2025-10"]["person_hours"] == pytest.approx(2 * 45 / 60)
+    filtered = client.get("/api/urenverantwoording/groepen?work_date=2026-10-02", headers=headers).json()
+    assert filtered["month_totals"] == [{"month": "2026-10", "registrations": 1, "person_hours": pytest.approx(0.5)}]

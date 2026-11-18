@@ -315,6 +315,12 @@ class WorkHourProjectTotalResponse(BaseModel):
     person_hours: float
 
 
+class WorkHourMonthTotalResponse(BaseModel):
+    month: str
+    registrations: int
+    person_hours: float
+
+
 class WorkHourListResponse(BaseModel):
     items: list[WorkHourGroupResponse]
     total: int
@@ -325,6 +331,7 @@ class WorkHourListResponse(BaseModel):
     page_sizes: list[int] = Field(default_factory=lambda: [25, 50, 100])
     totals: WorkHourTotalsResponse
     project_totals: list[WorkHourProjectTotalResponse] = Field(default_factory=list)
+    month_totals: list[WorkHourMonthTotalResponse] = Field(default_factory=list)
 
 
 class WorkHourAdminListResponse(WorkHourListResponse):

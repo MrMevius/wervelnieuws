@@ -563,6 +563,7 @@ class WorkHoursService:
             sort_direction=query.sort_direction,
             totals=totals,
             project_totals=project_totals,
+            month_totals=self.repo.aggregate_month_totals(filters),
         )
 
     def _build_totals(self, groups: list[WorkHourGroup]) -> WorkHourTotalsResponse:
