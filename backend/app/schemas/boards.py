@@ -161,6 +161,7 @@ class RecordingResponse(BaseModel):
     uploaded_by_user_id: str | None = None
     uploaded_by_username: str | None = None
     uploaded_by_display_name: str | None = None
+    uploaded_by_avatar_user_id: str | None = None
     filename: str
     file_path: str
     duration: int | None
@@ -180,6 +181,8 @@ class CardUpdateResponse(BaseModel):
     author_user_id: str
     author_username: str
     author_display_name: str
+    # Set when the author (also a matched Trello author) has a profile photo.
+    author_avatar_user_id: str | None = None
     message: str
     image_url: str | None = None
     edited_from_update_id: str | None = None

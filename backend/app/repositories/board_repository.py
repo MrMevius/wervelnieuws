@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -514,6 +515,20 @@ class BoardRepository:
 
     def get_user(self, user_id: str) -> User | None:
         return self.db.get(User, user_id)
+
+    def user_by_name(self, name: str) -> User | None:
+        """Match an imported author name ("Sonny Marsman", "sonnymarsman") to a user."""
+        if not hasattr(self, "_users_by_name"):
+            self._users_by_name: dict[str, User] = {}
+            for user in self.db.scalars(select(User)):
+                for value in (user.full_name, user.username):
+                    if value and _name_key(value):
+                        self._users_by_name.setdefault(_name_key(value), user)
+        return self._users_by_name.get(_name_key(name))
+
+
+def _name_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.casefold())
 
 
 def _as_utc(value: datetime) -> datetime:

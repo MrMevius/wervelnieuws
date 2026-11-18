@@ -153,6 +153,7 @@ type CardActivityItem =
       author_user_id: string;
       author_username: string;
       author_display_name: string;
+      author_avatar_user_id?: string | null;
       message: string;
       image_url: string | null;
       edited_from_update_id: string | null;
@@ -865,6 +866,18 @@ function DescriptionEditor({
         {error && <small className="error">{error}</small>}
       </div>
     </div>
+  );
+}
+
+// Profile photo of the update author; initials when there is none or it fails to load.
+function UpdateAuthorBadge({ label, avatarUserId }: { label: string; avatarUserId?: string | null }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="board-update-author-badge" aria-hidden="true">
+      {avatarUserId && !failed
+        ? <img src={getBoardUserAvatarUrl(avatarUserId)} alt="" loading="lazy" onError={() => setFailed(true)} />
+        : initialsFromName(label)}
+    </span>
   );
 }
 
@@ -3145,7 +3158,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                     return (
                       <article key={activity.id} className="board-update-item" role="listitem">
                         <div className="board-update-header">
-                          <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
+                          <UpdateAuthorBadge label={authorLabel} avatarUserId={r.uploaded_by_avatar_user_id} />
                           <div className="board-update-header-text">
                             <strong className="board-update-author">{authorLabel}</strong>
                             <small className="board-update-meta">{dateLabel}</small>
@@ -3175,7 +3188,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
                   return (
                     <article key={u.id} className="board-update-item" role="listitem">
                       <div className="board-update-header">
-                        <span className="board-update-author-badge" aria-hidden="true">{initialsFromName(authorLabel)}</span>
+                        <UpdateAuthorBadge label={authorLabel} avatarUserId={u.author_avatar_user_id} />
                         <div className="board-update-header-text">
                           <strong className="board-update-author">{authorLabel}</strong>
                           <small className="board-update-meta">{dateLabel}</small>

@@ -2580,6 +2580,13 @@ button:disabled {
   background: var(--badge-info);
   border: 1px solid var(--control-border-strong);
   color: var(--text);
+  overflow: hidden;
+}
+
+.board-update-author-badge img {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
 }
 
 .board-update-header-text {

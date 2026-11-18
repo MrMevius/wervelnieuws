@@ -228,6 +228,7 @@ export type BoardRecording = {
   uploaded_by_user_id?: string | null;
   uploaded_by_username?: string | null;
   uploaded_by_display_name?: string | null;
+  uploaded_by_avatar_user_id?: string | null;
   filename: string;
   file_path: string;
   duration?: number | null;
@@ -299,7 +300,7 @@ export type BoardRecycleBinCard = BoardCard & {
 
 export type BoardCardDetail = {
   card: BoardCard;
-  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; message: string; image_url: string | null; edited_from_update_id: string | null; recording?: BoardRecording | null; created_at: string }>;
+  updates: Array<{ id: string; author_user_id: string; author_username: string; author_display_name: string; author_avatar_user_id?: string | null; message: string; image_url: string | null; edited_from_update_id: string | null; recording?: BoardRecording | null; created_at: string }>;
   recordings: BoardRecording[];
   attachments: Array<{
     id: string;
