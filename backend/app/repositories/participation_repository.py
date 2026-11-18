@@ -1,4 +1,4 @@
-from sqlalchemy import func, or_, select
+from sqlalchemy import extract, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.entities import Project, User
@@ -64,3 +64,24 @@ class ParticipationRepository:
         total = self.db.scalar(select(func.count()).select_from(statement.subquery())) or 0
         items = list(self.db.scalars(statement.order_by(Moment.occurred_on.desc(), Moment.created_at.desc(), Moment.id).offset(offset).limit(limit)))
         return items, total
+
+    def counts(self, user: User, filters: ParticipationFilters) -> "tuple[list[dict[str, object]], dict[str, int]]":
+        """Moments per month and per type over the same basis as the list."""
+        ids = self.filtered(user, filters).with_only_columns(Moment.id).subquery()
+        year = extract("year", Moment.occurred_on).label("year")
+        month = extract("month", Moment.occurred_on).label("month")
+        months = self.db.execute(
+            select(year, month, func.count(Moment.id)).join(ids, ids.c.id == Moment.id).group_by(year, month)
+        ).all()
+        types = self.db.execute(
+            select(Moment.moment_type, func.count(Moment.id)).join(ids, ids.c.id == Moment.id).group_by(Moment.moment_type)
+        ).all()
+        return (
+            [{"month": f"{int(y):04d}-{int(m):02d}", "moments": int(count)} for y, m, count in months],
+            {moment_type: int(count) for moment_type, count in types},
+        )
+
+    def avatar_user_ids(self, user_ids: set[str]) -> set[str]:
+        if not user_ids:
+            return set()
+        return set(self.db.scalars(select(User.id).where(User.id.in_(user_ids), User.avatar_path.is_not(None), User.avatar_path != "")))

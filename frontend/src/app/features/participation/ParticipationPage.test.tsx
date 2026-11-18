@@ -53,7 +53,7 @@ function renderPage() {
 
 async function openNew() {
   renderPage();
-  await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" });
+  await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" });
   fireEvent.click(screen.getByRole("button", { name: "Nieuw moment" }));
   return screen.getByRole("dialog", { name: "Nieuw participatiemoment" });
 }
@@ -61,7 +61,7 @@ async function openNew() {
 describe("Participatiemomenten", () => {
   it("shows a compact list and opens the complete report", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" }));
     const panel = await screen.findByRole("dialog");
     expect(within(panel).getByText(/De planning is besproken/)).toBeInTheDocument();
     expect(within(panel).getByText("Stuur de informatie na.")).toBeInTheDocument();
@@ -112,7 +112,7 @@ describe("Participatiemomenten", () => {
       notes: "Vervolg in juni", participants: [], is_historical: true,
     });
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" }));
     const panel = await screen.findByRole("dialog");
     expect(within(panel).getByRole("list", { name: "Participatieniveau" })).toHaveTextContent("InformerenRaadplegen");
     expect(within(panel).getByText("Positief over deelname")).toBeInTheDocument();
@@ -147,7 +147,7 @@ describe("Participatiemomenten", () => {
 
   it("requires confirmation before archiving and uses the current version", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" }));
     const panel = await screen.findByRole("dialog");
     fireEvent.click(within(panel).getByRole("button", { name: "Archiveren" }));
     expect(api.archiveParticipationMoment).not.toHaveBeenCalled();
@@ -157,11 +157,34 @@ describe("Participatiemomenten", () => {
 
   it("filters on type, participation level and goal status", async () => {
     renderPage();
-    await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" });
+    await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" });
     fireEvent.change(screen.getByLabelText("Soort"), { target: { value: "meeting" } });
     fireEvent.change(screen.getByLabelText("Participatieniveau"), { target: { value: "consult" } });
     fireEvent.change(screen.getByLabelText("Doelstelling bereikt"), { target: { value: "no" } });
-    await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ moment_type: "meeting", participation_level: "consult", goal_status: "no" }), 1));
+    await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ moment_type: "meeting", participation_level: "consult", goal_status: "no" }), 1, 25));
+  });
+
+  it("groups moments per month with counts for the whole selection and shows executor photos", async () => {
+    const historical = { ...moment, id: "m2", title: "Nieuwsbrief", occurred_on: "2026-08-14", moment_type: "communication" as const, participants: [], is_historical: true, participation_levels: ["inform" as const] };
+    api.listParticipationMoments.mockResolvedValue({
+      items: [{ ...moment, participants: [{ ...meta.participants[0], avatar_user_id: "u1" }, meta.participants[1]] }, historical],
+      total: 30, page: 1, page_size: 25,
+      month_counts: [{ month: "2026-09", moments: 12 }, { month: "2026-08", moments: 18 }],
+      type_counts: { conversation: 29, communication: 1 },
+    });
+    const { container } = renderPage();
+    await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" });
+    expect(screen.getByText(/in totaal/).closest("p")).toHaveTextContent("30 momenten · 29 gesprekken · 1 communicatie-uiting in totaal");
+    expect(screen.getByRole("heading", { name: "september 2026" }).closest("header")).toHaveTextContent("12 momenten");
+    expect(screen.getByRole("heading", { name: "augustus 2026" }).closest("header")).toHaveTextContent("18 momenten");
+    expect(screen.getByRole("img", { name: "Uitvoerders: Bart Jan, Mark" })).toBeInTheDocument();
+    expect(container.querySelector(".person-avatar img")).toHaveAttribute("src", expect.stringContaining("/boards/users/u1/avatar"));
+    const older = screen.getByRole("button", { name: "Open moment: Nieuwsbrief" }).closest("article")!;
+    expect(older).toHaveTextContent("Onbekend");
+    expect(older).toHaveTextContent("Informeren");
+    expect(older).toHaveTextContent("Communicatie-uiting");
+    fireEvent.click(screen.getByRole("button", { name: "Archief" }));
+    await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ archived: true }), 1, 25));
   });
 
   it("sends the same filters to list and export, without limiting exports to one page", async () => {
@@ -174,11 +197,11 @@ describe("Participatiemomenten", () => {
     try {
       api.exportParticipationMoments.mockResolvedValue(new Blob(["Verslag"]));
       renderPage();
-      await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" });
+      await screen.findByRole("button", { name: "Open moment: Gesprek met de buurt" });
       fireEvent.change(screen.getByLabelText("Project"), { target: { value: "p1" } });
       fireEvent.change(screen.getByLabelText("Uitvoerder"), { target: { value: "u2" } });
       fireEvent.change(screen.getByLabelText("Vanaf"), { target: { value: "2026-09-01" } });
-      await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ project_id: "p1", participant_id: "u2", date_from: "2026-09-01" }), 1));
+      await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ project_id: "p1", participant_id: "u2", date_from: "2026-09-01" }), 1, 25));
       fireEvent.change(screen.getByLabelText("Exportformaat"), { target: { value: "csv" } });
       fireEvent.click(screen.getByRole("button", { name: "Export selectie" }));
       await waitFor(() => expect(api.exportParticipationMoments).toHaveBeenCalledWith(expect.objectContaining({ project_id: "p1", participant_id: "u2", date_from: "2026-09-01" }), "csv"));

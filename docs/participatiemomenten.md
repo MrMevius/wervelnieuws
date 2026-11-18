@@ -24,7 +24,7 @@ Een compact overzicht toont onderwerp, datum, projecten, gesprekspartners en uit
 
 ## Terugzoeken en exporteren
 
-Zoek op onderwerp, doel, verslag, opgehaalde informatie, acties, opmerkingen, belanghebbenden of locatie. Combineer dit met een inclusieve datumperiode, project, uitvoerder, soort, participatieniveau en/of doelstelling bereikt. Het overzicht toont maximaal 25 gesprekken per pagina, met de nieuwste gespreksdatum bovenaan.
+Zoek op onderwerp, doel, verslag, opgehaalde informatie, acties, opmerkingen, belanghebbenden of locatie. Combineer dit met een inclusieve datumperiode, project, uitvoerder, soort, participatieniveau en/of doelstelling bereikt. Het overzicht is compact, zoals de urenregistratie: één regel per moment, gegroepeerd per maand met de nieuwste datum bovenaan. Per regel staan datum, onderwerp, project, belanghebbenden, participatieniveau, uitvoerders (als profielfoto; aanwijzen toont alle namen) en soort en kanaal. De kop toont het aantal momenten per soort, en elke maandkop het aantal momenten in die maand; beide tellen de hele selectie over alle pagina's. Kies 25, 50 of 100 momenten per pagina.
 
 **Export selectie** exporteert alle gesprekken die aan de huidige filters voldoen, niet alleen de zichtbare pagina:
 
@@ -34,7 +34,7 @@ Zoek op onderwerp, doel, verslag, opgehaalde informatie, acties, opmerkingen, be
 
 Alle drie de formaten bevatten de logboekvelden: soort, doel, participatieniveau, opgehaalde informatie, verantwoording en opmerkingen.
 
-Export uit **Gesprekken** bevat actieve momenten; export uit **Archief** bevat de gearchiveerde selectie. Voor meer dan 5.000 gesprekken wordt gevraagd de selectie te verkleinen. De export wordt op aanvraag gegenereerd en direct gedownload, niet als publiek bestand op de server bewaard. JSON-import wordt niet aangeboden.
+Export uit **Actueel** bevat actieve momenten; export uit **Archief** bevat de gearchiveerde selectie. Voor meer dan 5.000 gesprekken wordt gevraagd de selectie te verkleinen. De export wordt op aanvraag gegenereerd en direct gedownload, niet als publiek bestand op de server bewaard. JSON-import wordt niet aangeboden.
 
 Gespreksverslagen en exports kunnen persoonsgegevens bevatten. Leg alleen relevante informatie vast en deel gedownloade verslagen uitsluitend met de beoogde ontvangers.
 

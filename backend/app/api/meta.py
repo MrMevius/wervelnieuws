@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.35.1",
+                "date": "2026-11-18",
+                "title": "Compact overzicht van participatiemomenten",
+                "highlights": [
+                    "Participatiemomenten staan op één regel per moment, gegroepeerd per maand met het aantal momenten, zoals in de urenregistratie.",
+                    "Uitvoerders verschijnen als profielfoto; aanwijzen toont alle namen.",
+                    "De kop telt de momenten per soort over de hele selectie; kies 25, 50 of 100 momenten per pagina.",
+                ],
+            },
+            {
                 "version": "0.35.0",
                 "date": "2026-11-18",
                 "title": "Participatiemomenten volgen het participatielogboek",

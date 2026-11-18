@@ -1,6 +1,6 @@
 import { request, requestBlob } from "./client";
 
-export type ParticipationOption = { id: string; name: string; selectable: boolean };
+export type ParticipationOption = { id: string; name: string; selectable: boolean; avatar_user_id?: string | null };
 export type ContactType = "in_person" | "phone" | "email" | "video" | "meeting" | "letter" | "newspaper" | "online" | "other";
 export type MomentType = "conversation" | "meeting" | "communication";
 export type ParticipationLevel = "inform" | "consult" | "advise" | "coproduce" | "codecide";
@@ -24,7 +24,10 @@ export type ParticipationFilters = {
   query: string; date_from: string; date_to: string; project_id: string; participant_id: string;
   moment_type: MomentType | ""; participation_level: ParticipationLevel | ""; goal_status: GoalStatus; archived: boolean;
 };
-export type ParticipationList = { items: ParticipationMoment[]; total: number; page: number; page_size: number };
+export type ParticipationList = {
+  items: ParticipationMoment[]; total: number; page: number; page_size: number;
+  month_counts?: Array<{ month: string; moments: number }>; type_counts?: Partial<Record<MomentType, number>>;
+};
 export type ParticipationExportFormat = "csv" | "markdown" | "json";
 
 function queryString(values: Record<string, string | number | boolean>): string {
@@ -32,8 +35,8 @@ function queryString(values: Record<string, string | number | boolean>): string 
 }
 const base = "/participatiemomenten";
 export const getParticipationMeta = () => request<ParticipationMeta>(`${base}/meta`);
-export const listParticipationMoments = (filters: ParticipationFilters, page = 1) =>
-  request<ParticipationList>(`${base}?${queryString({ ...filters, page, page_size: 25 })}`);
+export const listParticipationMoments = (filters: ParticipationFilters, page = 1, pageSize = 25) =>
+  request<ParticipationList>(`${base}?${queryString({ ...filters, page, page_size: pageSize })}`);
 export const getParticipationMoment = (id: string) => request<ParticipationMoment>(`${base}/${encodeURIComponent(id)}`);
 export const createParticipationMoment = (draft: ParticipationDraft) =>
   request<ParticipationMoment>(base, { method: "POST", body: JSON.stringify(draft) });

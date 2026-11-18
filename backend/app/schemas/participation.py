@@ -73,6 +73,8 @@ class ParticipationOption(BaseModel):
     id: str
     name: str
     selectable: bool = True
+    # Set for executors who have a WindWilly profile photo.
+    avatar_user_id: str | None = None
 
 
 class ParticipationMeta(BaseModel):
@@ -136,8 +138,16 @@ class ParticipationFilters(BaseModel):
         return self
 
 
+class ParticipationMonthCount(BaseModel):
+    month: str
+    moments: int
+
+
 class ParticipationList(BaseModel):
     items: list[ParticipationResponse]
     total: int
     page: int
     page_size: int
+    # Counts over the whole filtered selection, across pages.
+    month_counts: list[ParticipationMonthCount] = []
+    type_counts: dict[str, int] = {}
