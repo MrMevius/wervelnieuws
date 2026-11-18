@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.34.3",
+                "date": "2026-11-18",
+                "title": "Vergaderborden verversen automatisch",
+                "highlights": [
+                    "Kaarten die een ander toevoegt, verplaatst of aanpast verschijnen binnen enkele seconden op je scherm, zonder de pagina te herladen.",
+                    "Ook een geopend kaartje toont nieuwe updates, opnames en bijlagen van anderen vanzelf.",
+                    "Grote vergaderborden laden merkbaar sneller.",
+                ],
+            },
+            {
                 "version": "0.34.2",
                 "date": "2026-11-18",
                 "title": "Samenvattingen van opnames houden rekening met bijlagen",

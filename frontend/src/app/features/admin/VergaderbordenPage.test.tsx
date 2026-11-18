@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { VergaderbordenPage } from "./VergaderbordenPage";
+import { BOARD_LIVE_REFRESH_MS, VergaderbordenPage } from "./VergaderbordenPage";
 import { VERGADERBORDEN_LAST_PROJECT_STORAGE_KEY } from "./vergaderbordenProjectSelection";
 
 const api = vi.hoisted(() => ({
@@ -244,6 +244,23 @@ describe("Vergaderborden drag/drop", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Archief/ }));
     expect(container.querySelector(".vergaderborden-page")).not.toHaveClass("is-active-board-view");
+  });
+
+  it("toont kaarten die een ander toevoegt zonder de pagina te herladen", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const card = { id: "c-remote", project_id: "p1", title: "Kaart van collega", description: "", column: "todo", position: 0, assignments: [], updates_count: 0, recordings_count: 0, attachments_count: 0 };
+      renderPage("/vergaderborden?project=p1");
+      expect(await screen.findAllByText(/Nog geen kaarten/)).toHaveLength(3);
+      expect(screen.queryByText("Kaart van collega")).not.toBeInTheDocument();
+
+      api.getBoardProject.mockResolvedValue({ project_id: "p1", project_name: "Project A", invited_user_ids: ["u1"], cards: [card] });
+      await act(() => vi.advanceTimersByTimeAsync(BOARD_LIVE_REFRESH_MS));
+
+      expect(await screen.findByText("Kaart van collega")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("slaat direct op bij verplaatsen naar andere kolom", async () => {
