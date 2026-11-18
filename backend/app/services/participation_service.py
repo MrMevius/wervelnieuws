@@ -56,7 +56,7 @@ class ParticipationService:
             person.user_id == current.id for person in row.participants
         )
 
-    def response(self, row: Moment, current: User) -> ParticipationResponse:
+    def response(self, row: Moment, current: User, avatars: set[str] | None = None) -> ParticipationResponse:
         fields = {name: getattr(row, name) for name in (
             "id", "title", "occurred_on", "contact_type", "conversation_partners", "location",
             "duration_minutes", "report", "agreements", "created_by_name", "created_at",
@@ -65,7 +65,8 @@ class ParticipationService:
         return ParticipationResponse(
             **fields,
             participation_levels=[level for level in row.participation_levels.split(",") if level],
-            participants=[ParticipationOption(id=person.source_user_id, name=person.display_name, selectable=person.user_id is not None)
+            participants=[ParticipationOption(id=person.source_user_id, name=person.display_name, selectable=person.user_id is not None,
+                                              avatar_user_id=person.user_id if avatars and person.user_id in avatars else None)
                           for person in sorted(row.participants, key=lambda item: item.display_name.casefold())],
             projects=[ParticipationOption(id=project.source_project_id, name=project.name, selectable=project.project_id is not None)
                       for project in sorted(row.projects, key=lambda item: item.name.casefold())],
@@ -82,7 +83,12 @@ class ParticipationService:
 
     def list(self, current: User, filters: ParticipationFilters, page: int, page_size: int) -> ParticipationList:
         rows, total = self.repo.list(current, filters, offset=(page - 1) * page_size, limit=page_size)
-        return ParticipationList(items=[self.response(row, current) for row in rows], total=total, page=page, page_size=page_size)
+        avatars = self.repo.avatar_user_ids({person.user_id for row in rows for person in row.participants if person.user_id})
+        month_counts, type_counts = self.repo.counts(current, filters)
+        return ParticipationList(
+            items=[self.response(row, current, avatars) for row in rows], total=total, page=page, page_size=page_size,
+            month_counts=month_counts, type_counts=type_counts,
+        )
 
     def _references(self, current: User, payload: ParticipationWrite, previous: Moment | None):
         old_people = {person.source_user_id: person for person in previous.participants} if previous else {}

@@ -265,3 +265,21 @@ def test_only_historical_moments_may_omit_the_executor(client, setup):
     markdown = client.get("/api/participatiemomenten/export?format=markdown", headers=headers).text
     assert "Uitvoerders: Onbekend (historisch)" in markdown
     assert client.post("/api/participatiemomenten", headers=headers, json={**payload, "participation_levels": ["vote"]}).status_code == 422
+
+
+def test_list_counts_moments_per_month_and_type_across_pages_and_exposes_photos(client, setup):
+    headers, users, _, payload = setup
+    with session(client) as db:
+        db.get(User, users["editor"]).avatar_path = "avatars/editor.png"
+        db.commit()
+    create(client, headers, payload)
+    create(client, headers, {**payload, "title": "Bijeenkomst", "moment_type": "meeting", "occurred_on": "2026-09-20"})
+    create(client, headers, {**payload, "title": "Nieuwsbrief", "moment_type": "communication", "occurred_on": "2026-10-02"})
+    body = client.get("/api/participatiemomenten?page_size=1", headers=headers).json()
+    assert len(body["items"]) == 1 and body["total"] == 3
+    assert sorted((row["month"], row["moments"]) for row in body["month_counts"]) == [("2026-09", 2), ("2026-10", 1)]
+    assert body["type_counts"] == {"conversation": 1, "meeting": 1, "communication": 1}
+    filtered = client.get("/api/participatiemomenten?moment_type=meeting", headers=headers).json()
+    assert filtered["month_counts"] == [{"month": "2026-09", "moments": 1}] and filtered["type_counts"] == {"meeting": 1}
+    photos = {person["id"]: person["avatar_user_id"] for person in body["items"][0]["participants"]}
+    assert photos[users["editor"]] == users["editor"] and photos[users["admin"]] is None

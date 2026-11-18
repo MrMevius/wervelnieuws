@@ -1,0 +1,11 @@
+.person-avatars { position: relative; justify-self: start; display: flex; align-items: center; min-width: 0; border-radius: 999px; cursor: default; }
+.person-avatars:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.person-avatar-stack { display: flex; flex-shrink: 0; padding-left: 5px; }
+.person-avatar { display: grid; place-items: center; width: 26px; height: 26px; margin-left: -5px; overflow: hidden; border: 2px solid var(--surface); border-radius: 50%; background: var(--surface-muted); color: var(--text-muted); font-size: .56rem; font-weight: 600; }
+.person-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.person-avatar-more { background: var(--surface-accent-subtle); color: var(--text); }
+.person-avatars-tooltip { position: absolute; top: calc(100% + 6px); left: 0; z-index: 4; min-width: 180px; max-width: 280px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); font-size: .8rem; visibility: hidden; opacity: 0; transition: opacity 120ms ease; }
+.person-avatars-tooltip strong { display: block; margin-bottom: 6px; font-size: .74rem; font-weight: 600; color: var(--text-muted); }
+.person-avatars-tooltip ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 3px; }
+.person-avatars:is(:hover, :focus-visible) .person-avatars-tooltip { visibility: visible; opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .person-avatars-tooltip { transition: none; } }

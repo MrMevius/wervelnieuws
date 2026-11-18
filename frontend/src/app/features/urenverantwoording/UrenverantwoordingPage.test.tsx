@@ -361,11 +361,11 @@ describe("UrenverantwoordingPage compact central management", () => {
     api.listWorkHourGroups.mockResolvedValue({...emptyList,items:[{...group,participants:people,person_count:people.length}],total:1});
     const { container } = renderPage();
     const presence = await screen.findByRole("img", {name:"Aanwezig: Sonny Marsman, Harry van der Meer, Lid 0, Lid 1, Lid 2, Lid 3, Lid 4, Lid 5, Lid 6, Lid 7"});
-    expect(container.querySelector(".hours-avatar img")).toHaveAttribute("src", "/api/boards/users/u-sonny/avatar");
+    expect(container.querySelector(".person-avatar img")).toHaveAttribute("src", "/api/boards/users/u-sonny/avatar");
     expect(within(presence).getByText("HM")).toBeInTheDocument();
     expect(within(presence).getByText("+3")).toBeInTheDocument();
-    expect(presence.querySelectorAll(".hours-avatar-stack > .hours-avatar")).toHaveLength(8);
-    expect([...presence.querySelectorAll(".hours-people-tooltip li")].map(item => item.textContent)).toEqual(people.map(person => person.display_name_snapshot));
+    expect(presence.querySelectorAll(".person-avatar-stack > .person-avatar")).toHaveLength(8);
+    expect([...presence.querySelectorAll(".person-avatars-tooltip li")].map(item => item.textContent)).toEqual(people.map(person => person.display_name_snapshot));
   });
 
   it("groups registrations per month with subtotals over the whole selection", async () => {
