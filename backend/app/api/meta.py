@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.34.4",
+                "date": "2026-11-18",
+                "title": "Compactere urenregistratie, gegroepeerd per maand",
+                "highlights": [
+                    "Elke registratie staat op één regel, zodat je ongeveer drie keer zoveel uren in één oogopslag ziet.",
+                    "Registraties staan per maand bij elkaar, met per maand het aantal registraties en de persoon-uren over je hele selectie.",
+                    "Het totaal staat naast de titel en bewerken en verwijderen zijn kleine knoppen aan het eind van de regel.",
+                ],
+            },
+            {
                 "version": "0.34.3",
                 "date": "2026-11-18",
                 "title": "Vergaderborden verversen automatisch",

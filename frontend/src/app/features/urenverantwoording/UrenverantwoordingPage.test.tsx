@@ -344,11 +344,29 @@ describe("UrenverantwoordingPage compact central management", () => {
   it("shows exact minute durations, names and start times in one shared list", async () => {
     api.listWorkHourGroups.mockResolvedValue({...emptyList,items:[{...group,duration_minutes:7,duration_half_hours:null,start_time:"09:07"}],total:1});
     renderPage();
-    const list = await screen.findByRole("list", {name:"Urenregistraties"});
+    const list = await screen.findByRole("list", {name:"Urenregistraties augustus 2026"});
     expect(within(list).getByText("7 min")).toBeInTheDocument();
-    expect(within(list).getByText("09:07 uur")).toBeInTheDocument();
+    expect(within(list).getByText("09:07")).toBeInTheDocument();
+    expect(within(list).getByText("za 8")).toBeInTheDocument();
     expect(within(list).getByText("Admin")).toBeInTheDocument();
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("groups registrations per month with subtotals over the whole selection", async () => {
+    const items = [
+      {...group,id:"g-nov",work_date:"2026-11-17"},
+      {...group,id:"g-oct-1",work_date:"2026-10-30"},
+      {...group,id:"g-oct-2",work_date:"2026-10-02"},
+    ];
+    api.listWorkHourGroups.mockResolvedValue({...emptyList,items,total:40,month_totals:[{month:"2026-11",registrations:12,person_hours:30.5},{month:"2026-10",registrations:28,person_hours:61}]});
+    renderPage();
+    const november = await screen.findByRole("region", {name:"november 2026"});
+    expect(within(november).getAllByRole("listitem")).toHaveLength(1);
+    expect(november).toHaveTextContent("12 registraties · 30,5 persoon-uren");
+    const october = screen.getByRole("region", {name:"oktober 2026"});
+    expect(within(october).getAllByRole("listitem")).toHaveLength(2);
+    expect(october).toHaveTextContent("28 registraties · 61 persoon-uren");
+    expect(screen.getAllByRole("heading", {level:2}).map(heading => heading.textContent)).toEqual(["november 2026","oktober 2026"]);
   });
 
   it("requires confirmation for recoverable deletion and reports failures in the dialog", async () => {
@@ -369,7 +387,7 @@ describe("UrenverantwoordingPage compact central management", () => {
     api.listWorkHourGroups.mockResolvedValue({...emptyList,items:[group],total:76});
     api.downloadWorkHoursCsv.mockResolvedValue(new Blob(["csv"]));
     renderPage();
-    await screen.findByRole("list", {name:"Urenregistraties"});
+    await screen.findByRole("list", {name:/^Urenregistraties /});
     fireEvent.change(screen.getByLabelText("Project"), {target:{value:"p1"}});
     fireEvent.change(screen.getByLabelText("Werkdatum"), {target:{value:"2026-08-08"}});
     await waitFor(()=>expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({project_id:"p1",work_date:"2026-08-08",page:1,page_size:25})));
@@ -383,7 +401,7 @@ describe("UrenverantwoordingPage compact central management", () => {
   it("paginates and resets the page when changing the page size", async () => {
     api.listWorkHourGroups.mockImplementation(async ({page,page_size})=>({...emptyList,items:[group],page,page_size,total:76}));
     renderPage();
-    await screen.findByRole("list", {name:"Urenregistraties"});
+    await screen.findByRole("list", {name:/^Urenregistraties /});
     await new Promise(resolve=>setTimeout(resolve,300));
     fireEvent.click(screen.getByRole("button",{name:"Volgende"}));
     await waitFor(()=>expect(api.listWorkHourGroups).toHaveBeenLastCalledWith(expect.objectContaining({page:2,page_size:25})));

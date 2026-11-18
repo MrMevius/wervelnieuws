@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from datetime import UTC, datetime, date
 
-from sqlalchemy import JSON, and_, asc, cast, desc, func, literal, or_, select, union_all, update
+from sqlalchemy import JSON, and_, asc, cast, desc, extract, func, literal, or_, select, union_all, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.entities import (
@@ -357,6 +357,36 @@ class WorkHoursRepository:
         ).mappings().all()
         return [
             {"project_id": row["project_id"], "project_name": row["project_name"], "person_hours": float(row["person_minutes"] or 0) / 60}
+            for row in rows
+        ]
+
+    def aggregate_month_totals(self, filters: dict[str, object]) -> list[dict[str, object]]:
+        """Return registrations and person-hours per work month over the same basis as list/count."""
+        group_ids = self._apply_group_filters(select(WorkHourGroup.id), filters).distinct().subquery()
+        participant_counts = (
+            select(
+                WorkHourGroupParticipant.group_id.label("group_id"),
+                func.count(WorkHourGroupParticipant.id).label("participant_count"),
+            )
+            .where(WorkHourGroupParticipant.deleted_at.is_(None))
+            .group_by(WorkHourGroupParticipant.group_id)
+            .subquery()
+        )
+        year = extract("year", WorkHourGroup.work_date).label("year")
+        month = extract("month", WorkHourGroup.work_date).label("month")
+        rows = self.db.execute(
+            select(
+                year,
+                month,
+                func.count(WorkHourGroup.id).label("registrations"),
+                func.coalesce(func.sum(WorkHourGroup.duration_minutes * participant_counts.c.participant_count), 0).label("person_minutes"),
+            )
+            .join(group_ids, group_ids.c.id == WorkHourGroup.id)
+            .outerjoin(participant_counts, participant_counts.c.group_id == WorkHourGroup.id)
+            .group_by(year, month)
+        ).mappings().all()
+        return [
+            {"month": f"{int(row['year']):04d}-{int(row['month']):02d}", "registrations": int(row["registrations"]), "person_hours": float(row["person_minutes"] or 0) / 60}
             for row in rows
         ]
 

@@ -12,6 +12,29 @@ import { formatHours, formatMinutes, minutesForGroup, workHoursError } from "./w
 import "./work-hours.css";
 
 const PAGE_SIZES = [25, 50, 100];
+// Work dates are calendar dates; noon UTC keeps the weekday stable in every timezone.
+const DAY_FORMAT = new Intl.DateTimeFormat("nl-NL", { weekday: "short", day: "numeric", timeZone: "UTC" });
+const MONTH_FORMAT = new Intl.DateTimeFormat("nl-NL", { month: "long", year: "numeric", timeZone: "UTC" });
+
+function formatDay(workDate: string) {
+  return DAY_FORMAT.format(new Date(workDate + "T12:00:00Z"));
+}
+
+function formatMonth(month: string) {
+  return MONTH_FORMAT.format(new Date(month + "-15T12:00:00Z"));
+}
+
+// The list is sorted by work date, so consecutive rows of one month form one group.
+function groupByMonth(items: WorkHourGroup[]): Array<[string, WorkHourGroup[]]> {
+  const months: Array<[string, WorkHourGroup[]]> = [];
+  for (const item of items) {
+    const month = item.work_date.slice(0, 7);
+    const last = months[months.length - 1];
+    if (last && last[0] === month) last[1].push(item);
+    else months.push([month, [item]]);
+  }
+  return months;
+}
 
 export function UrenverantwoordingPage() {
   const client = useQueryClient();
@@ -81,27 +104,38 @@ export function UrenverantwoordingPage() {
   }
 
   return <section className="hours-workspace" aria-labelledby="hours-page-heading">
-    <header className="hours-page-heading"><div><h1 id="hours-page-heading">Urenregistratie</h1><p>Van een paar minuten tot een hele werkdag.</p></div><div className="hours-page-actions"><MaterialButton variant="outlined" disabled={exporting || groups.isFetching || groups.isError || !total || search !== (filters.query || "")} onClick={() => void exportCsv()}>{exporting ? "Exporteren…" : "CSV export"}</MaterialButton><MaterialButton disabled={!canCreate} onClick={() => { setFeedback(""); setEditor("new"); }}>＋ Uren registreren</MaterialButton></div></header>
-    <div className="hours-overview-summary">
-      <p><strong>{total}</strong> registraties <span aria-hidden="true">·</span> <strong>{formatHours(groups.data?.totals.total_person_hours ?? 0)}</strong> persoon-uren <span className="hours-summary-scope">{filtered ? "in deze selectie" : "in totaal"}</span></p>
-      <details className="hours-project-totals"><summary>Per project <span aria-hidden="true">⌄</span></summary><section aria-label="Projecttotalen"><p>Persoon-uren in de selectie, over alle pagina’s.</p>{groups.data?.project_totals?.length ? <dl>{groups.data.project_totals.map(project => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatHours(project.person_hours)} uur</dd></div>)}</dl> : <p>Geen projecttotalen.</p>}</section></details>
-    </div>
-    <div className="hours-list-filters" aria-label="Urenregistraties filteren"><label className="hours-list-search">Zoeken<input type="search" placeholder="Werk, project of post zoeken" value={search} onChange={event => setSearch(event.target.value)} /></label><label>Project<select value={filters.project_id || ""} onChange={event => filter("project_id", event.target.value)}><option value="">Alle projecten</option>{(meta.data?.filter_projects?.length ? meta.data.filter_projects : meta.data?.projects ?? []).map(project => <option key={project.id} value={project.id}>{project.display_name || project.name}</option>)}</select></label><label>Werkdatum<input type="date" value={filters.work_date || ""} onChange={event => filter("work_date", event.target.value)} /></label>{filtered && <MaterialButton variant="text" size="compact" onClick={() => { setFilters({}); setSearch(""); setPage(1); }}>Filters wissen</MaterialButton>}</div>
+    <header className="hours-page-heading">
+      <div><h1 id="hours-page-heading">Urenregistratie</h1><p className="hours-heading-summary"><strong>{total}</strong> registraties <span aria-hidden="true">·</span> <strong>{formatHours(groups.data?.totals.total_person_hours ?? 0)}</strong> persoon-uren <span className="hours-summary-scope">{filtered ? "in deze selectie" : "in totaal"}</span></p></div>
+      <div className="hours-page-actions">
+        <details className="hours-project-totals"><summary>Per project <span aria-hidden="true">⌄</span></summary><section aria-label="Projecttotalen"><p>Persoon-uren in de selectie, over alle pagina’s.</p>{groups.data?.project_totals?.length ? <dl>{groups.data.project_totals.map(project => <div key={project.project_id}><dt>{project.project_name}</dt><dd>{formatHours(project.person_hours)} uur</dd></div>)}</dl> : <p>Geen projecttotalen.</p>}</section></details>
+        <MaterialButton variant="outlined" disabled={exporting || groups.isFetching || groups.isError || !total || search !== (filters.query || "")} onClick={() => void exportCsv()}>{exporting ? "Exporteren…" : "CSV export"}</MaterialButton>
+        <MaterialButton disabled={!canCreate} onClick={() => { setFeedback(""); setEditor("new"); }}>＋ Uren registreren</MaterialButton>
+      </div>
+    </header>
+    <div className="hours-list-filters" aria-label="Urenregistraties filteren"><label className="hours-list-search"><span className="hours-filter-label">Zoeken</span><input type="search" placeholder="Werk, project of post zoeken" value={search} onChange={event => setSearch(event.target.value)} /></label><label><span className="hours-filter-label">Project</span><select value={filters.project_id || ""} onChange={event => filter("project_id", event.target.value)}><option value="">Alle projecten</option>{(meta.data?.filter_projects?.length ? meta.data.filter_projects : meta.data?.projects ?? []).map(project => <option key={project.id} value={project.id}>{project.display_name || project.name}</option>)}</select></label><label><span className="hours-filter-label">Werkdatum</span><input type="date" title="Werkdatum" value={filters.work_date || ""} onChange={event => filter("work_date", event.target.value)} /></label>{filtered && <MaterialButton variant="text" size="compact" onClick={() => { setFilters({}); setSearch(""); setPage(1); }}>Filters wissen</MaterialButton>}</div>
     {feedback && <p className="hours-feedback" role="status">{feedback}</p>}
     {(error || groups.isError || meta.isError || currentUser.isError) && <div className="hours-feedback hours-field-error" role="alert"><p>{error || workHoursError(groups.error || meta.error || currentUser.error)}</p><MaterialButton variant="outlined" onClick={() => { setError(""); void groups.refetch(); void meta.refetch(); void currentUser.refetch(); }}>Opnieuw proberen</MaterialButton></div>}
     {meta.data && !canCreate && <p className="hours-feedback">Geen actief urenproject beschikbaar. Vraag een beheerder om een project beschikbaar te maken.</p>}
     {(groups.isLoading || meta.isLoading) && <p className="hours-list-empty" role="status">Urenregistraties laden…</p>}
     {groups.data && !groups.isError && <>
-      {groups.data.items.length ? <div className="hours-register" role="list" aria-label="Urenregistraties">
-        <div className="hours-register-head" aria-hidden="true"><span>Datum & tijd</span><span>Werk & project</span><span>Personen</span><span>Duur per persoon</span><span /></div>
-        {groups.data.items.map(group => <article className="hours-register-row" role="listitem" key={group.id}>
-          <div className="hours-record-date"><time dateTime={group.work_date}>{formatAmsterdamDisplayDate(group.work_date)}</time><span>{group.start_time ? group.start_time + " uur" : "Tijd niet vastgelegd"}</span></div>
-          <div className="hours-record-work"><h2>{group.description || group.project_name}</h2><p>{group.description ? group.project_name : ""}{group.post_name && <><span aria-hidden="true">{group.description ? " · " : ""}</span>{group.post_name}</>}</p></div>
-          <div className="hours-record-people"><div className="hours-avatar-stack" aria-hidden="true">{group.participants.slice(0, 3).map(person => <span key={person.id}>{person.display_name_snapshot.split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span>)}{group.person_count > 3 && <span>+{group.person_count - 3}</span>}</div><span title={group.participants.map(person => person.display_name_snapshot).join(", ")}>{group.participants.slice(0, 2).map(person => person.display_name_snapshot).join(", ")}{group.person_count > 2 ? " +" + (group.person_count - 2) : ""}</span></div>
-          <div className="hours-record-duration"><strong>{formatMinutes(minutesForGroup(group))}</strong><span>{group.person_count > 1 ? formatHours(minutesForGroup(group) * group.person_count / 60) + " persoon-uren" : "1 persoon"}</span></div>
-          <div className="hours-record-actions"><MaterialButton variant="text" size="compact" aria-label={"Bewerk registratie " + group.project_name} disabled={!meta.data || !currentUser.data} onClick={() => setEditor(group)}>Bewerken</MaterialButton><MaterialButton variant="icon" aria-label={"Verwijder registratie " + group.project_name} title="Verwijderen" onClick={() => { setDeleteError(""); setDeleteTarget(group); }}><svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></MaterialButton></div>
-        </article>)}
-      </div> : <div className="hours-list-empty"><h2>{filtered ? "Geen registraties gevonden" : "Nog geen uren geregistreerd"}</h2><p>{filtered ? "Pas de filters aan om meer registraties te zien." : "Ook vijf minuten telt. Voeg je eerste registratie toe met de knop bovenaan."}</p></div>}
+      {groups.data.items.length ? <div className="hours-register">
+        <div className="hours-register-head" aria-hidden="true"><span /><span>Werk & project</span><span>Personen</span><span>Duur per persoon</span><span /></div>
+        {groupByMonth(groups.data.items).map(([month, items]) => {
+          const monthTotal = groups.data.month_totals?.find(row => row.month === month);
+          return <section className="hours-month" key={month} aria-labelledby={"hours-month-" + month}>
+            <header className="hours-month-head"><h2 id={"hours-month-" + month}>{formatMonth(month)}</h2>{monthTotal && <p><strong>{monthTotal.registrations}</strong> registraties <span aria-hidden="true">·</span> <strong>{formatHours(monthTotal.person_hours)}</strong> persoon-uren</p>}</header>
+            <div role="list" aria-label={"Urenregistraties " + formatMonth(month)}>
+              {items.map(group => <article className="hours-register-row" role="listitem" key={group.id}>
+                <div className="hours-record-date"><time dateTime={group.work_date} title={formatAmsterdamDisplayDate(group.work_date)}>{formatDay(group.work_date)}</time>{group.start_time && <span>{group.start_time}</span>}</div>
+                <div className="hours-record-work"><h3>{group.description || group.project_name}</h3><p>{group.description ? group.project_name : ""}{group.post_name && <><span aria-hidden="true">{group.description ? " · " : ""}</span>{group.post_name}</>}</p></div>
+                <div className="hours-record-people"><div className="hours-avatar-stack" aria-hidden="true">{group.participants.slice(0, 3).map(person => <span key={person.id}>{person.display_name_snapshot.split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span>)}{group.person_count > 3 && <span>+{group.person_count - 3}</span>}</div><span title={group.participants.map(person => person.display_name_snapshot).join(", ")}>{group.participants.slice(0, 2).map(person => person.display_name_snapshot).join(", ")}{group.person_count > 2 ? " +" + (group.person_count - 2) : ""}</span></div>
+                <div className="hours-record-duration"><strong>{formatMinutes(minutesForGroup(group))}</strong>{group.person_count > 1 && <span>{formatHours(minutesForGroup(group) * group.person_count / 60)} <abbr title="persoon-uren">p-u</abbr></span>}</div>
+                <div className="hours-record-actions"><MaterialButton variant="icon" aria-label={"Bewerk registratie " + group.project_name} title="Bewerken" disabled={!meta.data || !currentUser.data} onClick={() => setEditor(group)}><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" /></svg></MaterialButton><MaterialButton variant="icon" aria-label={"Verwijder registratie " + group.project_name} title="Verwijderen" onClick={() => { setDeleteError(""); setDeleteTarget(group); }}><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></MaterialButton></div>
+              </article>)}
+            </div>
+          </section>;
+        })}
+      </div> :<div className="hours-list-empty"><h2>{filtered ? "Geen registraties gevonden" : "Nog geen uren geregistreerd"}</h2><p>{filtered ? "Pas de filters aan om meer registraties te zien." : "Ook vijf minuten telt. Voeg je eerste registratie toe met de knop bovenaan."}</p></div>}
       <footer className="hours-list-pagination" aria-label="Paginering urenregistraties"><label>Per pagina<select value={pageSize} onChange={event => { setPageSize(Number(event.target.value)); setPage(1); }}>{PAGE_SIZES.map(value => <option key={value} value={value}>{value}</option>)}</select></label><div><span aria-live="polite">Pagina {page} van {pages}</span><MaterialButton variant="text" size="compact" disabled={page <= 1 || groups.isFetching} onClick={() => setPage(value => value - 1)}>Vorige</MaterialButton><MaterialButton variant="text" size="compact" disabled={page >= pages || groups.isFetching} onClick={() => setPage(value => value + 1)}>Volgende</MaterialButton></div></footer>
     </>}
     {editor && meta.data && currentUser.data && <WorkHourDialog key={editor === "new" ? "new" : editor.id} group={editor === "new" ? undefined : editor} meta={meta.data} currentUserId={currentUser.data.id} onClose={() => setEditor(null)} onSaved={saved} />}

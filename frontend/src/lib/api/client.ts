@@ -1196,6 +1196,13 @@ export type WorkHourProjectTotal = {
   person_hours: number;
 };
 
+/** Registrations and person-hours per work month ("YYYY-MM") over the whole selection. */
+export type WorkHourMonthTotal = {
+  month: string;
+  registrations: number;
+  person_hours: number;
+};
+
 export type WorkHourSortKey = "work_date" | "name_person" | "type_person" | "project" | "post" | "duration_half_hours" | "created_at" | "updated_at";
 
 export type WorkHourList = {
@@ -1209,6 +1216,8 @@ export type WorkHourList = {
   totals: WorkHourTotals;
   /** Optional during a rolling backend deployment. */
   project_totals?: WorkHourProjectTotal[];
+  /** Optional during a rolling backend deployment. */
+  month_totals?: WorkHourMonthTotal[];
 };
 
 export type WorkHourQueryParams = {
