@@ -41,11 +41,21 @@ class ParticipationRepository:
             statement = statement.where(Moment.projects.any(ParticipationProject.source_project_id == filters.project_id))
         if filters.participant_id:
             statement = statement.where(Moment.participants.any(ParticipationParticipant.source_user_id == filters.participant_id))
+        if filters.moment_type:
+            statement = statement.where(Moment.moment_type == filters.moment_type)
+        if filters.participation_level:
+            # Levels are stored as an ordered comma list of distinct codes; no code contains another.
+            statement = statement.where(Moment.participation_levels.contains(filters.participation_level, autoescape=True))
+        if filters.goal_status:
+            statement = statement.where(Moment.goal_status == filters.goal_status)
         if filters.query.strip():
             term = filters.query.strip()
             statement = statement.where(or_(*[
                 field.contains(term, autoescape=True)
-                for field in (Moment.title, Moment.report, Moment.agreements, Moment.conversation_partners, Moment.location)
+                for field in (
+                    Moment.title, Moment.report, Moment.agreements, Moment.conversation_partners, Moment.location,
+                    Moment.goal, Moment.collected_information, Moment.notes,
+                )
             ]))
         return statement
 

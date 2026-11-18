@@ -1,10 +1,17 @@
 import { request, requestBlob } from "./client";
 
 export type ParticipationOption = { id: string; name: string; selectable: boolean };
-export type ContactType = "in_person" | "phone" | "video" | "other";
+export type ContactType = "in_person" | "phone" | "email" | "video" | "meeting" | "letter" | "newspaper" | "online" | "other";
+export type MomentType = "conversation" | "meeting" | "communication";
+export type ParticipationLevel = "inform" | "consult" | "advise" | "coproduce" | "codecide";
+export type YesNoStatus = "" | "yes" | "no" | "na";
+export type GoalStatus = "" | "yes" | "partial" | "no" | "pending" | "na";
 export type ParticipationDraft = {
   title: string; occurred_on: string; contact_type: ContactType; conversation_partners: string;
   location: string; duration_minutes: number | null; report: string; agreements: string;
+  moment_type: MomentType; goal: string; participation_levels: ParticipationLevel[]; collected_information: string;
+  invitation_status: YesNoStatus; invitation_note: string; informed_status: YesNoStatus; informed_note: string;
+  feedback_status: YesNoStatus; feedback_note: string; goal_status: GoalStatus; notes: string; is_historical: boolean;
   participant_ids: string[]; project_ids: string[];
 };
 export type ParticipationMoment = Omit<ParticipationDraft, "participant_ids" | "project_ids"> & {
@@ -14,7 +21,8 @@ export type ParticipationMoment = Omit<ParticipationDraft, "participant_ids" | "
 };
 export type ParticipationMeta = { participants: ParticipationOption[]; projects: ParticipationOption[]; current_user_id: string };
 export type ParticipationFilters = {
-  query: string; date_from: string; date_to: string; project_id: string; participant_id: string; archived: boolean;
+  query: string; date_from: string; date_to: string; project_id: string; participant_id: string;
+  moment_type: MomentType | ""; participation_level: ParticipationLevel | ""; goal_status: GoalStatus; archived: boolean;
 };
 export type ParticipationList = { items: ParticipationMoment[]; total: number; page: number; page_size: number };
 export type ParticipationExportFormat = "csv" | "markdown" | "json";

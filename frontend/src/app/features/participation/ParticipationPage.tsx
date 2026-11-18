@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 import { MaterialButton } from "../../../design-system/MaterialButton";
 import {
   exportParticipationMoments, getParticipationMeta, getParticipationMoment, listParticipationMoments, participationError,
-  type ParticipationExportFormat, type ParticipationFilters, type ParticipationMoment,
+  type GoalStatus, type MomentType, type ParticipationExportFormat, type ParticipationFilters, type ParticipationLevel, type ParticipationMoment,
 } from "../../../lib/api/participation";
-import { contactLabels, formatDate, ParticipationPanel } from "./ParticipationPanel";
+import { contactLabels, formatDate, goalLabels, levelLabels, ParticipationPanel, typeLabels } from "./ParticipationPanel";
 import "./participation.css";
 
-const emptyFilters: ParticipationFilters = { query: "", date_from: "", date_to: "", project_id: "", participant_id: "", archived: false };
+const emptyFilters: ParticipationFilters = {
+  query: "", date_from: "", date_to: "", project_id: "", participant_id: "", moment_type: "", participation_level: "", goal_status: "", archived: false,
+};
 
 export function ParticipationPage() {
   const client = useQueryClient();
@@ -60,12 +62,12 @@ export function ParticipationPage() {
 
   const total = list.data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / 25));
-  const hasFilters = Boolean(filters.query || filters.project_id || filters.participant_id || filters.date_from || filters.date_to);
+  const hasFilters = Boolean(filters.query || filters.project_id || filters.participant_id || filters.date_from || filters.date_to || filters.moment_type || filters.participation_level || filters.goal_status);
   const canCreate = meta.data?.projects.some(project => project.selectable);
 
   return <section className="participation-page" aria-labelledby="participation-heading">
     <header className="participation-heading">
-      <div><h1 id="participation-heading">Participatiemomenten</h1><p>Gesprekken, inzichten en afspraken voor de verslaglegging.</p></div>
+      <div><h1 id="participation-heading">Participatiemomenten</h1><p>Gesprekken, bijeenkomsten en communicatie met de omgeving, voor het participatieverslag.</p></div>
       <div className="participation-actions">
         <div className="participation-export">
           <select aria-label="Exportformaat" value={exportFormat} onChange={event => setExportFormat(event.target.value as ParticipationExportFormat)}><option value="markdown">Markdown</option><option value="csv">CSV (Excel)</option><option value="json">JSON</option></select>
@@ -80,6 +82,9 @@ export function ParticipationPage() {
       <label>Tot en met<input type="date" value={filters.date_to} min={filters.date_from || undefined} onChange={event => filter("date_to", event.target.value)} /></label>
       <label>Project<select value={filters.project_id} onChange={event => filter("project_id", event.target.value)}><option value="">Alle projecten</option>{meta.data?.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label>
       <label>Uitvoerder<select value={filters.participant_id} onChange={event => filter("participant_id", event.target.value)}><option value="">Iedereen</option>{meta.data?.participants.map(person => <option key={person.id} value={person.id}>{person.name}</option>)}</select></label>
+      <label>Soort<select value={filters.moment_type} onChange={event => filter("moment_type", event.target.value as MomentType | "")}><option value="">Alle soorten</option>{Object.entries(typeLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Participatieniveau<select value={filters.participation_level} onChange={event => filter("participation_level", event.target.value as ParticipationLevel | "")}><option value="">Alle niveaus</option>{Object.entries(levelLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+      <label>Doelstelling bereikt<select value={filters.goal_status} onChange={event => filter("goal_status", event.target.value as GoalStatus)}><option value="">Alle</option>{Object.entries(goalLabels).filter(([key]) => key).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
     </div>
     <div className="participation-list-toolbar">
       <div className="participation-tabs" aria-label="Actieve gesprekken of archief">
@@ -97,8 +102,8 @@ export function ParticipationPage() {
       {list.data.items.length ? <div className="participation-list">
         {list.data.items.map(moment => <button type="button" key={moment.id} className="participation-row" aria-label={`Open gesprek: ${moment.title}`} onClick={() => { setError(""); setSelected(moment.id); }}>
           <time dateTime={moment.occurred_on}>{formatDate(moment.occurred_on)}</time>
-          <div className="participation-row-content"><h2>{moment.title}</h2><p>{moment.projects.map(project => project.name).join(" · ")}</p>{moment.conversation_partners && <p className="participation-partners">Met {moment.conversation_partners}</p>}</div>
-          <div className="participation-row-people"><span>{moment.participants.map(person => person.name).join(", ")}</span><small>{contactLabels[moment.contact_type]}{moment.duration_minutes ? ` · ${moment.duration_minutes} min.` : ""}</small></div>
+          <div className="participation-row-content"><h2>{moment.title}</h2><p>{moment.projects.map(project => project.name).join(" · ")}{moment.participation_levels.length > 0 && ` · ${moment.participation_levels.map(level => levelLabels[level]).join(", ")}`}</p>{moment.conversation_partners && <p className="participation-partners">Met {moment.conversation_partners}</p>}</div>
+          <div className="participation-row-people"><span>{moment.participants.map(person => person.name).join(", ") || (moment.is_historical ? "Uitvoerder onbekend" : "")}</span><small>{typeLabels[moment.moment_type]} · {contactLabels[moment.contact_type]}{moment.duration_minutes ? ` · ${moment.duration_minutes} min.` : ""}</small></div>
           <span className="participation-row-arrow" aria-hidden="true">›</span>
         </button>)}
       </div> : <div className="participation-empty"><h2>{hasFilters ? "Geen gesprekken in deze selectie" : filters.archived ? "Het archief is leeg" : "Nog geen gesprekken vastgelegd"}</h2><p>{hasFilters ? "Pas de filters aan of kies een ruimere periode." : "Ook een kort gesprek telt. Leg vast wie erbij was, wat is besproken en wat is afgesproken."}</p></div>}
