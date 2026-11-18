@@ -196,6 +196,8 @@ class WorkHourParticipantUpdateRequest(BaseModel):
     deleted_at: datetime | None = None
     deleted_by_user_id: str | None = None
     row_version: int | None = None
+    # Read-only response field; accepted so a returned participant can be sent back unchanged.
+    avatar_user_id: str | None = None
     model_config = ConfigDict(extra="forbid")
 
 
@@ -204,6 +206,8 @@ class WorkHourParticipantResponse(BaseModel):
     display_name_snapshot: str
     display_type_snapshot: str
     sort_order: int
+    # Set only for a WindWilly user with a profile photo; served by the board avatar route.
+    avatar_user_id: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

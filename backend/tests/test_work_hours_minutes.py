@@ -126,3 +126,18 @@ def test_month_totals_cover_all_pages_and_follow_filters(client, minute_setup):
     assert months["2025-10"]["person_hours"] == pytest.approx(2 * 45 / 60)
     filtered = client.get("/api/urenverantwoording/groepen?work_date=2026-10-02", headers=headers).json()
     assert filtered["month_totals"] == [{"month": "2026-10", "registrations": 1, "person_hours": pytest.approx(0.5)}]
+
+
+def test_participants_expose_avatar_user_only_for_users_with_a_photo(client, minute_setup):
+    from io import BytesIO
+    from tests.test_admin_api import PNG_1X1
+    headers, payload = minute_setup
+    upload = client.post("/api/auth/me/avatar", headers=headers, files={"file": ("avatar.png", BytesIO(PNG_1X1), "image/png")})
+    assert upload.status_code == 200
+    me = client.get("/api/auth/me", headers=headers).json()
+    assert client.post("/api/urenverantwoording/groepen", headers=headers, json=payload).status_code == 201
+    participants = client.get("/api/urenverantwoording/groepen", headers=headers).json()["items"][0]["participants"]
+    avatars = {participant["display_name_snapshot"]: participant["avatar_user_id"] for participant in participants}
+    assert len(avatars) == 2
+    assert sorted(avatars.values(), key=str) == sorted([me["id"], None], key=str)
+    assert client.get(f"/api/boards/users/{me['id']}/avatar", headers=headers).status_code == 200

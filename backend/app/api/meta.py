@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.34.5",
+                "date": "2026-11-18",
+                "title": "Profielfoto's van aanwezigen in de urenregistratie",
+                "highlights": [
+                    "Bij elke registratie zie je de profielfoto's van wie er aanwezig was; zonder foto staan de initialen er.",
+                    "Ga met de muis over de foto's of tik erop om de volledige namenlijst van de aanwezigen te zien.",
+                ],
+            },
+            {
                 "version": "0.34.4",
                 "date": "2026-11-18",
                 "title": "Compactere urenregistratie, gegroepeerd per maand",

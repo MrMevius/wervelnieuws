@@ -77,6 +77,11 @@ def _display_name_for_user(user: User | None) -> str:
     return (user.full_name or "").strip() or user.username
 
 
+def _avatar_user_id(participant: WorkHourGroupParticipant) -> str | None:
+    user = participant.user if participant.participant_kind == "live_user" else None
+    return user.id if user and user.avatar_path else None
+
+
 def _normalize(value: str | None) -> str:
     return " ".join(unicodedata.normalize("NFKC", value or "").strip().split()).casefold()
 
@@ -157,10 +162,13 @@ class WorkHoursService:
             display_name_snapshot=participant.display_name_snapshot,
             display_type_snapshot=participant.display_type_snapshot,
             sort_order=participant.sort_order,
+            avatar_user_id=_avatar_user_id(participant),
         )
 
     def _participant_to_admin_response(self, participant: WorkHourGroupParticipant) -> WorkHourAdminParticipantResponse:
-        return WorkHourAdminParticipantResponse.model_validate(participant)
+        response = WorkHourAdminParticipantResponse.model_validate(participant)
+        response.avatar_user_id = _avatar_user_id(participant)
+        return response
 
     def _group_to_response(self, group: WorkHourGroup) -> WorkHourGroupResponse:
         participants = [

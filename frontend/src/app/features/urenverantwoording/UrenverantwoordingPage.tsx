@@ -2,8 +2,8 @@ import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-quer
 import { useEffect, useState } from "react";
 import { MaterialButton } from "../../../design-system/MaterialButton";
 import {
-  getCurrentUser, listWorkHoursMeta, listWorkHourGroups, deleteWorkHourGroup, downloadWorkHoursCsv,
-  type WorkHourGroup, type WorkHourQueryParams,
+  getBoardUserAvatarUrl, getCurrentUser, listWorkHoursMeta, listWorkHourGroups, deleteWorkHourGroup, downloadWorkHoursCsv,
+  type WorkHourGroup, type WorkHourParticipant, type WorkHourQueryParams,
 } from "../../../lib/api/client";
 import { formatAmsterdamDisplayDate } from "../../../lib/datetime";
 import { AccessibleModal } from "./AccessibleModal";
@@ -22,6 +22,31 @@ function formatDay(workDate: string) {
 
 function formatMonth(month: string) {
   return MONTH_FORMAT.format(new Date(month + "-15T12:00:00Z"));
+}
+
+const AVATAR_LIMIT = 8;
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : (parts[0] ?? "?")[0];
+  return letters.toUpperCase();
+}
+
+function ParticipantAvatar({ participant }: { participant: WorkHourParticipant }) {
+  const [failed, setFailed] = useState(false);
+  return <span className="hours-avatar">{participant.avatar_user_id && !failed
+    ? <img src={getBoardUserAvatarUrl(participant.avatar_user_id)} alt="" loading="lazy" onError={() => setFailed(true)} />
+    : initials(participant.display_name_snapshot)}</span>;
+}
+
+// Photos only in the row; hover or focus shows everyone who was present.
+function ParticipantAvatars({ participants }: { participants: WorkHourParticipant[] }) {
+  const names = participants.map(person => person.display_name_snapshot);
+  const visible = participants.length > AVATAR_LIMIT ? participants.slice(0, AVATAR_LIMIT - 1) : participants;
+  return <div className="hours-record-people" role="img" tabIndex={0} aria-label={"Aanwezig: " + names.join(", ")}>
+    <div className="hours-avatar-stack">{visible.map(person => <ParticipantAvatar key={person.id} participant={person} />)}{participants.length > visible.length && <span className="hours-avatar hours-avatar-more">+{participants.length - visible.length}</span>}</div>
+    <div className="hours-people-tooltip" aria-hidden="true"><strong>Aanwezig ({names.length})</strong><ul>{names.map((name, index) => <li key={index}>{name}</li>)}</ul></div>
+  </div>;
 }
 
 // The list is sorted by work date, so consecutive rows of one month form one group.
@@ -128,7 +153,7 @@ export function UrenverantwoordingPage() {
               {items.map(group => <article className="hours-register-row" role="listitem" key={group.id}>
                 <div className="hours-record-date"><time dateTime={group.work_date} title={formatAmsterdamDisplayDate(group.work_date)}>{formatDay(group.work_date)}</time>{group.start_time && <span>{group.start_time}</span>}</div>
                 <div className="hours-record-work"><h3>{group.description || group.project_name}</h3><p>{group.description ? group.project_name : ""}{group.post_name && <><span aria-hidden="true">{group.description ? " · " : ""}</span>{group.post_name}</>}</p></div>
-                <div className="hours-record-people"><div className="hours-avatar-stack" aria-hidden="true">{group.participants.slice(0, 3).map(person => <span key={person.id}>{person.display_name_snapshot.split(/\s+/).map(part => part[0]).slice(0, 2).join("")}</span>)}{group.person_count > 3 && <span>+{group.person_count - 3}</span>}</div><span title={group.participants.map(person => person.display_name_snapshot).join(", ")}>{group.participants.slice(0, 2).map(person => person.display_name_snapshot).join(", ")}{group.person_count > 2 ? " +" + (group.person_count - 2) : ""}</span></div>
+                <ParticipantAvatars participants={group.participants} />
                 <div className="hours-record-duration"><strong>{formatMinutes(minutesForGroup(group))}</strong>{group.person_count > 1 && <span>{formatHours(minutesForGroup(group) * group.person_count / 60)} <abbr title="persoon-uren">p-u</abbr></span>}</div>
                 <div className="hours-record-actions"><MaterialButton variant="icon" aria-label={"Bewerk registratie " + group.project_name} title="Bewerken" disabled={!meta.data || !currentUser.data} onClick={() => setEditor(group)}><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 20h4L19 9l-4-4L4 16v4zM14 6l4 4" /></svg></MaterialButton><MaterialButton variant="icon" aria-label={"Verwijder registratie " + group.project_name} title="Verwijderen" onClick={() => { setDeleteError(""); setDeleteTarget(group); }}><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 10v7m4-7v7" /></svg></MaterialButton></div>
               </article>)}
