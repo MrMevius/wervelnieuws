@@ -61,6 +61,8 @@ import { formatAmsterdamDateTime } from "../../../lib/datetime";
 
 const KOLOMMEN: Array<"todo" | "doing" | "done"> = ["todo", "doing", "done"];
 const BOARD_SEARCH_DEBOUNCE_MS = 250;
+// Other members' changes appear without reloading; polling pauses while the tab is hidden.
+export const BOARD_LIVE_REFRESH_MS = 5000;
 const KOLOM_TITEL: Record<string, string> = { todo: "Te doen", doing: "Bezig", done: "Klaar" };
 const URGENTIE_TITEL: Record<"normal" | "urgent", string> = { normal: "Normaal", urgent: "Urgent" };
 const BOARD_ACCESS_BADGE_LIMIT = 5;
@@ -1191,8 +1193,14 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   const boardQuery = useQuery({
     queryKey: ["board-project", resolvedProjectId],
     queryFn: () => getBoardProject(resolvedProjectId || ""),
-    enabled: Boolean(resolvedProjectId)
+    enabled: Boolean(resolvedProjectId),
+    refetchInterval: BOARD_LIVE_REFRESH_MS
   });
+  // Bumps only when the board content changes, so polling does not rerun an active search.
+  const [boardDataVersion, setBoardDataVersion] = useState(0);
+  useEffect(() => {
+    setBoardDataVersion((version) => version + 1);
+  }, [boardQuery.data]);
   const boardSearchTerm = boardSearch.trim();
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedBoardSearch(boardSearchTerm), BOARD_SEARCH_DEBOUNCE_MS);
@@ -1204,7 +1212,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
   }, [resolvedProjectId]);
   // Title and description filter locally right away; the server adds matches in updates, transcripts and attachments.
   const boardSearchQuery = useQuery({
-    queryKey: ["board-search", resolvedProjectId, debouncedBoardSearch, boardQuery.dataUpdatedAt],
+    queryKey: ["board-search", resolvedProjectId, debouncedBoardSearch, boardDataVersion],
     queryFn: () => searchBoardProject(resolvedProjectId || "", debouncedBoardSearch),
     enabled: Boolean(resolvedProjectId) && debouncedBoardSearch.length > 0
   });
@@ -1229,7 +1237,7 @@ export function VergaderbordenPage({ canManageProjects = false }: { canManagePro
     enabled: Boolean(selectedCardId),
     refetchInterval: (query) => query.state.data?.recordings.some((recording) =>
       recording.processing_status && !["done", "failed"].includes(recording.processing_status)
-    ) ? 1500 : false
+    ) ? 1500 : BOARD_LIVE_REFRESH_MS
   });
   useEffect(() => {
     if (cardQuery.data?.updates.some((update) => update.recording?.processing_status === "done")) {

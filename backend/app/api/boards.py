@@ -18,7 +18,7 @@ from app.api.deps import get_current_user, require_admin
 from app.core.db import get_db
 from app.models.entities import Recording, User
 from app.models.enums import BoardColumn, BoardUrgency
-from app.repositories.board_repository import BoardRepository
+from app.repositories.board_repository import BoardRepository, CardActivityStats
 from app.integrations.openai_client import OpenAIClient
 from app.schemas.boards import (
     BoardAccessUserResponse,
@@ -228,7 +228,13 @@ def _build_move_update_message(old_column: str, new_column: str) -> str:
     return f"Kaart verplaatst van {_column_label_nl(old_column)} naar {_column_label_nl(new_column)}."
 
 
-def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
+def _card_responses(repo: BoardRepository, cards: list) -> list[BoardCardResponse]:
+    stats = repo.card_activity_stats(cards)
+    return [_card_response(repo, card, stats[card.id]) for card in cards]
+
+
+def _card_response(repo: BoardRepository, card, stats: CardActivityStats | None = None) -> BoardCardResponse:
+    stats = stats or repo.card_activity_stats([card])[card.id]
     created_by = card.created_by
     return BoardCardResponse(
         id=card.id,
@@ -254,10 +260,10 @@ def _card_response(repo: BoardRepository, card) -> BoardCardResponse:
             )
             for row in card.assignments
         ],
-        updates_count=repo.count_updates(card.id),
-        recordings_count=repo.count_recordings(card.id),
-        attachments_count=repo.count_attachments(card.id),
-        last_activity_at=repo.last_activity_at(card),
+        updates_count=stats.updates_count,
+        recordings_count=stats.recordings_count,
+        attachments_count=stats.attachments_count,
+        last_activity_at=stats.last_activity_at,
     )
 
 
@@ -464,8 +470,8 @@ def get_project_board(project_id: str, current: User = Depends(get_current_user)
         project_name=project.name,
         invited_user_ids=project.invited_user_ids,
         access_users=_project_access_users(repo, project),
-        cards=[_card_response(repo, card) for card in cards],
-        archived_cards=[_card_response(repo, card) for card in archived_cards],
+        cards=_card_responses(repo, cards),
+        archived_cards=_card_responses(repo, archived_cards),
         is_read_only=not project.is_visible_in_boards,
     )
 

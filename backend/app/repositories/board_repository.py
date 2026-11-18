@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
@@ -13,6 +14,14 @@ from app.models.entities import (
     User,
 )
 from app.models.enums import BoardColumn, BoardUrgency
+
+
+@dataclass(frozen=True)
+class CardActivityStats:
+    updates_count: int
+    recordings_count: int
+    attachments_count: int
+    last_activity_at: datetime
 
 
 class BoardRepository:
@@ -169,26 +178,42 @@ class BoardRepository:
             or 0
         )
 
-    def last_activity_at(self, card: BoardCard) -> datetime:
-        """Newest update, recording or attachment; the card's creation time otherwise.
+    def card_activity_stats(self, cards: list[BoardCard]) -> dict[str, CardActivityStats]:
+        """Counts and last activity for many cards in one grouped query per table.
 
-        Card ``updated_at`` is not used because reordering a column touches every
-        sibling card's position.
+        Last activity is the newest update, recording or attachment; the card's
+        creation time otherwise. Card ``updated_at`` is not used because
+        reordering a column touches every sibling card's position.
         """
-        candidates = [
-            card.created_at,
-            self.db.scalar(
-                select(func.max(CardUpdate.created_at)).where(
-                    CardUpdate.card_id == card.id,
-                    CardUpdate.deleted_at.is_(None),
-                )
-            ),
-            self.db.scalar(select(func.max(Recording.created_at)).where(Recording.card_id == card.id)),
-            self.db.scalar(
-                select(func.max(BoardCardAttachment.created_at)).where(BoardCardAttachment.card_id == card.id)
-            ),
+        card_ids = [card.id for card in cards]
+        if not card_ids:
+            return {}
+        sources = [
+            (CardUpdate, [CardUpdate.deleted_at.is_(None)]),
+            (Recording, []),
+            (BoardCardAttachment, []),
         ]
-        return max(_as_utc(value) for value in candidates if value is not None)
+        grouped: list[dict[str, tuple[int, datetime | None]]] = []
+        for model, filters in sources:
+            rows = self.db.execute(
+                select(model.card_id, func.count(model.id), func.max(model.created_at))
+                .where(model.card_id.in_(card_ids), *filters)
+                .group_by(model.card_id)
+            ).all()
+            grouped.append({card_id: (count, newest) for card_id, count, newest in rows})
+        stats: dict[str, CardActivityStats] = {}
+        for card in cards:
+            (updates, newest_update), (recordings, newest_recording), (attachments, newest_attachment) = (
+                source.get(card.id, (0, None)) for source in grouped
+            )
+            newest = [card.created_at, newest_update, newest_recording, newest_attachment]
+            stats[card.id] = CardActivityStats(
+                updates_count=updates,
+                recordings_count=recordings,
+                attachments_count=attachments,
+                last_activity_at=max(_as_utc(value) for value in newest if value is not None),
+            )
+        return stats
 
     def list_trello_card_ids(self, trello_card_ids: list[str]) -> set[str]:
         if not trello_card_ids:

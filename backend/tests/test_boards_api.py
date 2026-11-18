@@ -2089,6 +2089,34 @@ def test_recording_summary_context_includes_card_attachment_contents(client, mon
     assert next(u for u in detail["updates"] if u["recording"])["message"] == "- Wachten op offerte"
 
 
+def test_board_card_activity_stats_use_constant_queries(client):
+    from sqlalchemy import event
+    from app.api.boards import get_project_board
+    from app.models.entities import User
+    headers = _login(client)
+    project_id, card_id, _ = _card_with_recording(client, headers)
+    for title in ("Tweede", "Derde"):
+        client.post(f"/api/boards/projects/{project_id}/cards", headers=headers, json={"title": title, "description": "", "column": "todo"})
+    client.post(f"/api/boards/cards/{card_id}/updates", headers=headers, json={"message": "Bijgewerkt"})
+    client.post(f"/api/boards/cards/{card_id}/attachments", headers=headers, files={"file": ("a.txt", BytesIO(b"a"), "text/plain")})
+    db = _recording_db()
+    user = db.query(User).filter(User.username == "admin").one()
+    statements = []
+    listener = lambda *args: statements.append(args[2])
+    event.listen(db.get_bind(), "before_cursor_execute", listener)
+    try:
+        board = get_project_board(project_id, current=user, db=db)
+    finally:
+        event.remove(db.get_bind(), "before_cursor_execute", listener)
+        db.close()
+    assert sum("count(" in statement for statement in statements) == 3
+    stats = {card.title: card for card in board.cards}
+    assert (stats["Overleg"].updates_count, stats["Overleg"].recordings_count, stats["Overleg"].attachments_count) == (1, 1, 1)
+    assert stats["Overleg"].last_activity_at > stats["Overleg"].created_at.replace(tzinfo=UTC)
+    assert (stats["Tweede"].updates_count, stats["Tweede"].recordings_count, stats["Tweede"].attachments_count) == (0, 0, 0)
+    assert stats["Tweede"].last_activity_at == stats["Tweede"].created_at.replace(tzinfo=UTC)
+
+
 def test_recording_upload_idempotency_and_legacy_routes_do_not_race_worker(client):
     from uuid import uuid4
     headers = _login(client)
