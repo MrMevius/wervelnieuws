@@ -29,6 +29,17 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.35.0",
+                "date": "2026-11-18",
+                "title": "Participatiemomenten volgen het participatielogboek",
+                "highlights": [
+                    "Leg naast gesprekken ook bijeenkomsten en communicatie-uitingen vast, zoals brieven, krantenberichten en nieuwsbrieven.",
+                    "Per moment noteer je het doel, het participatieniveau, de opgehaalde informatie en de verantwoording: uitnodiging, geïnformeerd, terugkoppeling en of het doel is bereikt.",
+                    "Filter op soort, participatieniveau en doelstelling; de exports bevatten alle logboekvelden voor het participatieverslag.",
+                    "Historische momenten mogen zonder bekende uitvoerder worden vastgelegd.",
+                ],
+            },
+            {
                 "version": "0.34.5",
                 "date": "2026-11-18",
                 "title": "Profielfoto's van aanwezigen in de urenregistratie",

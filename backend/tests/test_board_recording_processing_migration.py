@@ -31,7 +31,8 @@ def test_upgrade_preserves_historical_recordings_without_queuing_them(tmp_path, 
         for status in ("pending", "done", "failed"):
             conn.execute(recordings.insert().values(id=status, card_id="c", uploaded_by_user_id="u", filename="audio.webm", file_path="/retained/audio.webm", duration=5, recorded_at=now, created_at=now, mime_type="audio/webm", size_bytes=10, transcription_status=status, transcription_text="Original transcript" if status == "done" else ""))
         before = [dict(row) for row in conn.execute(select(recordings).order_by(recordings.c.id)).mappings()]
-    command.upgrade(config, "head")
+    # Pin the revision under test so later migrations do not change this check.
+    command.upgrade(config, "20261117_0036")
     upgraded = Table("recordings", MetaData(), autoload_with=engine)
     with engine.connect() as conn:
         after = list(conn.execute(select(upgraded).order_by(upgraded.c.id)).mappings())

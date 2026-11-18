@@ -21,6 +21,9 @@ const moment: ParticipationMoment = {
   id: "m1", title: "Gesprek met de buurt", occurred_on: "2026-09-09", contact_type: "in_person",
   conversation_partners: "Bewoners Dorpsstraat", location: "Dorpshuis", duration_minutes: null,
   report: "De planning is besproken.\nEr zijn vragen over geluid.", agreements: "Stuur de informatie na.",
+  moment_type: "conversation", goal: "", participation_levels: [], collected_information: "",
+  invitation_status: "", invitation_note: "", informed_status: "", informed_note: "",
+  feedback_status: "", feedback_note: "", goal_status: "", notes: "", is_historical: false,
   participants: meta.participants, projects: meta.projects, created_by_name: "Bart Jan",
   created_at: "2026-09-09T10:00:00Z", updated_at: "2026-09-09T10:00:00Z", archived_at: null,
   row_version: 3, can_edit: true,
@@ -78,6 +81,47 @@ describe("Participatiemomenten", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it("records logbook fields and allows a historical moment without executor", async () => {
+    const panel = await openNew();
+    fireEvent.change(within(panel).getByLabelText("Soort"), { target: { value: "communication" } });
+    fireEvent.change(within(panel).getByLabelText("Onderwerp *"), { target: { value: "Uitnodiging informatieavond" } });
+    fireEvent.change(within(panel).getByLabelText("Verslag *"), { target: { value: "Brief rondgebracht." } });
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Raadplegen" }));
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Informeren" }));
+    fireEvent.change(within(panel).getByLabelText("Kanaal"), { target: { value: "letter" } });
+    fireEvent.change(within(panel).getByLabelText("Uitnodiging verstuurd"), { target: { value: "yes" } });
+    fireEvent.change(within(panel).getAllByLabelText(/Toelichting/)[0], { target: { value: "op 26-08" } });
+    fireEvent.change(within(panel).getByLabelText("Doelstelling bereikt"), { target: { value: "partial" } });
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Bart Jan" }));
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Wind rondom Daarle" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Verslag opslaan" }));
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Historisch moment");
+    expect(api.createParticipationMoment).not.toHaveBeenCalled();
+    fireEvent.click(within(panel).getByRole("checkbox", { name: /Historisch moment/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Verslag opslaan" }));
+    await waitFor(() => expect(api.createParticipationMoment).toHaveBeenCalledWith(expect.objectContaining({
+      moment_type: "communication", contact_type: "letter", participation_levels: ["inform", "consult"],
+      invitation_status: "yes", invitation_note: "op 26-08", goal_status: "partial", is_historical: true, participant_ids: [], project_ids: ["p1"],
+    })));
+  });
+
+  it("shows logbook fields in the report and hides a goal equal to the title", async () => {
+    api.getParticipationMoment.mockResolvedValue({
+      ...moment, title: "Vragen voor omgevingsraad", goal: "Vragen voor omgevingsraad", moment_type: "meeting", participation_levels: ["inform", "consult"],
+      collected_information: "Positief over deelname", feedback_status: "yes", feedback_note: "e-mail 12 maart", goal_status: "pending",
+      notes: "Vervolg in juni", participants: [], is_historical: true,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" }));
+    const panel = await screen.findByRole("dialog");
+    expect(within(panel).getByRole("list", { name: "Participatieniveau" })).toHaveTextContent("InformerenRaadplegen");
+    expect(within(panel).getByText("Positief over deelname")).toBeInTheDocument();
+    expect(within(panel).getByText("Ja, e-mail 12 maart")).toBeInTheDocument();
+    expect(within(panel).getByText("Nog niet")).toBeInTheDocument();
+    expect(within(panel).getByText("Onbekend (historisch moment)")).toBeInTheDocument();
+    expect(within(panel).queryByText("Doel")).not.toBeInTheDocument();
+  });
+
   it("requires at least one participant and project", async () => {
     const panel = await openNew();
     fireEvent.change(within(panel).getByLabelText("Onderwerp *"), { target: { value: "Overleg" } });
@@ -109,6 +153,15 @@ describe("Participatiemomenten", () => {
     expect(api.archiveParticipationMoment).not.toHaveBeenCalled();
     fireEvent.click(within(within(panel).getByRole("alert")).getByRole("button", { name: "Archiveren" }));
     await waitFor(() => expect(api.archiveParticipationMoment).toHaveBeenCalledWith("m1", true, 3));
+  });
+
+  it("filters on type, participation level and goal status", async () => {
+    renderPage();
+    await screen.findByRole("button", { name: "Open gesprek: Gesprek met de buurt" });
+    fireEvent.change(screen.getByLabelText("Soort"), { target: { value: "meeting" } });
+    fireEvent.change(screen.getByLabelText("Participatieniveau"), { target: { value: "consult" } });
+    fireEvent.change(screen.getByLabelText("Doelstelling bereikt"), { target: { value: "no" } });
+    await waitFor(() => expect(api.listParticipationMoments).toHaveBeenLastCalledWith(expect.objectContaining({ moment_type: "meeting", participation_level: "consult", goal_status: "no" }), 1));
   });
 
   it("sends the same filters to list and export, without limiting exports to one page", async () => {

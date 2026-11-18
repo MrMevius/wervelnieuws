@@ -158,7 +158,7 @@ def test_csv_and_markdown_include_all_content_and_escape_formula_injection(clien
     rows = list(csv.DictReader(StringIO(csv_response.content.decode("utf-8-sig")), delimiter=";"))
     assert rows[0]["Onderwerp"].startswith("'=")
     assert rows[0]["Verslag"] == payload["report"]
-    assert rows[0]["Afspraken"] == payload["agreements"]
+    assert rows[0]["Acties en vervolg"] == payload["agreements"]
     markdown = client.get("/api/participatiemomenten/export?format=markdown", headers=headers)
     assert payload["report"] in markdown.text
     assert "Wind rondom Daarle" in markdown.text and "Energiek Daarle" in markdown.text
@@ -232,3 +232,36 @@ def test_large_exports_require_a_smaller_selection(client, setup, monkeypatch):
     response = client.get("/api/participatiemomenten/export?format=markdown", headers=headers)
     assert response.status_code == 413
     assert "5.000" in response.json()["detail"]
+
+
+def test_logbook_fields_roundtrip_filter_and_export(client, setup):
+    headers, _, _, payload = setup
+    logbook = {
+        **payload, "moment_type": "meeting", "goal": "Draagvlak peilen", "participation_levels": ["consult", "inform"],
+        "collected_information": "Zorgen over geluid", "invitation_status": "yes", "invitation_note": "verstuurd op 26-08",
+        "informed_status": "na", "feedback_status": "yes", "feedback_note": "e-mail 12 maart",
+        "goal_status": "partial", "notes": "Q&A op website",
+    }
+    row = create(client, headers, logbook)
+    assert row["participation_levels"] == ["inform", "consult"]
+    assert row["moment_type"] == "meeting" and row["goal_status"] == "partial" and row["is_historical"] is False
+    create(client, headers, {**payload, "title": "Ander gesprek"})
+    for query, expected in [("moment_type=meeting", 1), ("participation_level=consult", 1), ("goal_status=partial", 1), ("query=geluid", 1), ("participation_level=advise", 0)]:
+        assert client.get(f"/api/participatiemomenten?{query}", headers=headers).json()["total"] == expected, query
+    rows = list(csv.DictReader(StringIO(client.get("/api/participatiemomenten/export?format=csv&moment_type=meeting", headers=headers).content.decode("utf-8-sig")), delimiter=";"))
+    assert rows[0]["Participatieniveau"] == "Informeren, Raadplegen"
+    assert rows[0]["Uitnodiging"] == "Ja, verstuurd op 26-08" and rows[0]["Doelstelling bereikt"] == "Deels"
+    markdown = client.get("/api/participatiemomenten/export?format=markdown&moment_type=meeting", headers=headers).text
+    assert "- Soort: Bijeenkomst" in markdown and "### Opgehaalde informatie" in markdown and "Q&amp;A op website" in markdown
+    assert client.get("/api/participatiemomenten/export?format=json", headers=headers).json()["schema_version"] == 2
+
+
+def test_only_historical_moments_may_omit_the_executor(client, setup):
+    headers, _, _, payload = setup
+    missing = client.post("/api/participatiemomenten", headers=headers, json={**payload, "participant_ids": []})
+    assert missing.status_code == 422
+    row = create(client, headers, {**payload, "participant_ids": [], "is_historical": True})
+    assert row["participants"] == [] and row["is_historical"] is True
+    markdown = client.get("/api/participatiemomenten/export?format=markdown", headers=headers).text
+    assert "Uitvoerders: Onbekend (historisch)" in markdown
+    assert client.post("/api/participatiemomenten", headers=headers, json={**payload, "participation_levels": ["vote"]}).status_code == 422

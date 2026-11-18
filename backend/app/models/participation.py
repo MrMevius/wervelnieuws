@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import uuid4
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
@@ -25,6 +25,22 @@ class ParticipationMoment(Base, TimestampMixin):
     duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     report: Mapped[str] = mapped_column(Text, nullable=False)
     agreements: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Participation logbook fields (Omgevingswet reporting). Status values are
+    # "" (not recorded), yes, no, na and for goal_status also partial and pending.
+    moment_type: Mapped[str] = mapped_column(String(24), nullable=False, default="conversation")
+    goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    participation_levels: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    collected_information: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    invitation_status: Mapped[str] = mapped_column(String(12), nullable=False, default="")
+    invitation_note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    informed_status: Mapped[str] = mapped_column(String(12), nullable=False, default="")
+    informed_note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    feedback_status: Mapped[str] = mapped_column(String(12), nullable=False, default="")
+    feedback_note: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    goal_status: Mapped[str] = mapped_column(String(12), nullable=False, default="")
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # Historical moments may lack a known executor; new moments require one.
+    is_historical: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_by_name: Mapped[str] = mapped_column(String(160), nullable=False)
     updated_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

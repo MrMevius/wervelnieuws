@@ -13,6 +13,19 @@ from app.schemas.participation import (
 )
 
 
+LOGBOOK_FIELDS = (
+    "moment_type", "goal", "collected_information", "invitation_status", "invitation_note",
+    "informed_status", "informed_note", "feedback_status", "feedback_note", "goal_status",
+    "notes", "is_historical",
+)
+
+
+def _columns(payload: ParticipationWrite) -> dict:
+    values = payload.model_dump(exclude={"participant_ids", "project_ids", "expected_row_version"})
+    values["participation_levels"] = ",".join(payload.participation_levels)
+    return values
+
+
 def display_name(user: User) -> str:
     return (user.full_name or "").strip() or user.username
 
@@ -47,10 +60,11 @@ class ParticipationService:
         fields = {name: getattr(row, name) for name in (
             "id", "title", "occurred_on", "contact_type", "conversation_partners", "location",
             "duration_minutes", "report", "agreements", "created_by_name", "created_at",
-            "updated_at", "archived_at", "row_version",
+            "updated_at", "archived_at", "row_version", *LOGBOOK_FIELDS,
         )}
         return ParticipationResponse(
             **fields,
+            participation_levels=[level for level in row.participation_levels.split(",") if level],
             participants=[ParticipationOption(id=person.source_user_id, name=person.display_name, selectable=person.user_id is not None)
                           for person in sorted(row.participants, key=lambda item: item.display_name.casefold())],
             projects=[ParticipationOption(id=project.source_project_id, name=project.name, selectable=project.project_id is not None)
@@ -107,7 +121,7 @@ class ParticipationService:
     def create(self, current: User, payload: ParticipationWrite) -> ParticipationResponse:
         people, projects = self._references(current, payload, None)
         row = Moment(
-            **payload.model_dump(exclude={"participant_ids", "project_ids"}),
+            **_columns(payload),
             created_by_user_id=current.id, updated_by_user_id=current.id,
             created_by_name=display_name(current), participants=people, projects=projects,
         )
@@ -139,7 +153,7 @@ class ParticipationService:
         people, projects = self._references(current, payload, row)
         try:
             self._claim_version(row, payload.expected_row_version, current)
-            for name, value in payload.model_dump(exclude={"participant_ids", "project_ids", "expected_row_version"}).items():
+            for name, value in _columns(payload).items():
                 setattr(row, name, value)
             row.participants, row.projects = people, projects
             self.db.flush()
