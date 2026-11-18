@@ -11,7 +11,7 @@ const api = vi.hoisted(() => ({
   getCurrentUser: vi.fn(), listWorkHoursMeta: vi.fn(), listWorkHourGroups: vi.fn(), listWorkHoursAudit: vi.fn(),
   createWorkHourGroup: vi.fn(), updateWorkHourGroup: vi.fn(), deleteWorkHourGroup: vi.fn(), restoreWorkHourGroup: vi.fn(),
   createWorkExternalPerson: vi.fn(), updateWorkExternalPerson: vi.fn(), archiveWorkExternalPerson: vi.fn(), restoreWorkExternalPerson: vi.fn(), mergeWorkExternalPerson: vi.fn(),
-  downloadWorkHoursCsv: vi.fn(),
+  downloadWorkHoursCsv: vi.fn(), getBoardUserAvatarUrl: vi.fn((userId: string) => `/api/boards/users/${userId}/avatar`),
   listWorkHoursAdminHistory: vi.fn(), listWorkHoursAdminMasterdata: vi.fn(), relinkWorkHistoricalIdentity: vi.fn()
 }));
 vi.mock("../../../lib/api/client", () => api);
@@ -350,6 +350,22 @@ describe("UrenverantwoordingPage compact central management", () => {
     expect(within(list).getByText("za 8")).toBeInTheDocument();
     expect(within(list).getByText("Admin")).toBeInTheDocument();
     expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("shows profile photos or initials and lists everyone present on hover", async () => {
+    const people = [
+      {id:"pa",display_name_snapshot:"Sonny Marsman",display_type_snapshot:"WindWilly-gebruiker",sort_order:0,avatar_user_id:"u-sonny"},
+      {id:"pb",display_name_snapshot:"Harry van der Meer",display_type_snapshot:"WindWilly-gebruiker",sort_order:1,avatar_user_id:null},
+      ...Array.from({length:8},(_,index)=>({id:"p"+index,display_name_snapshot:"Lid "+index,display_type_snapshot:"WindWilly-gebruiker",sort_order:index+2,avatar_user_id:null})),
+    ];
+    api.listWorkHourGroups.mockResolvedValue({...emptyList,items:[{...group,participants:people,person_count:people.length}],total:1});
+    const { container } = renderPage();
+    const presence = await screen.findByRole("img", {name:"Aanwezig: Sonny Marsman, Harry van der Meer, Lid 0, Lid 1, Lid 2, Lid 3, Lid 4, Lid 5, Lid 6, Lid 7"});
+    expect(container.querySelector(".hours-avatar img")).toHaveAttribute("src", "/api/boards/users/u-sonny/avatar");
+    expect(within(presence).getByText("HM")).toBeInTheDocument();
+    expect(within(presence).getByText("+3")).toBeInTheDocument();
+    expect(presence.querySelectorAll(".hours-avatar-stack > .hours-avatar")).toHaveLength(8);
+    expect([...presence.querySelectorAll(".hours-people-tooltip li")].map(item => item.textContent)).toEqual(people.map(person => person.display_name_snapshot));
   });
 
   it("groups registrations per month with subtotals over the whole selection", async () => {

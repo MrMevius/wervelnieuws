@@ -1159,6 +1159,8 @@ export type WorkHourParticipant = {
   display_name_snapshot: string;
   display_email_snapshot?: string | null;
   display_type_snapshot: string;
+  /** User whose profile photo to show; null when there is no photo. */
+  avatar_user_id?: string | null;
   sort_order: number;
 };
 
