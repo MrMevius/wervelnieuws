@@ -31,6 +31,27 @@ def detect_doc_type(filename: str) -> DocumentType:
     return mapping[suffix]
 
 
+def extract_text(path: str, doc_type: DocumentType) -> str:
+    if doc_type == DocumentType.txt or doc_type == DocumentType.markdown:
+        return Path(path).read_text(encoding="utf-8", errors="ignore")
+    if doc_type == DocumentType.pdf:
+        reader = PdfReader(path)
+        return "\n".join([page.extract_text() or "" for page in reader.pages])
+    if doc_type == DocumentType.docx:
+        doc = Document(path)
+        return "\n".join([p.text for p in doc.paragraphs])
+    if doc_type == DocumentType.xlsx:
+        wb = load_workbook(path, data_only=True)
+        lines: list[str] = []
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                values = [str(cell).strip() for cell in row if cell is not None]
+                if values:
+                    lines.append(" | ".join(values))
+        return "\n".join(lines)
+    raise ValueError("Unsupported file type")
+
+
 class IngestionService:
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -159,24 +180,7 @@ class IngestionService:
         return [{"chunk_id": r[0], "text": r[1]} for r in rows.fetchall()]
 
     def _extract_text(self, path: str, doc_type: DocumentType) -> str:
-        if doc_type == DocumentType.txt or doc_type == DocumentType.markdown:
-            return Path(path).read_text(encoding="utf-8", errors="ignore")
-        if doc_type == DocumentType.pdf:
-            reader = PdfReader(path)
-            return "\n".join([page.extract_text() or "" for page in reader.pages])
-        if doc_type == DocumentType.docx:
-            doc = Document(path)
-            return "\n".join([p.text for p in doc.paragraphs])
-        if doc_type == DocumentType.xlsx:
-            wb = load_workbook(path, data_only=True)
-            lines: list[str] = []
-            for sheet in wb.worksheets:
-                for row in sheet.iter_rows(values_only=True):
-                    values = [str(cell).strip() for cell in row if cell is not None]
-                    if values:
-                        lines.append(" | ".join(values))
-            return "\n".join(lines)
-        raise ValueError("Unsupported file type")
+        return extract_text(path, doc_type)
 
     def _chunk_text(self, text_data: str, max_chars: int = 1500) -> list[str]:
         words = text_data.split()

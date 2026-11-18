@@ -29,6 +29,16 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.34.2",
+                "date": "2026-11-18",
+                "title": "Samenvattingen van opnames houden rekening met bijlagen",
+                "highlights": [
+                    "Bij het samenvatten van een opname leest de AI ook de bijlagen van het kaartje mee, zoals Word-, Excel-, pdf- en tekstbestanden.",
+                    "Namen, termen en verwijzingen naar documenten worden daardoor beter geschreven. De samenvatting blijft gaan over wat er in de opname is gezegd.",
+                    "Van afbeeldingen en andere bestanden wordt alleen de bestandsnaam gebruikt.",
+                ],
+            },
+            {
                 "version": "0.34.1",
                 "date": "2026-11-17",
                 "title": "Nederlandse wijzigingsgeschiedenis met duidelijke versienummers",
