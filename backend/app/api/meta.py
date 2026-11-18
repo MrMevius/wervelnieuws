@@ -29,6 +29,15 @@ def _default_about() -> AboutResponse:
         developed_by="Energiek Daarle",
         changelog=[
             {
+                "version": "0.35.2",
+                "date": "2026-11-18",
+                "title": "Profielfoto's bij updates op vergaderborden",
+                "highlights": [
+                    "Updates en opnames op een kaart tonen de profielfoto van de auteur in plaats van alleen initialen.",
+                    "Reacties uit Trello krijgen de foto van het bijbehorende WindWilly-account wanneer de naam overeenkomt.",
+                ],
+            },
+            {
                 "version": "0.35.1",
                 "date": "2026-11-18",
                 "title": "Compact overzicht van participatiemomenten",

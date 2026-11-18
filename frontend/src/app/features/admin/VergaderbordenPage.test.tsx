@@ -1589,6 +1589,17 @@ describe("Vergaderborden drag/drop", () => {
           image_url: null,
           edited_from_update_id: null,
           created_at: "2026-05-27T10:00:00Z"
+        },
+        {
+          id: "u2",
+          author_user_id: "u1",
+          author_username: "admin",
+          author_display_name: "Sonny Marsman",
+          author_avatar_user_id: "u9",
+          message: "Reactie uit Trello",
+          image_url: null,
+          edited_from_update_id: null,
+          created_at: "2026-05-26T10:00:00Z"
         }
       ],
       recordings: []
@@ -1613,6 +1624,9 @@ describe("Vergaderborden drag/drop", () => {
     expect(await screen.findByText("Admin Gebruiker")).toBeInTheDocument();
     expect(await screen.findByText(/27-05-2026/)).toBeInTheDocument();
     expect(screen.getByText("AG")).toBeInTheDocument();
+    const photo = document.querySelector(".board-update-author-badge img");
+    expect(photo?.getAttribute("src")).toContain("/api/boards/users/u9/avatar");
+    expect(screen.queryByText("SM")).not.toBeInTheDocument();
   });
 
   it("toont opnames in dezelfde updates-lijst zonder aparte Opnames-sectie en sorteert newest-first", async () => {

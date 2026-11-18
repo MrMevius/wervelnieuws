@@ -274,6 +274,7 @@ def _recording_response(repo: BoardRepository, row: Recording) -> RecordingRespo
         uploaded_by_user_id=row.uploaded_by_user_id,
         uploaded_by_username=uploader.username if uploader else None,
         uploaded_by_display_name=_display_name(uploader),
+        uploaded_by_avatar_user_id=_avatar_user_id(uploader),
         filename=row.filename,
         file_path=row.file_path,
         duration=row.duration,
@@ -289,13 +290,20 @@ def _recording_response(repo: BoardRepository, row: Recording) -> RecordingRespo
     )
 
 
+def _avatar_user_id(user: User | None) -> str | None:
+    return user.id if user and user.avatar_path else None
+
+
 def _update_response(repo: BoardRepository, row) -> CardUpdateResponse:
     author = repo.get_user(row.author_user_id)
+    # Imported updates are stored under the importer; their author is the external name.
+    shown = repo.user_by_name(row.external_author_name) if row.external_author_name else author
     return CardUpdateResponse(
         id=row.id,
         author_user_id=row.author_user_id,
         author_username=author.username if author else "onbekend",
         author_display_name=row.external_author_name or _display_name(author),
+        author_avatar_user_id=_avatar_user_id(shown),
         message=row.message,
         image_url=_update_image_url(row.id, row.image_path),
         edited_from_update_id=row.edited_from_update_id,

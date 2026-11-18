@@ -260,6 +260,7 @@ def test_trello_import_skips_known_ids_and_exports_json_and_markdown(client):
             "author_user_id": detail["updates"][0]["author_user_id"],
             "author_username": "admin",
             "author_display_name": "Mark",
+            "author_avatar_user_id": None,
             "message": "Graag deze week.",
             "image_url": None,
             "edited_from_update_id": None,
@@ -2283,3 +2284,33 @@ def test_concurrent_upload_retry_creates_one_recording_and_removes_losing_file(c
     assert sum(Path(path).exists() for path in paths) == 1
     detail = client.get(f"/api/boards/cards/{card_id}", headers=headers).json()
     assert sum(r["processing_status"] == "queued" for r in detail["recordings"]) == 1
+
+
+def test_update_author_photo_also_for_trello_authors_matched_by_name(client):
+    from app.models.entities import User
+
+    headers = _login(client)
+    db = _recording_db()
+    editor = db.query(User).filter(User.username == "editor").one()
+    editor.full_name = "Sonny Marsman"
+    editor.avatar_path = "avatars/editor.png"
+    admin_id = db.query(User).filter(User.username == "admin").one().id
+    db.commit()
+    project = client.post("/api/boards/projects", headers=headers, json={"name": "Foto's", "description": "", "invited_user_ids": []}).json()
+    payload = {
+        "lists": [{"id": "l1", "name": "Doing", "closed": False}],
+        "cards": [{"id": "t-photo", "name": "Kaart", "desc": "", "idList": "l1", "pos": 1, "labels": []}],
+        "actions": [
+            {"type": "commentCard", "date": "2026-09-09T10:00:00Z", "memberCreator": {"fullName": "sonnymarsman"}, "data": {"idCard": "t-photo", "text": "Trello-gebruikersnaam"}},
+            {"type": "commentCard", "date": "2026-09-10T10:00:00Z", "memberCreator": {"fullName": "Sonny Marsman"}, "data": {"idCard": "t-photo", "text": "Volledige naam"}},
+            {"type": "commentCard", "date": "2026-09-11T10:00:00Z", "memberCreator": {"fullName": "Onbekend Iemand"}, "data": {"idCard": "t-photo", "text": "Geen account"}},
+        ],
+    }
+    client.post(f"/api/boards/projects/{project['id']}/import/trello", headers=headers,
+                files={"file": ("trello.json", BytesIO(json.dumps(payload).encode()), "application/json")})
+    card = client.get(f"/api/boards/projects/{project['id']}", headers=headers).json()["cards"][0]
+    client.post(f"/api/boards/cards/{card['id']}/updates", headers=headers, json={"message": "Eigen update"})
+    detail = client.get(f"/api/boards/cards/{card['id']}", headers=headers).json()
+    photos = {update["message"]: update["author_avatar_user_id"] for update in detail["updates"]}
+    assert photos == {"Trello-gebruikersnaam": editor.id, "Volledige naam": editor.id, "Geen account": None, "Eigen update": None}
+    assert admin_id not in photos.values()
